@@ -81,7 +81,7 @@
             <!-- OSHI -->
             <dependency>
                 <groupId>com.github.oshi</groupId>
-                <artifactId>oshi-core-java8</artifactId>
+                <artifactId>oshi-core</artifactId>
                 <version>${oshi.version}</version>
             </dependency>
 

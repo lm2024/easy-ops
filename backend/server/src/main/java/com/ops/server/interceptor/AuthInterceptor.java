@@ -60,7 +60,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    private boolean validateAgentToken(HttpServletResponse response, String token) {
+    private boolean validateAgentToken(HttpServletResponse response, String token) throws java.io.IOException {
         String nodeId = extractNodeIdFromRequest(token);
         if (nodeId == null) {
             sendUnauthorized(response);
@@ -77,7 +77,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    private boolean validateUserToken(HttpServletResponse response, String token) {
+    private boolean validateUserToken(HttpServletResponse response, String token) throws java.io.IOException {
         TokenData data = userTokenCache.get(token);
         if (data == null) {
             sendUnauthorized(response);

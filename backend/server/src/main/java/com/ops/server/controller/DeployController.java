@@ -3,25 +3,17 @@ package com.ops.server.controller;
 import com.ops.common.enums.DeployStatus;
 import com.ops.common.model.DeployModel;
 import com.ops.common.model.NodeModel;
+import com.ops.common.model.ProjectModel;
 import com.ops.common.model.VersionModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.*;
 import com.ops.server.service.AlarmService;
 import com.ops.server.websocket.DeployHandler;
-import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.entity.ContentType;
-import org.apache.http.entity.mime.MultipartEntityBuilder;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.impl.client.HttpClients;
-import org.apache.http.util.EntityUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.client.RestTemplate;
 
-import java.io.File;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -31,9 +23,6 @@ public class DeployController {
 
     @Autowired
     private DeployRecordMapper deployRecordMapper;
-
-    @Autowired
-    private VersionMapper versionMapper;
 
     @Autowired
     private ProjectMapper projectMapper;
@@ -53,6 +42,8 @@ public class DeployController {
     @Value("${server.path:./data}")
     private String serverPath;
 
+    private final RestTemplate restTemplate = new RestTemplate();
+
     /**
      * POST /api/deploy - 发布版本
      */
@@ -65,7 +56,7 @@ public class DeployController {
             return Result.paramError("项目和版本ID不能为空");
         }
 
-        VersionModel version = versionMapper.findById(versionId);
+        VersionModel version = versionPackageMapper.findById(versionId);
         if (version == null) {
             return Result.error(1004, "版本不存在");
         }
@@ -87,11 +78,10 @@ public class DeployController {
         deploy.setStartTime(System.currentTimeMillis());
         deploy.setCreateTime(System.currentTimeMillis());
         deployRecordMapper.insert(deploy);
-        deploy.setId(deployRecordMapper.getLastId());
 
         Map<String, Object> data = new HashMap<>();
         data.put("deployId", deployId);
-        data.put("recordId", deploy.getId());
+        data.put("recordId", deploy.getId() != null ? deploy.getId() : 0);
         return Result.success(data);
     }
 
@@ -126,7 +116,7 @@ public class DeployController {
         rollbackRecord.setProjectId(record.getProjectId());
         rollbackRecord.setVersionId(record.getVersionId());
         rollbackRecord.setNodeId(record.getNodeId());
-        rollbackRecord.setDeployStatus(3); // ROLLBACK
+        rollbackRecord.setStatus(DeployStatus.ROLLBACK.getCode());
         rollbackRecord.setJarName(record.getJarName());
         rollbackRecord.setLog("回滚: 回滚到版本ID " + record.getVersionId());
         rollbackRecord.setStartTime(System.currentTimeMillis());
@@ -137,24 +127,19 @@ public class DeployController {
     }
 
     /**
-     * POST /api/files/receive - 代理Agent文件接收
+     * POST /api/deploy/proxy/receive - 代理Agent文件接收
      */
     @PostMapping("/proxy/receive")
     public Result<?> proxyReceive(@RequestBody Map<String, String> request) {
         String serverUrl = request.get("serverUrl");
         String nodeId = request.get("nodeId");
 
-        try (CloseableHttpClient client = HttpClients.custom()
-                .setDefaultRequestConfig(RequestConfig.custom().setSocketTimeout(300000).build())
-                .build()) {
-
-            HttpPost post = new HttpPost(serverUrl + "/api/files/receive");
-            post.setHeader("X-Token", "proxy-token");
-
-            try (CloseableHttpResponse response = client.execute(post)) {
-                String body = EntityUtils.toString(response.getEntity());
-                return Result.success(body);
-            }
+        try {
+            String url = serverUrl + "/api/files/receive";
+            Map<String, String> headers = new HashMap<>();
+            headers.put("X-Token", "proxy-token");
+            String body = restTemplate.postForObject(url, null, String.class);
+            return Result.success(body);
         } catch (Exception e) {
             return Result.serverError();
         }

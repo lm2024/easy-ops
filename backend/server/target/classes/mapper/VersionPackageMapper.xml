@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.VersionPackageMapper">
+    <select id="findById" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package WHERE id = #{id}
+    </select>
+    <select id="getProjectNameByProjectId" resultType="string">
+        SELECT name FROM project_info WHERE id = #{projectId}
+    </select>
+    <select id="findByProjectId" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package WHERE project_id = #{projectId}
+        ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countByProjectId" resultType="long">
+        SELECT COUNT(*) FROM version_package WHERE project_id = #{projectId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO version_package (project_id, jar_name, file_path, file_size, version, sha256, remark, create_time)
+        VALUES (#{projectId}, #{jarName}, #{filePath}, #{fileSize}, #{version}, #{sha256}, #{remark}, #{createTime})
+    </insert>
+    <delete id="deleteById">
+        DELETE FROM version_package WHERE id = #{id}
+    </delete>
+    <select id="getLastId" resultType="long">
+        SELECT MAX(id) FROM version_package
+    </select>
+</mapper>

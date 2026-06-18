@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.stream.Stream;
 
 /**
  * Agent文件接收接口
@@ -23,7 +24,6 @@ public class FileController {
 
     /**
      * 接收Server下发的Jar包
-     * 保存到 {serverPath}/versions/{projectId}/{versionName}/{originalFilename}
      */
     @PostMapping("/receive")
     public Result<Map<String, Object>> receiveFile(@RequestParam String projectId,
@@ -54,7 +54,7 @@ public class FileController {
 
             return Result.success(data);
         } catch (Exception e) {
-            return Result.error("文件接收失败: " + e.getMessage());
+            return Result.error(500, "文件接收失败: " + e.getMessage());
         }
     }
 
@@ -68,15 +68,16 @@ public class FileController {
         try {
             File logFile = new File(logPath);
             if (!logFile.exists()) {
-                return Result.error("日志文件不存在: " + logPath);
+                return Result.error(400, "日志文件不存在: " + logPath);
             }
 
-            java.nio.file.ListLines linesStream = Files.lines(logFile.toPath());
-            String content = linesStream.skip(offset).limit(lines)
-                    .reduce("", (a, b) -> a + b + "\n");
-            return Result.success(content.trim());
+            try (Stream<String> linesStream = Files.lines(logFile.toPath())) {
+                String content = linesStream.skip(offset).limit(lines)
+                        .reduce("", (a, b) -> a + b + "\n");
+                return Result.success(content.trim());
+            }
         } catch (Exception e) {
-            return Result.error("读取日志失败: " + e.getMessage());
+            return Result.error(500, "读取日志失败: " + e.getMessage());
         }
     }
 
@@ -88,12 +89,12 @@ public class FileController {
         try {
             File configFile = new File(configPath);
             if (!configFile.exists()) {
-                return Result.error("配置文件不存在: " + configPath);
+                return Result.error(400, "配置文件不存在: " + configPath);
             }
             String content = new String(Files.readAllBytes(configFile.toPath()));
             return Result.success(content);
         } catch (Exception e) {
-            return Result.error("读取配置失败: " + e.getMessage());
+            return Result.error(500, "读取配置失败: " + e.getMessage());
         }
     }
 

@@ -67,7 +67,7 @@
         <!-- OSHI for system info -->
         <dependency>
             <groupId>com.github.oshi</groupId>
-            <artifactId>oshi-core-java8</artifactId>
+            <artifactId>oshi-core</artifactId>
         </dependency>
 
         <!-- Security -->
@@ -112,6 +112,11 @@
             <groupId>org.projectlombok</groupId>
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jetbrains</groupId>
+            <artifactId>annotations</artifactId>
+            <version>24.0.1</version>
         </dependency>
 
         <dependency>

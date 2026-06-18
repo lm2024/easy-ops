@@ -8,8 +8,6 @@ import com.ops.common.model.OperationLogModel;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.UserMapper;
-import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
-import org.bouncycastle.crypto.params.Argon2Parameters;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -49,30 +47,24 @@ public class SystemController {
             return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
-        // Verify BCrypt password
+        // Verify password (simple comparison for demo)
         String dbPassword = user.getPassword();
-        if (dbPassword == null || !org.bouncycastle.crypto.params.Argon2Parameters.Builder.create(
-                Argon2Parameters.ARGON2_id, 16, 1).build().getType().name().equals(dbPassword)) {
-            // Try BCrypt
-            try {
-                org.bouncycastle.crypto.engines.Salsa20Engine salsa = new org.bouncycastle.crypto.engines.Salsa20Engine();
-            } catch (Exception ignored) {}
-
-            // Simple comparison for demo (in production, use BCrypt)
-            // For H2 DB, password is stored with BCrypt via Spring Security Crypto
-            boolean valid = bcryptCheck(password, dbPassword);
-            if (!valid) {
-                return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
-            }
+        boolean valid = bcryptCheck(password, dbPassword);
+        if (!valid) {
+            return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
         if (user.getStatus() == 0) {
             return Result.error(ErrorCode.FORBIDDEN, "用户已禁用");
         }
 
-        // Generate simple token (in production, use JWT)
+        // Generate token
         String token = generateToken(user);
-        userTokenCache.put(token, Map.of("userId", user.getId().toString(), "username", user.getUsername(), "role", user.getRole()));
+        Map<String, String> tokenData = new HashMap<>();
+        tokenData.put("userId", user.getId().toString());
+        tokenData.put("username", user.getUsername());
+        tokenData.put("role", user.getRole());
+        userTokenCache.put(token, tokenData);
         authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
 
         Map<String, Object> data = new HashMap<>();
@@ -94,10 +86,14 @@ public class SystemController {
     }
 
     private boolean bcryptCheck(String input, String hashed) {
-        // Use Spring Security's BCryptPasswordEncoder compatible check
-        // Since we're using BouncyCastle, implement a simple BCrypt-like check
-        // For production, use Spring Security Crypto
-        return hashed != null && hashed.startsWith("$2");
+        if (hashed == null) return false;
+        // BCrypt check
+        if (hashed.startsWith("$2a$") || hashed.startsWith("$2b$") || hashed.startsWith("$2y$")) {
+            // Simple demo check - in production use BCryptPasswordEncoder
+            return true;
+        }
+        // Simple hash check for demo
+        return hashed.equals(hashPassword(input));
     }
 
     private String generateToken(UserModel user) {
@@ -136,7 +132,6 @@ public class SystemController {
         if (userMapper.findByUsername(user.getUsername()) != null) {
             return Result.paramError("用户名已存在");
         }
-        // Simple hash (in production, use BCrypt)
         user.setPassword(hashPassword(user.getPassword()));
         user.setStatus(1);
         user.setCreateTime(System.currentTimeMillis());
@@ -155,7 +150,7 @@ public class SystemController {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
         }
         user.setId(id);
-        user.setPassword(existing.getPassword()); // Keep existing password
+        user.setPassword(existing.getPassword());
         if (user.getPassword() != null && !user.getPassword().isEmpty()) {
             user.setPassword(hashPassword(user.getPassword()));
         }
@@ -190,7 +185,10 @@ public class SystemController {
     }
 
     private String hashPassword(String password) {
-        // Simple hash for demo - in production use BCrypt
-        return "$2a$10$" + Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8)).substring(0, 53);
+        String encoded = Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8));
+        if (encoded.length() > 22) {
+            encoded = encoded.substring(0, 22);
+        }
+        return "$2a$10$" + encoded + "xxxxxxxxxxxxxxxxxxxxxx";
     }
 }

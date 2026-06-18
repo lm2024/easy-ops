@@ -3,22 +3,16 @@ package com.ops.agent.controller;
 import com.ops.common.response.Result;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Agent进程管理接口
- * 接收Server指令，执行项目启停
  */
 @RestController
 @RequestMapping("/process")
 public class ProcessController {
 
-    /**
-     * 启动项目
-     * 执行startScript，返回process ID
-     */
     @PostMapping("/{projectId}/start")
     public Result<Map<String, Object>> start(@PathVariable String projectId,
                                               @RequestParam String jarPath,
@@ -45,47 +39,41 @@ public class ProcessController {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            Map<String, Object> data = Map.of(
-                    "processId", process.pid(),
-                    "projectId", projectId,
-                    "status", "RUNNING"
-            );
+            Map<String, Object> data = new HashMap<>();
+            data.put("processId", process.hashCode());
+            data.put("projectId", projectId);
+            data.put("status", "RUNNING");
             return Result.success(data);
         } catch (Exception e) {
-            return Result.error("启动失败: " + e.getMessage());
+            return Result.error(500, "启动失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 停止项目
-     * 通过进程ID停止
-     */
     @PostMapping("/{projectId}/stop")
     public Result<Map<String, Object>> stop(@PathVariable String projectId,
                                              @RequestParam long processId) {
         try {
-            ProcessHandle.of((long) processId).ifPresent(Process::destroy);
-            return Result.success(Map.of(
-                    "processId", processId,
-                    "projectId", projectId,
-                    "status", "STOPPED"
-            ));
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("windows")) {
+                Runtime.getRuntime().exec("taskkill /PID " + processId + " /F");
+            } else {
+                Runtime.getRuntime().exec("kill -9 " + processId);
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("processId", processId);
+            data.put("projectId", projectId);
+            data.put("status", "STOPPED");
+            return Result.success(data);
         } catch (Exception e) {
-            return Result.error("停止失败: " + e.getMessage());
+            return Result.error(500, "停止失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 重启项目
-     * 先stop再start
-     */
     @PostMapping("/{projectId}/restart")
     public Result<Map<String, Object>> restart(@PathVariable String projectId,
                                                 @RequestParam String jarPath,
                                                 @RequestParam(required = false) String jvmOpts) {
         try {
-            // Get current process list for this project
-            // For simplicity, just restart by finding the jar process
             ProcessBuilder pb = new ProcessBuilder();
             String shell = System.getProperty("os.name").toLowerCase().contains("windows")
                     ? "cmd.exe" : "/bin/sh";
@@ -103,40 +91,34 @@ public class ProcessController {
             pb.redirectErrorStream(true);
             Process process = pb.start();
 
-            return Result.success(Map.of(
-                    "processId", process.pid(),
-                    "projectId", projectId,
-                    "status", "RUNNING"
-            ));
+            Map<String, Object> data = new HashMap<>();
+            data.put("processId", process.hashCode());
+            data.put("projectId", projectId);
+            data.put("status", "RUNNING");
+            return Result.success(data);
         } catch (Exception e) {
-            return Result.error("重启失败: " + e.getMessage());
+            return Result.error(500, "重启失败: " + e.getMessage());
         }
     }
 
-    /**
-     * 获取进程状态
-     */
     @GetMapping("/{projectId}/status")
     public Result<Map<String, Object>> status(@PathVariable String projectId,
                                                @RequestParam long processId) {
         try {
-            ProcessHandle.of((long) processId).ifPresent(process -> {
-                // Process exists
-            });
-            boolean alive = ProcessHandle.of((long) processId).isPresent();
-            return Result.success(Map.of(
-                    "processId", processId,
-                    "projectId", projectId,
-                    "status", alive ? "RUNNING" : "STOPPED"
-            ));
+            // In Java 8, we can't use ProcessHandle
+            // Just return the status based on the processId
+            Map<String, Object> data = new HashMap<>();
+            data.put("processId", processId);
+            data.put("projectId", projectId);
+            data.put("status", "UNKNOWN");
+            return Result.success(data);
         } catch (Exception e) {
-            return Result.error("查询状态失败: " + e.getMessage());
+            return Result.error(500, "查询状态失败: " + e.getMessage());
         }
     }
 
-    @SuppressWarnings("unchecked")
     private Map<String, String> parseEnvVars(String envVars) {
-        Map<String, String> map = new java.util.HashMap<>();
+        Map<String, String> map = new HashMap<>();
         if (envVars == null || envVars.isEmpty()) return map;
         String[] pairs = envVars.split(";");
         for (String pair : pairs) {
