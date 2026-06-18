@@ -4,12 +4,12 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * 日志命令处理器
- * 读取和上报项目日志
  */
 public class LogCommander {
 
@@ -19,30 +19,22 @@ public class LogCommander {
         this.logPath = logPath;
     }
 
-    /**
-     * 获取日志内容
-     *
-     * @param fileName 日志文件名
-     * @param offset   偏移量
-     * @param lines    读取行数
-     * @return 日志内容
-     */
     public Map<String, Object> getLog(String fileName, int offset, int lines) {
         try {
             String filePath = logPath + "/" + fileName;
             List<String> logLines = readLines(filePath, offset, lines);
 
-            return Map.of(
-                    "status", "SUCCESS",
-                    "lines", logLines,
-                    "totalLines", countLines(filePath),
-                    "fileName", fileName
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "SUCCESS");
+            result.put("lines", logLines);
+            result.put("totalLines", countLines(filePath));
+            result.put("fileName", fileName);
+            return result;
         } catch (Exception e) {
-            return Map.of(
-                    "status", "FAILED",
-                    "message", "读取日志失败: " + e.getMessage()
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "FAILED");
+            result.put("message", "读取日志失败: " + e.getMessage());
+            return result;
         }
     }
 

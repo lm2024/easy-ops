@@ -2,7 +2,7 @@ package com.ops.server.controller;
 
 import com.ops.common.model.VersionModel;
 import com.ops.common.response.Result;
-import com.ops.server.mapper.VersionMapper;
+import com.ops.server.mapper.VersionPackageMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -19,7 +19,7 @@ import java.util.Map;
 public class VersionController {
 
     @Autowired
-    private VersionMapper versionMapper;
+    private VersionPackageMapper versionPackageMapper;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -32,8 +32,8 @@ public class VersionController {
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<VersionModel> versions = versionMapper.findByProjectId(projectId, page, pageSize);
-        Long total = versionMapper.countByProjectId(projectId);
+        List<VersionModel> versions = versionPackageMapper.findByProjectId(projectId, page, pageSize);
+        Long total = versionPackageMapper.countByProjectId(projectId);
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("list", versions);
         data.put("total", total);
@@ -45,7 +45,7 @@ public class VersionController {
      */
     @GetMapping("/{id}")
     public Result<?> getVersion(@PathVariable Long id) {
-        VersionModel version = versionMapper.findById(id);
+        VersionModel version = versionPackageMapper.findById(id);
         return version != null ? Result.success(version) : Result.error(1004, "版本不存在");
     }
 
@@ -72,13 +72,13 @@ public class VersionController {
         String sha256Str = bytesToHex(sha256.digest(fileBytes));
 
         // Get project name
-        String projectName = versionMapper.getProjectNameByProjectId(projectId);
+        String projectName = versionPackageMapper.getProjectNameByProjectId(projectId);
         if (projectName == null) {
             return Result.error(1005, "项目不存在");
         }
 
         // Generate version number
-        String versionName = projectName + "-v" + (versionMapper.countByProjectId(projectId) + 1);
+        String versionName = projectName + "-v" + (versionPackageMapper.countByProjectId(projectId) + 1);
 
         // Save file
         File projectDir = new File(serverPath + "/versions/" + projectId + "/" + versionName);
@@ -95,12 +95,12 @@ public class VersionController {
         version.setProjectId(projectId);
         version.setJarName(originalFilename);
         version.setFilePath(filePath);
-        version.setFileSize(fileBytes.length);
+        version.setFileSize((long) fileBytes.length);
         version.setVersion(versionName);
         version.setSha256(sha256Str);
         version.setRemark(remark);
         version.setCreateTime(System.currentTimeMillis());
-        versionMapper.insert(version);
+        versionPackageMapper.insert(version);
 
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("version", versionName);
@@ -113,13 +113,13 @@ public class VersionController {
      */
     @DeleteMapping("/{id}")
     public Result<?> deleteVersion(@PathVariable Long id) {
-        VersionModel version = versionMapper.findById(id);
+        VersionModel version = versionPackageMapper.findById(id);
         if (version == null) {
             return Result.error(1004, "版本不存在");
         }
         // Delete file from disk
         new File(version.getFilePath()).delete();
-        versionMapper.deleteById(id);
+        versionPackageMapper.deleteById(id);
         return Result.success();
     }
 

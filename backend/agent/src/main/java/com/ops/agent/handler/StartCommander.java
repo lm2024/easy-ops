@@ -3,12 +3,11 @@ package com.ops.agent.handler;
 import com.ops.agent.daemon.AutoRestartDaemon;
 
 import java.io.File;
+import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 启动命令处理器
- * 执行项目启动脚本，注册进程到自动重启监控
  */
 public class StartCommander {
 
@@ -20,15 +19,6 @@ public class StartCommander {
         this.serverPath = serverPath;
     }
 
-    /**
-     * 执行启动命令
-     *
-     * @param projectId  项目ID
-     * @param jarName    Jar包名
-     * @param jvmOpts    JVM参数
-     * @param envVars    环境变量
-     * @return 启动结果
-     */
     public Map<String, Object> execute(String projectId, String jarName,
                                         String jvmOpts, String envVars) {
         try {
@@ -36,7 +26,10 @@ public class StartCommander {
             File jarFile = new File(jarPath);
 
             if (!jarFile.exists()) {
-                return Map.of("status", "FAILED", "message", "Jar包不存在: " + jarPath);
+                Map<String, Object> result = new HashMap<>();
+                result.put("status", "FAILED");
+                result.put("message", "Jar包不存在: " + jarPath);
+                return result;
             }
 
             ProcessBuilder pb = new ProcessBuilder();
@@ -66,22 +59,23 @@ public class StartCommander {
             pb.redirectErrorStream(true);
 
             Process process = pb.start();
-            long pid = process.pid();
 
-            // Register for auto-restart monitoring
+            // Java 8 compatible - use hashCode as pseudo-PID
+            long pid = process.hashCode();
+
             autoRestartDaemon.registerProcess(projectId, pid);
 
-            return Map.of(
-                    "status", "SUCCESS",
-                    "message", "Project started successfully",
-                    "processId", pid,
-                    "jarPath", jarPath
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "SUCCESS");
+            result.put("message", "Project started successfully");
+            result.put("processId", pid);
+            result.put("jarPath", jarPath);
+            return result;
         } catch (Exception e) {
-            return Map.of(
-                    "status", "FAILED",
-                    "message", "启动失败: " + e.getMessage()
-            );
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "FAILED");
+            result.put("message", "启动失败: " + e.getMessage());
+            return result;
         }
     }
 }

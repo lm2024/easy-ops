@@ -44,7 +44,7 @@ public class SystemController {
             data.put("javaVersion", javaVersion);
             data.put("status", 1); // ONLINE
         } catch (Exception e) {
-            return Result.error("获取系统信息失败: " + e.getMessage());
+            return Result.error(500, "获取系统信息失败: " + e.getMessage());
         }
 
         return Result.success(data);

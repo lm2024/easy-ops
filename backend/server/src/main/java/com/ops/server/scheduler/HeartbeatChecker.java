@@ -1,6 +1,7 @@
 package com.ops.server.scheduler;
 
-import com.ops.server.mapper.AlarmMapper;
+import com.ops.common.model.AlarmModel;
+import com.ops.server.mapper.AlarmRecordMapper;
 import com.ops.server.mapper.NodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,7 +22,7 @@ public class HeartbeatChecker {
     private NodeMapper nodeMapper;
 
     @Autowired
-    private AlarmMapper alarmMapper;
+    private AlarmRecordMapper alarmRecordMapper;
 
     @Value("${server.heart-second:30}")
     private int heartSecond;
@@ -45,12 +46,13 @@ public class HeartbeatChecker {
 
             // Trigger alarm
             String content = "节点[" + nodeName + "] " + nodeIp + " 心跳超时，状态变更为离线";
-            alarmMapper.insert(new java.util.HashMap<String, Object>() {{
-                put("node_id", nodeId);
-                put("type", "OFFLINE");
-                put("content", content);
-                put("send_result", "PENDING");
-            }});
+            AlarmModel alarm = new AlarmModel();
+            alarm.setNodeId(nodeId);
+            alarm.setType("OFFLINE");
+            alarm.setContent(content);
+            alarm.setSendResult(0); // PENDING
+            alarm.setCreateTime(System.currentTimeMillis());
+            alarmRecordMapper.insert(alarm);
         }
     }
 }

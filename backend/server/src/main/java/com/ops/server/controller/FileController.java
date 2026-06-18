@@ -88,7 +88,7 @@ public class FileController {
         }
 
         try {
-            Files.write(Path.of(path), content.getBytes("UTF-8"));
+            Files.write(Paths.get(path), content.getBytes("UTF-8"));
             logFileAccess(nodeId, path, "view");
             return Result.success();
         } catch (IOException e) {
@@ -110,7 +110,7 @@ public class FileController {
                     String path = item.get("path");
                     String fileName = new File(path).getName();
                     zos.putNextEntry(new ZipEntry(fileName));
-                    byte[] content = Files.readAllBytes(Path.of(path));
+                    byte[] content = Files.readAllBytes(Paths.get(path));
                     zos.write(content);
                     zos.closeEntry();
                     logFileAccess(
@@ -135,7 +135,7 @@ public class FileController {
     private List<String> readLogFile(String path, int page, int pageSize, String keyword) {
         List<String> allLines = new ArrayList<>();
         try {
-            List<String> lines = Files.readAllLines(Path.of(path));
+            List<String> lines = Files.readAllLines(Paths.get(path));
             int start = (page - 1) * pageSize;
             int end = Math.min(start + pageSize, lines.size());
             for (int i = start; i < end; i++) {
@@ -151,19 +151,19 @@ public class FileController {
 
     private String readFileContent(String path) {
         try {
-            return Files.readString(Path.of(path));
+            return new String(Files.readAllBytes(Paths.get(path)), "UTF-8");
         } catch (IOException e) {
             return "";
         }
     }
 
     private void logFileAccess(Long nodeId, String path, String action) {
-        FileAccessLogModel log = new FileAccessLogModel();
-        log.setNodeId(nodeId);
-        log.setFilePath(path);
-        log.setAction(action);
-        log.setFileType(FileType.LOG.getExt());
-        log.setCreateTime(System.currentTimeMillis());
+        Map<String, Object> log = new HashMap<>();
+        log.put("nodeId", nodeId);
+        log.put("filePath", path);
+        log.put("action", action);
+        log.put("fileType", FileType.LOG.getExt());
+        log.put("createTime", System.currentTimeMillis());
         fileAccessLogMapper.insert(log);
     }
 }
