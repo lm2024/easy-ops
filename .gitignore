@@ -5,3 +5,4 @@ agent-rules/
 *target/
 .history/
 *logs/
+*data/
