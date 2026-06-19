@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.ops.server.controller.NodeControllerTest
--------------------------------------------------------------------------------
-Tests run: 9, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.385 s -- in com.ops.server.controller.NodeControllerTest

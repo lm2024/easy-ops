@@ -8,7 +8,7 @@
         SELECT * FROM node_info WHERE name = #{name}
     </select>
     <select id="getNodeIdByToken" resultType="string">
-        SELECT id::STRING FROM node_info WHERE token = #{token} LIMIT 1
+        SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = #{token} LIMIT 1
     </select>
     <select id="getTokenByToken" resultType="string">
         SELECT token FROM node_info WHERE token = #{token} LIMIT 1

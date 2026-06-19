@@ -1,5 +1,5 @@
 -- 节点信息表
-CREATE TABLE node_info (
+CREATE TABLE IF NOT EXISTS node_info (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) UNIQUE NOT NULL,
     ip VARCHAR(50) NOT NULL,
@@ -12,11 +12,11 @@ CREATE TABLE node_info (
     create_time BIGINT,
     update_time BIGINT
 );
-CREATE INDEX idx_node_status ON node_info(status);
-CREATE INDEX idx_node_ip ON node_info(ip);
+CREATE INDEX IF NOT EXISTS idx_node_status ON node_info(status);
+CREATE INDEX IF NOT EXISTS idx_node_ip ON node_info(ip);
 
 -- 项目管理表
-CREATE TABLE project_info (
+CREATE TABLE IF NOT EXISTS project_info (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) UNIQUE NOT NULL,
     node_ids VARCHAR(1000),
@@ -29,10 +29,10 @@ CREATE TABLE project_info (
     create_time BIGINT,
     update_time BIGINT
 );
-CREATE INDEX idx_project_status ON project_info(status);
+CREATE INDEX IF NOT EXISTS idx_project_status ON project_info(status);
 
 -- 版本包表
-CREATE TABLE version_package (
+CREATE TABLE IF NOT EXISTS version_package (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     project_id BIGINT NOT NULL,
     jar_name VARCHAR(200) NOT NULL,
@@ -43,11 +43,11 @@ CREATE TABLE version_package (
     remark VARCHAR(500),
     create_time BIGINT
 );
-CREATE INDEX idx_version_project ON version_package(project_id);
-CREATE INDEX idx_version_project_ver ON version_package(project_id, version);
+CREATE INDEX IF NOT EXISTS idx_version_project ON version_package(project_id);
+CREATE INDEX IF NOT EXISTS idx_version_project_ver ON version_package(project_id, version);
 
 -- 部署记录表
-CREATE TABLE deploy_record (
+CREATE TABLE IF NOT EXISTS deploy_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     project_id BIGINT NOT NULL,
     version_id BIGINT NOT NULL,
@@ -59,11 +59,11 @@ CREATE TABLE deploy_record (
     end_time BIGINT,
     create_time BIGINT
 );
-CREATE INDEX idx_deploy_project ON deploy_record(project_id);
-CREATE INDEX idx_deploy_status ON deploy_record(status);
+CREATE INDEX IF NOT EXISTS idx_deploy_project ON deploy_record(project_id);
+CREATE INDEX IF NOT EXISTS idx_deploy_status ON deploy_record(status);
 
 -- 告警记录表
-CREATE TABLE alarm_record (
+CREATE TABLE IF NOT EXISTS alarm_record (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     project_id BIGINT,
     node_id BIGINT,
@@ -73,11 +73,11 @@ CREATE TABLE alarm_record (
     send_time BIGINT,
     create_time BIGINT
 );
-CREATE INDEX idx_alarm_type ON alarm_record(type);
-CREATE INDEX idx_alarm_create ON alarm_record(create_time);
+CREATE INDEX IF NOT EXISTS idx_alarm_type ON alarm_record(type);
+CREATE INDEX IF NOT EXISTS idx_alarm_create ON alarm_record(create_time);
 
 -- 系统用户表
-CREATE TABLE sys_user (
+CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     username VARCHAR(50) UNIQUE NOT NULL,
     password VARCHAR(128) NOT NULL,
@@ -86,10 +86,10 @@ CREATE TABLE sys_user (
     create_time BIGINT,
     update_time BIGINT
 );
-CREATE UNIQUE INDEX uk_user_name ON sys_user(username);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_user_name ON sys_user(username);
 
 -- 操作审计表
-CREATE TABLE operation_log (
+CREATE TABLE IF NOT EXISTS operation_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
     module VARCHAR(50),
@@ -98,12 +98,12 @@ CREATE TABLE operation_log (
     ip VARCHAR(50),
     create_time BIGINT
 );
-CREATE INDEX idx_log_user ON operation_log(user_id);
-CREATE INDEX idx_log_module ON operation_log(module);
-CREATE INDEX idx_log_create ON operation_log(create_time);
+CREATE INDEX IF NOT EXISTS idx_log_user ON operation_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_log_module ON operation_log(module);
+CREATE INDEX IF NOT EXISTS idx_log_create ON operation_log(create_time);
 
 -- 文件访问审计表
-CREATE TABLE file_access_log (
+CREATE TABLE IF NOT EXISTS file_access_log (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     user_id BIGINT NOT NULL,
     node_id BIGINT NOT NULL,
@@ -114,12 +114,12 @@ CREATE TABLE file_access_log (
     ip VARCHAR(50),
     create_time BIGINT
 );
-CREATE INDEX idx_file_node ON file_access_log(node_id);
-CREATE INDEX idx_file_type ON file_access_log(file_type);
-CREATE INDEX idx_file_create ON file_access_log(create_time);
+CREATE INDEX IF NOT EXISTS idx_file_node ON file_access_log(node_id);
+CREATE INDEX IF NOT EXISTS idx_file_type ON file_access_log(file_type);
+CREATE INDEX IF NOT EXISTS idx_file_create ON file_access_log(create_time);
 
 -- 告警配置表
-CREATE TABLE alarm_config (
+CREATE TABLE IF NOT EXISTS alarm_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     enabled TINYINT DEFAULT 1,
     smtp_host VARCHAR(200),
@@ -132,7 +132,7 @@ CREATE TABLE alarm_config (
 );
 
 -- 系统配置表
-CREATE TABLE sys_config (
+CREATE TABLE IF NOT EXISTS sys_config (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
     config_key VARCHAR(100) UNIQUE NOT NULL,
     config_value TEXT,
@@ -140,10 +140,12 @@ CREATE TABLE sys_config (
     update_time BIGINT
 );
 
--- 初始化默认管理员 (密码: admin123)
-INSERT INTO sys_user (id, username, password, role, status, create_time, update_time)
-VALUES (1, 'admin', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'admin', 1, UNIX_TIMESTAMP() * 1000, UNIX_TIMESTAMP() * 1000);
+-- 初始化默认管理员 (密码: admin123) — 使用 MERGE INTO 避免重复
+MERGE INTO sys_user (id, username, password, role, status, create_time, update_time)
+KEY (id)
+VALUES (1, 'admin', '$2a$10$NatUJE6J35F/fGMeUFFQ/Op7rJeZsK3c9kUD4AwoWXBDphKFHXxri', 'admin', 1, 1781833996000, 1781833996000);
 
--- 初始化默认告警配置
-INSERT INTO alarm_config (id, enabled, smtp_host, smtp_port, smtp_ssl, receivers, update_time)
-VALUES (1, 0, '', 465, 0, '', UNIX_TIMESTAMP() * 1000);
+-- 初始化默认告警配置 — 使用 MERGE INTO 避免重复
+MERGE INTO alarm_config (id, enabled, smtp_host, smtp_port, smtp_ssl, receivers, update_time)
+KEY (id)
+VALUES (1, 0, '', 465, 0, '', 1781833996000);
