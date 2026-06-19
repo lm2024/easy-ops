@@ -24,7 +24,12 @@ public class NodeService {
     public int update(NodeModel node) { return nodeMapper.update(node); }
     public int deleteById(Long id) { return nodeMapper.deleteById(id); }
     public int countByNodeId(Long nodeId) { return nodeMapper.countByNodeId(nodeId); }
-    public void updateHeartbeat(Long id, Long lastHeartbeat, String ip, String osInfo, String javaVersion) {
-        nodeMapper.updateHeartbeat(id, lastHeartbeat, ip, osInfo, javaVersion);
+    public void updateHeartbeat(Long id, Long lastHeartbeat, String ip, String osInfo, String javaVersion,
+                                Integer cpuCores, Integer totalMemoryMb, Long totalDiskMb, String osArch) {
+        nodeMapper.updateHeartbeat(id, lastHeartbeat, ip, osInfo, javaVersion,
+                cpuCores, totalMemoryMb, totalDiskMb, osArch);
+    }
+    public void updateTags(Long id, String tags) {
+        nodeMapper.updateTags(id, tags, System.currentTimeMillis());
     }
 }

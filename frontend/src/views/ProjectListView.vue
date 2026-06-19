@@ -4,7 +4,7 @@
       <template #title>
         <a-space>
           <folder-open-outlined style="color: #722ed1" />
-          <span style="font-weight: 600">项目管理</span>
+          <span style="font-weight: 600">应用管理</span>
         </a-space>
       </template>
       <template #extra>
@@ -38,7 +38,10 @@
             <a style="font-weight: 500" @click="$router.push(`/projects/${record.id}`)">{{ record.name }}</a>
           </template>
           <template v-if="column.key === 'nodeIds'">
-            <a-tag color="blue">{{ record.nodeIds || '-' }}</a-tag>
+            <a-space wrap>
+              <a-tag v-for="name in getNodeNames(record.nodeIds)" :key="name" color="blue">{{ name }}</a-tag>
+              <template v-if="!record.nodeIds">-</template>
+            </a-space>
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
@@ -64,8 +67,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ProjectModel } from '../types'
+import type { ProjectModel, NodeModel } from '../types'
 import { getProjects, deleteProject } from '../api/project'
+import { getNodes } from '../api/node'
 import {
   SearchOutlined,
   PlusOutlined,
@@ -80,13 +84,14 @@ const projects = ref<ProjectModel[]>([])
 const loading = ref(false)
 const keyword = ref('')
 const pagination = ref({ current: 1, pageSize: 20, total: 0 })
+const nodeMap = ref<Map<string, string>>(new Map())
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-  { title: '名称', dataIndex: 'name', key: 'name' },
-  { title: 'JVM参数', dataIndex: 'jvmOpts', key: 'jvmOpts', ellipsis: true },
-  { title: '节点ID', dataIndex: 'nodeIds', key: 'nodeIds' },
-  { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
+  { title: '名称', dataIndex: 'name', key: 'name', width: 200, ellipsis: true },
+  { title: 'JVM参数', dataIndex: 'jvmOpts', key: 'jvmOpts', width: 200, ellipsis: true },
+  { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 200, ellipsis: true },
+  { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
 ]
 
 async function fetchProjects() {
@@ -98,6 +103,27 @@ async function fetchProjects() {
   } finally {
     loading.value = false
   }
+}
+
+/** 获取所有节点，构建 id → name 映射 */
+async function fetchNodeMap() {
+  try {
+    const res = await getNodes(1, 1000)
+    const map = new Map<string, string>()
+    res.data.list.forEach((n: any) => map.set(String(n.id), n.name))
+    nodeMap.value = map
+  } catch {
+    // 节点数据加载失败不影响项目列表展示
+  }
+}
+
+/** 解析 nodeIds（逗号分隔）为节点名称数组 */
+function getNodeNames(nodeIds?: string): string[] {
+  if (!nodeIds) return []
+  return nodeIds
+    .split(',')
+    .map(id => nodeMap.value.get(id.trim()) || id.trim())
+    .filter(Boolean)
 }
 
 function handleTableChange(pag: any) {
@@ -115,5 +141,7 @@ async function deleteProjectAction(id: string) {
   fetchProjects()
 }
 
-onMounted(fetchProjects)
+onMounted(async () => {
+  await Promise.all([fetchProjects(), fetchNodeMap()])
+})
 </script>

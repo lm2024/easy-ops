@@ -31,6 +31,16 @@ export interface NodeModel {
   lastHeartbeat?: string
   createTime?: string
   updateTime?: string
+  /** 标签（逗号分隔，如 "dev,前端服务"） */
+  tags?: string
+  /** CPU 逻辑核数 */
+  cpuCores?: number
+  /** 总内存（MB） */
+  totalMemoryMb?: number
+  /** 总磁盘（MB） */
+  totalDiskMb?: number
+  /** 系统架构 */
+  osArch?: string
 }
 
 /** 项目类型 */
@@ -42,6 +52,7 @@ export interface ProjectModel {
   restartScript?: string
   jvmOpts?: string
   envVars?: string
+  jarName?: string
   nodeIds?: string
   createTime?: string
   updateTime?: string

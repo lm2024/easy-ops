@@ -17,6 +17,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'nodes/:id/edit', name: 'EditNode', component: () => import('../views/NodeFormView.vue') },
       { path: 'projects', name: 'Projects', component: () => import('../views/ProjectListView.vue') },
       { path: 'projects/add', name: 'AddProject', component: () => import('../views/ProjectFormView.vue') },
+      { path: 'projects/:id/edit', name: 'EditProject', component: () => import('../views/ProjectFormView.vue') },
       { path: 'projects/:id', name: 'ProjectDetail', component: () => import('../views/ProjectDetailView.vue') },
       { path: 'versions', name: 'Versions', component: () => import('../views/VersionListView.vue') },
       { path: 'deploy', name: 'Deploy', component: () => import('../views/DeployListView.vue') },
@@ -31,7 +32,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'users/add', name: 'AddUser', component: () => import('../views/UserFormView.vue') },
       { path: 'users/:id/edit', name: 'EditUser', component: () => import('../views/UserFormView.vue') },
       { path: 'operations', name: 'Operations', component: () => import('../views/OperationLogView.vue') },
-      { path: 'batch-download', name: 'BatchDownload', component: () => import('../views/BatchDownloadView.vue') }
+      { path: 'batch-download', name: 'BatchDownload', component: () => import('../views/BatchDownloadView.vue') },
+      { path: 'ai-config', name: 'AIConfig', component: () => import('../views/AIConfigView.vue') }
     ]
   }
 ]

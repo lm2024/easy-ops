@@ -3,11 +3,18 @@ server:
   servlet:
     context-path: /api
 
+spring:
+  servlet:
+    multipart:
+      max-file-size: 500MB
+      max-request-size: 500MB
+
 # Agent configuration
 agent:
   server-url: http://localhost:8081/api
   token: ${AGENT_TOKEN:default-agent-token-2024}
   node-name: ${HOSTNAME:default-node}
+  data-path: /app/data
 
 # Logging
 logging:

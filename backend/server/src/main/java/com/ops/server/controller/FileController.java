@@ -41,55 +41,60 @@ public class FileController {
     @GetMapping("/log")
     public Result<?> viewLog(
             @RequestParam Long nodeId,
-            @RequestParam String path,
-            @RequestParam(defaultValue = "1") Integer page,
-            @RequestParam(defaultValue = "100") Integer pageSize,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(name = "logPath", defaultValue = "") String logPath,
+            @RequestParam(defaultValue = "0") Integer offset,
+            @RequestParam(defaultValue = "200") Integer lines) {
 
         if (!isValidNode(nodeId)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
-        List<String> lines = readLogFile(path, page, pageSize, keyword);
-        Map<String, Object> data = new HashMap<>();
-        data.put("lines", lines);
-        data.put("total", lines.size());
-        return Result.success(data);
+        String content = readLogFileContent(logPath, offset, lines);
+        return Result.success(content);
     }
 
     /**
      * GET /api/files/config - 读取YML配置
      */
     @GetMapping("/config")
-    public Result<?> viewConfig(@RequestParam Long nodeId, @RequestParam String path) {
+    public Result<?> viewConfig(@RequestParam Long nodeId,
+                                 @RequestParam(name = "configPath") String configPath) {
         if (!isValidNode(nodeId)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
-        String content = readFileContent(path);
-        Map<String, Object> data = new HashMap<>();
-        data.put("content", content);
-        return Result.success(data);
+        String content = readFileContent(configPath);
+        return Result.success(content);
     }
 
     /**
      * POST /api/files/config - 保存YML配置
      */
     @PostMapping("/config")
-    public Result<?> saveConfig(@RequestParam Long nodeId, @RequestParam String path,
-                                 @RequestBody String content) {
+    public Result<?> saveConfig(@RequestBody Map<String, Object> body) {
+        Long nodeId = body.get("nodeId") != null ? Long.valueOf(body.get("nodeId").toString()) : null;
+        Object configPathObj = body.get("configPath");
+        Object contentObj = body.get("content");
+
+        if (nodeId == null || configPathObj == null || contentObj == null) {
+            return Result.paramError("nodeId、configPath、content 不能为空");
+        }
+
+        String configPath = configPathObj.toString();
+        String content = contentObj.toString();
+
         if (!isValidNode(nodeId)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
         // Validate file extension
-        if (!path.endsWith(".yml") && !path.endsWith(".yaml")) {
+        if (!configPath.endsWith(".yml") && !configPath.endsWith(".yaml")) {
             return Result.error(1007, "仅支持.yml和.yaml文件");
         }
 
         try {
-            Files.write(Paths.get(path), content.getBytes("UTF-8"));
-            logFileAccess(nodeId, path, "view");
+            Files.write(Paths.get(configPath), content.getBytes("UTF-8"));
+            logFileAccess(nodeId, configPath, "view");
             return Result.success();
         } catch (IOException e) {
             return Result.error(500, "保存失败: " + e.getMessage());
@@ -132,21 +137,20 @@ public class FileController {
         return node != null && node.getStatus() == 1;
     }
 
-    private List<String> readLogFile(String path, int page, int pageSize, String keyword) {
-        List<String> allLines = new ArrayList<>();
+    private String readLogFileContent(String path, int offset, int lines) {
+        if (path.isEmpty()) return "";
         try {
-            List<String> lines = Files.readAllLines(Paths.get(path));
-            int start = (page - 1) * pageSize;
-            int end = Math.min(start + pageSize, lines.size());
+            List<String> allLines = Files.readAllLines(Paths.get(path));
+            int start = Math.min(offset, allLines.size());
+            int end = Math.min(start + lines, allLines.size());
+            StringBuilder sb = new StringBuilder();
             for (int i = start; i < end; i++) {
-                if (keyword == null || keyword.isEmpty() || lines.get(i).contains(keyword)) {
-                    allLines.add(lines.get(i));
-                }
+                sb.append(allLines.get(i)).append("\n");
             }
+            return sb.toString().trim();
         } catch (IOException e) {
-            return allLines;
+            return "";
         }
-        return allLines;
     }
 
     private String readFileContent(String path) {

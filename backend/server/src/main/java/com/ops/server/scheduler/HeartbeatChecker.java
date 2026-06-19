@@ -1,6 +1,7 @@
 package com.ops.server.scheduler;
 
 import com.ops.common.model.AlarmModel;
+import com.ops.common.model.NodeModel;
 import com.ops.server.mapper.AlarmRecordMapper;
 import com.ops.server.mapper.NodeMapper;
 import org.slf4j.Logger;
@@ -11,7 +12,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Map;
 
 @Component
 public class HeartbeatChecker {
@@ -33,19 +33,24 @@ public class HeartbeatChecker {
     @Scheduled(fixedRate = 10000)
     public void checkOffline() {
         long cutoff = System.currentTimeMillis() - offlineSecond * 1000L;
-        List<Map<String, Object>> nodes = nodeMapper.getOfflineCandidates(cutoff);
+        List<NodeModel> nodes = nodeMapper.getOfflineCandidates(cutoff);
         if (nodes == null || nodes.isEmpty()) return;
 
-        for (Map<String, Object> node : nodes) {
-            Long nodeId = (Long) node.get("id");
-            String nodeName = (String) node.get("name");
-            String nodeIp = (String) node.get("ip");
+        for (NodeModel node : nodes) {
+            Long nodeId = node.getId();
+            String nodeName = node.getName();
+            String nodeIp = node.getIp();
+
+            if (nodeId == null) {
+                log.warn("Offline candidate has null id, skipping");
+                continue;
+            }
 
             nodeMapper.updateStatusOffline(nodeId);
             log.info("Node {} ({}) marked as OFFLINE", nodeName, nodeIp);
 
             // Trigger alarm
-            String content = "节点[" + nodeName + "] " + nodeIp + " 心跳超时，状态变更为离线";
+            String content = "节点[" + (nodeName != null ? nodeName : "?" ) + "] " + (nodeIp != null ? nodeIp : "?") + " 心跳超时，状态变更为离线";
             AlarmModel alarm = new AlarmModel();
             alarm.setNodeId(nodeId);
             alarm.setType("OFFLINE");

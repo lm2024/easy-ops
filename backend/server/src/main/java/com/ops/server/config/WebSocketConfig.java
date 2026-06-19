@@ -1,6 +1,9 @@
 package com.ops.server.config;
 
 import com.ops.server.interceptor.WebSocketAuthInterceptor;
+import com.ops.server.websocket.ConsoleHandler;
+import com.ops.server.websocket.DeployHandler;
+import com.ops.server.websocket.MonitorHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
@@ -14,17 +17,26 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Autowired
     private WebSocketAuthInterceptor webSocketAuthInterceptor;
 
+    @Autowired
+    private ConsoleHandler consoleHandler;
+
+    @Autowired
+    private DeployHandler deployHandler;
+
+    @Autowired
+    private MonitorHandler monitorHandler;
+
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-        registry.addHandler(new com.ops.server.websocket.ConsoleHandler(), "/ws/console")
+        registry.addHandler(consoleHandler, "/ws/console")
                 .setAllowedOrigins("*")
                 .addInterceptors(webSocketAuthInterceptor);
 
-        registry.addHandler(new com.ops.server.websocket.DeployHandler(), "/ws/deploy")
+        registry.addHandler(deployHandler, "/ws/deploy")
                 .setAllowedOrigins("*")
                 .addInterceptors(webSocketAuthInterceptor);
 
-        registry.addHandler(new com.ops.server.websocket.MonitorHandler(), "/ws/monitor")
+        registry.addHandler(monitorHandler, "/ws/monitor")
                 .setAllowedOrigins("*")
                 .addInterceptors(webSocketAuthInterceptor);
     }

@@ -21,9 +21,14 @@ public interface NodeMapper {
     int deleteById(@Param("id") Long id);
     void updateHeartbeat(@Param("id") Long id, @Param("lastHeartbeat") Long lastHeartbeat,
                          @Param("ip") String ip, @Param("osInfo") String osInfo,
-                         @Param("javaVersion") String javaVersion);
+                         @Param("javaVersion") String javaVersion,
+                         @Param("cpuCores") Integer cpuCores,
+                         @Param("totalMemoryMb") Integer totalMemoryMb,
+                         @Param("totalDiskMb") Long totalDiskMb,
+                         @Param("osArch") String osArch);
     void updateStatusOffline(@Param("id") Long id);
-    List<Map<String, Object>> getOfflineCandidates(@Param("cutoff") Long cutoff);
+    void updateTags(@Param("id") Long id, @Param("tags") String tags, @Param("updateTime") Long updateTime);
+    List<NodeModel> getOfflineCandidates(@Param("cutoff") Long cutoff);
     int countByNodeId(@Param("nodeId") Long nodeId);
     List<String> getProjectNamesByNodeId(@Param("nodeId") Long nodeId);
 }

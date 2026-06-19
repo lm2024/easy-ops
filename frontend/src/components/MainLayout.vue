@@ -16,58 +16,54 @@
       </div>
       <a-menu
         v-model:selectedKeys="selectedKeys"
+        v-model:openKeys="openKeys"
         theme="dark"
         mode="inline"
         @select="handleMenuSelect"
       >
-        <a-menu-item key="nodes">
-          <cluster-outlined />
-          <span>节点管理</span>
-        </a-menu-item>
-        <a-menu-item key="projects">
-          <folder-open-outlined />
-          <span>项目管理</span>
-        </a-menu-item>
-        <a-menu-item key="versions">
-          <tag-outlined />
-          <span>版本管理</span>
-        </a-menu-item>
-        <a-menu-item key="deploy">
-          <rocket-outlined />
-          <span>部署记录</span>
-        </a-menu-item>
-        <a-menu-item key="console">
-          <code-outlined />
-          <span>控制台</span>
-        </a-menu-item>
-        <a-menu-item key="logs">
-          <file-text-outlined />
-          <span>日志查看</span>
-        </a-menu-item>
-        <a-menu-item key="config-editor">
-          <setting-outlined />
-          <span>配置编辑</span>
-        </a-menu-item>
-        <a-menu-item key="monitor">
-          <dashboard-outlined />
-          <span>仪表盘</span>
-        </a-menu-item>
-        <a-menu-item key="alarms">
-          <alert-outlined />
-          <span>告警中心</span>
-        </a-menu-item>
-        <a-menu-item key="alarm-config">
-          <notification-outlined />
-          <span>告警配置</span>
-        </a-menu-item>
-        <a-menu-item key="users">
-          <team-outlined />
-          <span>用户管理</span>
-        </a-menu-item>
-        <a-menu-item key="operations">
-          <audit-outlined />
-          <span>操作审计</span>
-        </a-menu-item>
+        <!-- 🚀 运维核心 -->
+        <a-sub-menu key="sub-core" :title="appStore.sidebarCollapsed ? '' : '🚀 运维核心'">
+          <template #title v-if="!appStore.sidebarCollapsed">
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">🚀 运维核心</span>
+          </template>
+          <template #title v-else>
+            <span>🚀</span>
+          </template>
+          <a-menu-item key="nodes"><cluster-outlined /><span>节点管理</span></a-menu-item>
+          <a-menu-item key="projects"><folder-open-outlined /><span>应用管理</span></a-menu-item>
+          <a-menu-item key="versions"><tag-outlined /><span>版本管理</span></a-menu-item>
+          <a-menu-item key="deploy"><rocket-outlined /><span>一键部署</span></a-menu-item>
+        </a-sub-menu>
+
+        <!-- 🛠 运维工具 -->
+        <a-sub-menu key="sub-tools">
+          <template #title>
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">🛠 运维工具</span>
+          </template>
+          <a-menu-item key="console"><code-outlined /><span>控制台</span></a-menu-item>
+          <a-menu-item key="logs"><file-text-outlined /><span>日志查看</span></a-menu-item>
+          <a-menu-item key="config-editor"><setting-outlined /><span>配置编辑</span></a-menu-item>
+        </a-sub-menu>
+
+        <!-- 📊 监控告警 -->
+        <a-sub-menu key="sub-monitor">
+          <template #title>
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">📊 监控告警</span>
+          </template>
+          <a-menu-item key="monitor"><dashboard-outlined /><span>仪表盘</span></a-menu-item>
+          <a-menu-item key="alarms"><alert-outlined /><span>告警中心</span></a-menu-item>
+          <a-menu-item key="alarm-config"><notification-outlined /><span>告警配置</span></a-menu-item>
+        </a-sub-menu>
+
+        <!-- ⚙ 系统设置 -->
+        <a-sub-menu key="sub-system">
+          <template #title>
+            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">⚙ 系统设置</span>
+          </template>
+          <a-menu-item key="ai-config"><bulb-outlined /><span>AI 配置</span></a-menu-item>
+          <a-menu-item key="users"><team-outlined /><span>用户管理</span></a-menu-item>
+          <a-menu-item key="operations"><audit-outlined /><span>操作审计</span></a-menu-item>
+        </a-sub-menu>
       </a-menu>
     </a-layout-sider>
     <a-layout>
@@ -119,24 +115,12 @@ import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
 import {
-  MenuUnfoldOutlined,
-  MenuFoldOutlined,
-  DownOutlined,
-  UserOutlined,
-  LogoutOutlined,
-  CloudServerOutlined,
-  ClusterOutlined,
-  FolderOpenOutlined,
-  TagOutlined,
-  RocketOutlined,
-  CodeOutlined,
-  FileTextOutlined,
-  SettingOutlined,
-  DashboardOutlined,
-  AlertOutlined,
-  NotificationOutlined,
-  TeamOutlined,
-  AuditOutlined
+  MenuUnfoldOutlined, MenuFoldOutlined, DownOutlined,
+  UserOutlined, LogoutOutlined, CloudServerOutlined,
+  ClusterOutlined, FolderOpenOutlined, TagOutlined, RocketOutlined,
+  CodeOutlined, FileTextOutlined, SettingOutlined,
+  DashboardOutlined, AlertOutlined, NotificationOutlined,
+  BulbOutlined, TeamOutlined, AuditOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -144,7 +128,26 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-const selectedKeys = ref([route.name || 'nodes'])
+// 将路由路径映射到子菜单
+const routeToSub: Record<string, string> = {
+  nodes: 'sub-core', projects: 'sub-core', versions: 'sub-core', deploy: 'sub-core',
+  console: 'sub-tools', logs: 'sub-tools', 'config-editor': 'sub-tools',
+  monitor: 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
+  'ai-config': 'sub-system', users: 'sub-system', operations: 'sub-system'
+}
+
+const selectedKeys = ref<string[]>([])
+const openKeys = ref<string[]>(['sub-core']) // 默认展开运维核心
+
+// 初始化时根据当前路由设置选中和展开状态
+const currentPath = route.path.replace(/^\//, '').split('/')[0]
+if (currentPath) {
+  selectedKeys.value = [currentPath]
+  const parent = routeToSub[currentPath]
+  if (parent && !openKeys.value.includes(parent)) {
+    openKeys.value.push(parent)
+  }
+}
 
 function handleMenuSelect(e: any) {
   appStore.setMenu(e.key)
@@ -173,10 +176,10 @@ function handleLogout() {
 }
 
 .app-sider :deep(.ant-menu-item) {
-  margin: 4px 8px;
+  margin: 2px 8px;
   border-radius: 8px;
-  height: 40px;
-  line-height: 40px;
+  height: 38px;
+  line-height: 38px;
 }
 
 .app-sider :deep(.ant-menu-item-selected) {
@@ -185,6 +188,17 @@ function handleLogout() {
 
 .app-sider :deep(.ant-menu-item:hover) {
   background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.app-sider :deep(.ant-menu-submenu-title) {
+  height: 36px;
+  line-height: 36px;
+  margin: 0;
+  padding: 0 24px !important;
+}
+
+.app-sider :deep(.ant-menu-submenu-title:hover) {
+  color: rgba(255,255,255,0.85) !important;
 }
 
 .logo {
@@ -212,9 +226,7 @@ function handleLogout() {
   padding: 4px;
 }
 
-.trigger:hover {
-  color: #1890ff;
-}
+.trigger:hover { color: #1890ff; }
 
 .user-info {
   display: flex;
@@ -225,14 +237,9 @@ function handleLogout() {
   transition: background 0.3s;
 }
 
-.user-info:hover {
-  background: #f5f5f5;
-}
+.user-info:hover { background: #f5f5f5; }
 
-.username {
-  font-size: 14px;
-  color: #333;
-}
+.username { font-size: 14px; color: #333; }
 
 .app-content {
   margin: 16px;
