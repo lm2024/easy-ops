@@ -173,6 +173,17 @@ public class NodeController {
     }
 
     /**
+     * PUT /api/nodes/{id}/tags - 更新节点标签
+     */
+    @PutMapping("/{id}/tags")
+    public Result<?> updateTags(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        String tags = body.get("tags");
+        if (tags == null) tags = "";
+        nodeService.updateTags(id, tags);
+        return Result.success();
+    }
+
+    /**
      * GET /api/nodes/heartbeat - 心跳接口 (Agent侧)
      */
     @GetMapping("/heartbeat")
@@ -192,9 +203,21 @@ public class NodeController {
         String javaVersion = request.getHeader("X-Java-Version");
         String cpuInfo = request.getHeader("X-CPU-Info");
         String memInfo = request.getHeader("X-Mem-Info");
+        String diskInfo = request.getHeader("X-Disk-Info");
+        String osArch = request.getHeader("X-OS-Arch");
+
+        // 解析硬件信息
+        Integer cpuCores = null;
+        Integer totalMemoryMb = null;
+        Long totalDiskMb = null;
+        try {
+            if (cpuInfo != null && !cpuInfo.isEmpty()) cpuCores = Integer.parseInt(cpuInfo);
+            if (memInfo != null && !memInfo.isEmpty()) totalMemoryMb = Integer.parseInt(memInfo);
+            if (diskInfo != null && !diskInfo.isEmpty()) totalDiskMb = Long.parseLong(diskInfo);
+        } catch (NumberFormatException ignored) {}
 
         nodeMapper.updateHeartbeat(Long.parseLong(nodeId), System.currentTimeMillis(),
-                ip, osInfo, javaVersion);
+                ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch);
 
         // Update agent token cache
         Map<String, String> agentCache = authInterceptor.getAgentTokenCache();

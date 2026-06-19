@@ -3,65 +3,91 @@ package com.ops.agent.controller;
 import com.ops.common.response.Result;
 import org.springframework.web.bind.annotation.*;
 
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Agent进程管理接口
+ * 通过执行 start.sh / stop.sh 脚本来管理应用生命周期
+ * 所有脚本均在 deployDir 目录下执行
  */
 @RestController
 @RequestMapping("/process")
 public class ProcessController {
 
+    /**
+     * POST /api/process/{projectId}/start - 启动应用
+     * 流程：保存 start.sh → cd deployDir → 执行 start.sh
+     */
     @PostMapping("/{projectId}/start")
     public Result<Map<String, Object>> start(@PathVariable String projectId,
-                                              @RequestParam String jarPath,
-                                              @RequestParam(required = false) String jvmOpts,
-                                              @RequestParam(required = false) String envVars) {
+                                              @RequestBody Map<String, String> body) {
+        String startScript = body.get("startScript");
+        String deployDir = body.get("deployDir");
+        if (startScript == null || startScript.isEmpty()) {
+            return Result.paramError("startScript 不能为空");
+        }
+        if (deployDir == null || deployDir.isEmpty()) {
+            deployDir = "/app/data/versions/" + projectId;
+        }
+
         try {
-            ProcessBuilder pb = new ProcessBuilder();
-            String shell = System.getProperty("os.name").toLowerCase().contains("windows")
-                    ? "cmd.exe" : "/bin/sh";
-            String flag = System.getProperty("os.name").toLowerCase().contains("windows")
-                    ? "/c" : "-c";
+            // 确保部署目录存在
+            File dir = new File(deployDir);
+            if (!dir.exists()) dir.mkdirs();
 
-            StringBuilder cmd = new StringBuilder();
-            cmd.append("java");
-            if (jvmOpts != null && !jvmOpts.isEmpty()) {
-                cmd.append(" ").append(jvmOpts);
-            }
-            cmd.append(" -jar ").append(jarPath);
-            if (envVars != null && !envVars.isEmpty()) {
-                pb.environment().putAll(parseEnvVars(envVars));
-            }
+            // 写入 start.sh
+            writeScript(deployDir, "start.sh", startScript);
 
-            pb.command(shell, flag, cmd.toString());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
+            // 用双重 nohup 完全脱离父进程
+            // 用双引号包裹目录路径，防止空格导致 shell 解析错误
+            Runtime.getRuntime().exec(new String[]{
+                "/bin/sh", "-c",
+                "cd \"" + deployDir + "\" && nohup sh start.sh > /dev/null 2>&1 &"
+            });
 
             Map<String, Object> data = new HashMap<>();
-            data.put("processId", process.hashCode());
             data.put("projectId", projectId);
-            data.put("status", "RUNNING");
+            data.put("deployDir", deployDir);
+            data.put("status", "STARTED");
             return Result.success(data);
         } catch (Exception e) {
             return Result.error(500, "启动失败: " + e.getMessage());
         }
     }
 
+    /**
+     * POST /api/process/{projectId}/stop - 停止应用
+     * 流程：保存 stop.sh → cd deployDir → 执行 stop.sh
+     */
     @PostMapping("/{projectId}/stop")
     public Result<Map<String, Object>> stop(@PathVariable String projectId,
-                                             @RequestParam long processId) {
+                                             @RequestBody Map<String, String> body) {
+        String stopScript = body.get("stopScript");
+        String deployDir = body.get("deployDir");
+        if (deployDir == null || deployDir.isEmpty()) {
+            deployDir = "/app/data/versions/" + projectId;
+        }
+
         try {
-            String os = System.getProperty("os.name").toLowerCase();
-            if (os.contains("windows")) {
-                Runtime.getRuntime().exec("taskkill /PID " + processId + " /F");
+            // 如果有 stopScript 就执行
+            if (stopScript != null && !stopScript.isEmpty()) {
+                writeScript(deployDir, "stop.sh", stopScript);
+                Process stopProcess = Runtime.getRuntime().exec(new String[]{
+                    "/bin/sh", "-c",
+                    "cd \"" + deployDir + "\" && sh stop.sh"
+                });
+                stopProcess.waitFor(); // 等待停止完成
             } else {
-                Runtime.getRuntime().exec("kill -9 " + processId);
+                // 兜底：根据 deployDir 找到并杀死进程
+                String killCmd = "ps aux | grep " + deployDir + " | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null";
+                Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", killCmd});
             }
+
             Map<String, Object> data = new HashMap<>();
-            data.put("processId", processId);
             data.put("projectId", projectId);
+            data.put("deployDir", deployDir);
             data.put("status", "STOPPED");
             return Result.success(data);
         } catch (Exception e) {
@@ -69,64 +95,26 @@ public class ProcessController {
         }
     }
 
+    /**
+     * POST /api/process/{projectId}/restart - 重启应用
+     */
     @PostMapping("/{projectId}/restart")
     public Result<Map<String, Object>> restart(@PathVariable String projectId,
-                                                @RequestParam String jarPath,
-                                                @RequestParam(required = false) String jvmOpts) {
-        try {
-            ProcessBuilder pb = new ProcessBuilder();
-            String shell = System.getProperty("os.name").toLowerCase().contains("windows")
-                    ? "cmd.exe" : "/bin/sh";
-            String flag = System.getProperty("os.name").toLowerCase().contains("windows")
-                    ? "/c" : "-c";
-
-            StringBuilder cmd = new StringBuilder();
-            cmd.append("java");
-            if (jvmOpts != null && !jvmOpts.isEmpty()) {
-                cmd.append(" ").append(jvmOpts);
-            }
-            cmd.append(" -jar ").append(jarPath);
-
-            pb.command(shell, flag, cmd.toString());
-            pb.redirectErrorStream(true);
-            Process process = pb.start();
-
-            Map<String, Object> data = new HashMap<>();
-            data.put("processId", process.hashCode());
-            data.put("projectId", projectId);
-            data.put("status", "RUNNING");
-            return Result.success(data);
-        } catch (Exception e) {
-            return Result.error(500, "重启失败: " + e.getMessage());
-        }
+                                                @RequestBody Map<String, String> body) {
+        // 先停再启
+        stop(projectId, body);
+        try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
+        return start(projectId, body);
     }
 
-    @GetMapping("/{projectId}/status")
-    public Result<Map<String, Object>> status(@PathVariable String projectId,
-                                               @RequestParam long processId) {
-        try {
-            // In Java 8, we can't use ProcessHandle
-            // Just return the status based on the processId
-            Map<String, Object> data = new HashMap<>();
-            data.put("processId", processId);
-            data.put("projectId", projectId);
-            data.put("status", "UNKNOWN");
-            return Result.success(data);
-        } catch (Exception e) {
-            return Result.error(500, "查询状态失败: " + e.getMessage());
-        }
-    }
+    // ====== 私有方法 ======
 
-    private Map<String, String> parseEnvVars(String envVars) {
-        Map<String, String> map = new HashMap<>();
-        if (envVars == null || envVars.isEmpty()) return map;
-        String[] pairs = envVars.split(";");
-        for (String pair : pairs) {
-            String[] kv = pair.split("=", 2);
-            if (kv.length == 2) {
-                map.put(kv[0].trim(), kv[1].trim());
-            }
+    private void writeScript(String dir, String fileName, String content) throws IOException {
+        File scriptFile = new File(dir, fileName);
+        try (FileWriter fw = new FileWriter(scriptFile)) {
+            fw.write(content);
         }
-        return map;
+        // 设置可执行权限
+        scriptFile.setExecutable(true);
     }
 }

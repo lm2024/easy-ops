@@ -1,0 +1,8 @@
+server:
+  port: 8080
+
+demo:
+  app:
+    name: DemoApp
+    version: 1.0.0
+    description: 这是一个测试部署链路的演示应用

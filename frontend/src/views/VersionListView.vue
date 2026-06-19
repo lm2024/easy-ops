@@ -37,9 +37,6 @@
               <a-button type="link" size="small" @click="deleteVersion(record.id)">
                 <delete-outlined /> 删除
               </a-button>
-              <a-button type="link" size="small" @click="deploy(record)">
-                <rocket-outlined /> 部署
-              </a-button>
             </a-space>
           </template>
         </template>
@@ -62,15 +59,6 @@
       </a-upload>
     </a-modal>
 
-    <a-modal
-      title="确认部署"
-      v-model:open="deployModal"
-      @ok="confirmDeploy"
-      ok-text="确定"
-      cancel-text="取消"
-    >
-      <p>将部署 {{ deployTarget?.jarName }} 到选定节点？</p>
-    </a-modal>
   </div>
 </template>
 
@@ -82,7 +70,6 @@ import { getVersions, deleteVersion, uploadVersion } from '../api/version'
 import {
   UploadOutlined,
   DeleteOutlined,
-  RocketOutlined,
   TagOutlined
 } from '@ant-design/icons-vue'
 
@@ -100,9 +87,6 @@ const columns = [
   { title: '文件大小', dataIndex: 'fileSize', key: 'fileSize' },
   { title: '操作', key: 'action', width: 160, fixed: 'right' as const }
 ]
-
-const deployTarget = ref<VersionModel | null>(null)
-const deployModal = ref(false)
 
 async function fetchVersions() {
   if (!projectId.value) return
@@ -148,17 +132,6 @@ function beforeUpload(file: File) {
 async function deleteVersion(id: string) {
   await deleteVersion(id)
   fetchVersions()
-}
-
-function deploy(record: VersionModel) {
-  deployTarget.value = record
-  deployModal.value = true
-}
-
-async function confirmDeploy() {
-  if (deployTarget.value) {
-    deployModal.value = false
-  }
 }
 
 onMounted(fetchProjects)

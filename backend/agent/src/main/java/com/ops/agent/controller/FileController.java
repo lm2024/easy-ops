@@ -1,6 +1,7 @@
 package com.ops.agent.controller;
 
 import com.ops.common.response.Result;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,7 +21,8 @@ import java.util.stream.Stream;
 @RequestMapping("/file")
 public class FileController {
 
-    private static final String SERVER_PATH = "./data";
+    @Value("${agent.data-path:/app/data}")
+    private String dataPath;
 
     /**
      * 接收Server下发的Jar包
@@ -31,7 +33,7 @@ public class FileController {
                                                     @RequestParam MultipartFile file) {
         try {
             String originalFilename = file.getOriginalFilename();
-            String dirPath = SERVER_PATH + "/versions/" + projectId + "/" + versionName;
+            String dirPath = dataPath + "/versions/" + projectId + "/" + versionName;
             File dir = new File(dirPath);
             if (!dir.exists()) {
                 dir.mkdirs();

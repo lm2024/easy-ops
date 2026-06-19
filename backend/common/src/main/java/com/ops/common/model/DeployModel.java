@@ -20,4 +20,5 @@ public class DeployModel implements Serializable {
     private Long startTime;
     private Long endTime;
     private Long createTime;
+    private Long scheduleTime;
 }

@@ -6,3 +6,4 @@ agent-rules/
 .history/
 *logs/
 *data/
+backend/common/target/

@@ -13,4 +13,7 @@ public interface DeployRecordMapper {
                                       @Param("pageSize") Integer pageSize);
     Long countByProjectId(@Param("projectId") Long projectId);
     int insert(DeployModel deploy);
+    void updateStatus(@Param("id") Long id, @Param("status") int status, @Param("log") String log,
+                      @Param("endTime") Long endTime);
+    List<DeployModel> findScheduledReady(@Param("cutoff") Long cutoff);
 }

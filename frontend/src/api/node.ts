@@ -28,6 +28,11 @@ export function deleteNode(id: string) {
   return request.delete(`/nodes/${id}`) as Promise<Result<void>>
 }
 
+/** 更新节点标签 */
+export function updateNodeTags(id: string, tags: string) {
+  return request.put(`/nodes/${id}/tags`, { tags }) as Promise<Result<void>>
+}
+
 /** 导出节点CSV（通过fetch下载，自动携带token） */
 export async function exportNodesCsv() {
   const token = localStorage.getItem('token')

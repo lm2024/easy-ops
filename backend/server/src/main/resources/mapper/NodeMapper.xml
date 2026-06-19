@@ -20,7 +20,9 @@
                 AND status = #{status}
             </if>
             <if test="keyword != null and keyword != ''">
-                AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%')
+                AND (name LIKE '%' || #{keyword} || '%'
+                     OR ip LIKE '%' || #{keyword} || '%'
+                     OR tags LIKE '%' || #{keyword} || '%')
             </if>
         </where>
         ORDER BY create_time DESC
@@ -33,32 +35,45 @@
                 AND status = #{status}
             </if>
             <if test="keyword != null and keyword != ''">
-                AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%')
+                AND (name LIKE '%' || #{keyword} || '%'
+                     OR ip LIKE '%' || #{keyword} || '%'
+                     OR tags LIKE '%' || #{keyword} || '%')
             </if>
         </where>
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO node_info (name, ip, port, token, status, os_info, java_version, last_heartbeat, create_time, update_time)
-        VALUES (#{name}, #{ip}, #{port}, #{token}, #{status}, #{osInfo}, #{javaVersion}, #{lastHeartbeat}, #{createTime}, #{updateTime})
+        INSERT INTO node_info (name, ip, port, token, status, os_info, java_version,
+                               last_heartbeat, create_time, update_time, tags,
+                               cpu_cores, total_memory_mb, total_disk_mb, os_arch)
+        VALUES (#{name}, #{ip}, #{port}, #{token}, #{status}, #{osInfo}, #{javaVersion},
+                #{lastHeartbeat}, #{createTime}, #{updateTime}, #{tags},
+                #{cpuCores}, #{totalMemoryMb}, #{totalDiskMb}, #{osArch})
     </insert>
     <update id="update">
         UPDATE node_info SET name = #{name}, ip = #{ip}, port = #{port}, token = #{token},
         status = #{status}, os_info = #{osInfo}, java_version = #{javaVersion},
-        last_heartbeat = #{lastHeartbeat}, update_time = #{updateTime}
+        last_heartbeat = #{lastHeartbeat}, update_time = #{updateTime},
+        tags = #{tags}, cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
+        total_disk_mb = #{totalDiskMb}, os_arch = #{osArch}
         WHERE id = #{id}
+    </update>
+    <update id="updateTags">
+        UPDATE node_info SET tags = #{tags}, update_time = #{updateTime} WHERE id = #{id}
     </update>
     <delete id="deleteById">
         DELETE FROM node_info WHERE id = #{id}
     </delete>
     <update id="updateHeartbeat">
-        UPDATE node_info SET ip = #{ip}, os_info = #{osInfo}, java_version = #{javaVersion},
+        UPDATE node_info SET status = 1, ip = #{ip}, os_info = #{osInfo}, java_version = #{javaVersion},
+        cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
+        total_disk_mb = #{totalDiskMb}, os_arch = #{osArch},
         last_heartbeat = #{lastHeartbeat}, update_time = #{lastHeartbeat} WHERE id = #{id}
     </update>
     <update id="updateStatusOffline">
         UPDATE node_info SET status = 0 WHERE id = #{id}
     </update>
-    <select id="getOfflineCandidates" resultType="map">
-        SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
+    <select id="getOfflineCandidates" resultType="com.ops.common.model.NodeModel">
+        SELECT id, name, ip, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
     </select>
     <select id="countByNodeId" resultType="int">
         SELECT COUNT(*) FROM project_info WHERE node_ids LIKE '%' || #{nodeId} || '%'

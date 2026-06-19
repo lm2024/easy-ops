@@ -13,7 +13,15 @@
         SELECT COUNT(*) FROM deploy_record WHERE project_id = #{projectId}
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO deploy_record (project_id, version_id, node_id, status, jar_name, log, start_time, end_time, create_time)
-        VALUES (#{projectId}, #{versionId}, #{nodeId}, #{status}, #{jarName}, #{log}, #{startTime}, #{endTime}, #{createTime})
+        INSERT INTO deploy_record (project_id, version_id, node_id, status, jar_name, log, start_time, end_time, create_time, schedule_time)
+        VALUES (#{projectId}, #{versionId}, #{nodeId}, #{status}, #{jarName}, #{log}, #{startTime}, #{endTime}, #{createTime}, #{scheduleTime})
     </insert>
+    <update id="updateStatus">
+        UPDATE deploy_record SET status = #{status}, log = #{log}, end_time = #{endTime}
+        WHERE id = #{id}
+    </update>
+    <select id="findScheduledReady" resultType="com.ops.common.model.DeployModel">
+        SELECT * FROM deploy_record WHERE status = 5 AND schedule_time > 0 AND schedule_time &lt;= #{cutoff}
+        ORDER BY schedule_time ASC LIMIT 20
+    </select>
 </mapper>
