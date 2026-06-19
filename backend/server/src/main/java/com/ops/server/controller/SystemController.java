@@ -8,14 +8,15 @@ import com.ops.common.model.OperationLogModel;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.UserMapper;
+import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.Base64;
 
 @RestController
 @RequestMapping("/auth")
@@ -59,7 +60,7 @@ public class SystemController {
         }
 
         // Generate token
-        String token = generateToken(user);
+        String token = generateToken();
         Map<String, String> tokenData = new HashMap<>();
         tokenData.put("userId", user.getId().toString());
         tokenData.put("username", user.getUsername());
@@ -72,31 +73,29 @@ public class SystemController {
         data.put("username", user.getUsername());
         data.put("role", user.getRole());
 
-        // Log operation
-        OperationLogModel logModel = new OperationLogModel();
-        logModel.setUserId(user.getId());
-        logModel.setModule("AUTH");
-        logModel.setAction("LOGIN");
-        logModel.setContent("用户登录: " + username);
-        logModel.setIp(httpRequest.getRemoteAddr());
-        logModel.setCreateTime(System.currentTimeMillis());
-        operationLogMapper.insert(logModel);
+        // Log operation (non-critical, suppress error if table doesn't exist yet)
+        try {
+            OperationLogModel logModel = new OperationLogModel();
+            logModel.setUserId(user.getId());
+            logModel.setModule("AUTH");
+            logModel.setAction("LOGIN");
+            logModel.setContent("用户登录: " + username);
+            logModel.setIp(httpRequest.getRemoteAddr());
+            logModel.setCreateTime(System.currentTimeMillis());
+            operationLogMapper.insert(logModel);
+        } catch (Exception e) {
+            System.err.println("[Auth] Failed to write login log: " + e.getMessage());
+        }
 
         return Result.success(data);
     }
 
     private boolean bcryptCheck(String input, String hashed) {
         if (hashed == null) return false;
-        // BCrypt check
-        if (hashed.startsWith("$2a$") || hashed.startsWith("$2b$") || hashed.startsWith("$2y$")) {
-            // Simple demo check - in production use BCryptPasswordEncoder
-            return true;
-        }
-        // Simple hash check for demo
-        return hashed.equals(hashPassword(input));
+        return BCrypt.checkpw(input, hashed);
     }
 
-    private String generateToken(UserModel user) {
+    private String generateToken() {
         SecureRandom random = new SecureRandom();
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);
@@ -122,6 +121,19 @@ public class SystemController {
         data.put("list", users);
         data.put("total", total);
         return Result.success(data);
+    }
+
+    /**
+     * GET /api/users/{id} - 用户详情
+     */
+    @GetMapping("/users/{id}")
+    public Result<?> getUser(@PathVariable Long id) {
+        UserModel user = userMapper.findById(id);
+        if (user == null) {
+            return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
+        }
+        user.setPassword(null); // 不返回密码
+        return Result.success(user);
     }
 
     /**
@@ -185,10 +197,6 @@ public class SystemController {
     }
 
     private String hashPassword(String password) {
-        String encoded = Base64.getEncoder().encodeToString(password.getBytes(StandardCharsets.UTF_8));
-        if (encoded.length() > 22) {
-            encoded = encoded.substring(0, 22);
-        }
-        return "$2a$10$" + encoded + "xxxxxxxxxxxxxxxxxxxxxx";
+        return BCrypt.hashpw(password, BCrypt.gensalt(10));
     }
 }

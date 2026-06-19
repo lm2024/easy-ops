@@ -34,7 +34,7 @@ public class AutoRestartDaemon {
         this.autoRestartEnabled = enabled;
     }
 
-    @Scheduled(fixedRateString = "#{checkInterval * 1000}")
+    @Scheduled(fixedDelayString = "${agent.check-interval:30}000")
     public void checkAndRestart() {
         if (!autoRestartEnabled) return;
 

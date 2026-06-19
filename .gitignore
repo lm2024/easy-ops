@@ -1,3 +1,7 @@
 .codegraph/
 *.DS_Store
 agent-rules/
+*node_modules/
+*target/
+.history/
+*logs/

@@ -52,6 +52,10 @@ public class AuthInterceptor implements HandlerInterceptor {
         // Check user token (Authorization header)
         String userToken = request.getHeader("Authorization");
         if (userToken != null && !userToken.isEmpty()) {
+            // Remove "Bearer " prefix if present
+            if (userToken.startsWith("Bearer ")) {
+                userToken = userToken.substring(7);
+            }
             return validateUserToken(response, userToken);
         }
 
