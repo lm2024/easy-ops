@@ -2603,3 +2603,117 @@ org.springframework.web.bind.MissingServletRequestParameterException: Required r
 2026-06-19 11:04:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
 2026-06-19 11:04:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838207409(Long)
 2026-06-19 11:04:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838217414(Long)
+2026-06-19 11:05:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838227412(Long)
+2026-06-19 11:05:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-3(String)
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838323459(Long), 1781838323459(Long), 3(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 3(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-3] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-2(String)
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838323524(Long), 1781838323524(Long), 2(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 2(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-2] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-1(String)
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838323642(Long), 1781838323642(Long), 1(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 1(Long)
+2026-06-19 11:05:23 [http-nio-8081-exec-9] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838237413(Long)
+2026-06-19 11:05:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838247412(Long)
+2026-06-19 11:05:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838257413(Long)
+2026-06-19 11:05:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-3(String)
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838353462(Long), 1781838353462(Long), 3(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 3(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-1] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-2(String)
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838353531(Long), 1781838353531(Long), 2(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 2(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-4] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-1(String)
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838353650(Long), 1781838353650(Long), 1(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 1(Long)
+2026-06-19 11:05:53 [http-nio-8081-exec-5] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:05:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:05:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838267416(Long)
+2026-06-19 11:05:57 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:06:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:06:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838277416(Long)
+2026-06-19 11:06:07 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:06:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:06:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838287416(Long)
+2026-06-19 11:06:17 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-3(String)
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838383459(Long), 1781838383459(Long), 3(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 3(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-8] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-2(String)
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838383525(Long), 1781838383525(Long), 2(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 2(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-6] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==>  Preparing: SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = ? LIMIT 1
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - ==> Parameters: agent-token-1(String)
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.getNodeIdByToken - <==      Total: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==>  Preparing: UPDATE node_info SET ip = ?, os_info = ?, java_version = ?, last_heartbeat = ?, update_time = ? WHERE id = ?
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - ==> Parameters: 127.0.0.1(String), null, null, 1781838383645(Long), 1781838383645(Long), 1(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.NodeMapper.updateHeartbeat - <==    Updates: 1
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==>  Preparing: SELECT name FROM project_info WHERE node_ids LIKE '%' || ? || '%'
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.N.getProjectNamesByNodeId - ==> Parameters: 1(Long)
+2026-06-19 11:06:23 [http-nio-8081-exec-7] DEBUG c.o.s.m.N.getProjectNamesByNodeId - <==      Total: 0
+2026-06-19 11:06:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:06:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838297413(Long)
+2026-06-19 11:06:27 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:06:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:06:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838307416(Long)
+2026-06-19 11:06:37 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
+2026-06-19 11:06:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==>  Preparing: SELECT id, name, ip FROM node_info WHERE status = 1 AND last_heartbeat < ?
+2026-06-19 11:06:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - ==> Parameters: 1781838317417(Long)
+2026-06-19 11:06:47 [pool-1-thread-1] DEBUG c.o.s.m.N.getOfflineCandidates - <==      Total: 0
