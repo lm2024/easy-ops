@@ -8,20 +8,25 @@ export function login(username: string, password: string) {
 
 /** 获取用户列表 */
 export function getUsers() {
-  return request.get<any, Result<UserModel[]>>('/users')
+  return request.get<any, Result<{ list: UserModel[]; total: number }>>('/auth/users')
+}
+
+/** 获取用户详情 */
+export function getUserById(id: number) {
+  return request.get<any, Result<UserModel>>(`/auth/users/${id}`)
 }
 
 /** 新增用户 */
 export function createUser(user: UserModel) {
-  return request.post<any, Result<UserModel>>('/users', user)
+  return request.post<any, Result<UserModel>>('/auth/users', user)
 }
 
 /** 更新用户 */
 export function updateUser(id: number, user: UserModel) {
-  return request.put<any, Result<UserModel>>(`/users/${id}`, user)
+  return request.put<any, Result<UserModel>>(`/auth/users/${id}`, user)
 }
 
 /** 删除用户 */
 export function deleteUser(id: number) {
-  return request.delete<any, Result>(`/users/${id}`)
+  return request.delete<any, Result>(`/auth/users/${id}`)
 }

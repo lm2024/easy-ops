@@ -35,7 +35,7 @@ service.interceptors.response.use(
       }
       return Promise.reject(new Error(res.message))
     }
-    return response
+    return res as any
   },
   (error) => {
     message.error(error.message || '网络错误')

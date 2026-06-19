@@ -1,41 +1,50 @@
 <template>
   <div>
-    <a-space style="margin-bottom: 16px">
-      <a-button type="primary" @click="$router.push('/users/add')">
-        新增用户
-      </a-button>
-    </a-space>
-
-    <a-table
-      :columns="columns"
-      :data-source="users"
-      :loading="loading"
-      :pagination="false"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'role'">
-          <a-tag :color="record.role === 'ADMIN' ? 'red' : 'blue'">
-            {{ record.role === 'ADMIN' ? '管理员' : '操作员' }}
-          </a-tag>
-        </template>
-        <template v-if="column.key === 'status'">
-          <a-switch
-            checked-children="启用"
-            un-checked-children="禁用"
-            :checked="record.status === 1"
-            @change="toggleStatus(record)"
-          />
-        </template>
-        <template v-if="column.key === 'action'">
-          <a-space>
-            <a-button size="small" @click="editUser(record)">编辑</a-button>
-            <a-popconfirm title="确定删除?" @confirm="deleteUserAction(record.id)">
-              <a-button size="small" danger>删除</a-button>
-            </a-popconfirm>
-          </a-space>
-        </template>
+    <a-card :bordered="false" style="border-radius: 8px">
+      <template #title>
+        <a-space>
+          <team-outlined style="color: #2f54eb" />
+          <span style="font-weight: 600">用户管理</span>
+        </a-space>
       </template>
-    </a-table>
+      <template #extra>
+        <a-button type="primary" @click="$router.push('/users/add')">
+          <plus-outlined /> 新增用户
+        </a-button>
+      </template>
+
+      <a-table
+        :columns="columns"
+        :data-source="users"
+        :loading="loading"
+        :pagination="false"
+        row-key="id"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'role'">
+            <a-tag :color="record.role === 'admin' ? 'red' : 'blue'">
+              {{ record.role === 'admin' ? '管理员' : '操作员' }}
+            </a-tag>
+          </template>
+          <template v-if="column.key === 'status'">
+            <a-badge :status="record.status === 1 ? 'success' : 'default'"
+                     :text="record.status === 1 ? '启用' : '禁用'" />
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="editUser(record)">
+                <edit-outlined /> 编辑
+              </a-button>
+              <a-popconfirm title="确定删除?" ok-text="确定" cancel-text="取消" @confirm="deleteUserAction(record.id)">
+                <a-button type="link" size="small" danger>
+                  <delete-outlined /> 删除
+                </a-button>
+              </a-popconfirm>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+    </a-card>
   </div>
 </template>
 
@@ -44,25 +53,30 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import type { UserModel } from '../types'
 import { getUsers, deleteUser } from '../api/auth'
+import {
+  PlusOutlined,
+  EditOutlined,
+  DeleteOutlined,
+  TeamOutlined
+} from '@ant-design/icons-vue'
 
 const router = useRouter()
 const users = ref<UserModel[]>([])
 const loading = ref(false)
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id' },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
   { title: '用户名', dataIndex: 'username', key: 'username' },
-  { title: '角色', dataIndex: 'role', key: 'role' },
-  { title: '状态', dataIndex: 'status', key: 'status' },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime' },
-  { title: '操作', key: 'action' }
+  { title: '角色', dataIndex: 'role', key: 'role', width: 100 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '操作', key: 'action', width: 160, fixed: 'right' as const }
 ]
 
 async function fetchUsers() {
   try {
     loading.value = true
     const res = await getUsers()
-    users.value = res.data
+    users.value = res.data.list
   } finally {
     loading.value = false
   }
@@ -75,12 +89,6 @@ function editUser(record: UserModel) {
 async function deleteUserAction(id: number) {
   await deleteUser(id)
   fetchUsers()
-}
-
-async function toggleStatus(record: UserModel) {
-  const newStatus = record.status === 1 ? 0 : 1
-  record.status = newStatus
-  // Update via API (placeholder)
 }
 
 onMounted(fetchUsers)

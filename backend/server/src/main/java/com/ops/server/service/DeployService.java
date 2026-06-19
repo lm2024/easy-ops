@@ -4,10 +4,12 @@ import com.ops.common.model.DeployModel;
 import com.ops.server.mapper.DeployRecordMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Service
+@Transactional(rollbackFor = Exception.class)
 public class DeployService {
     @Autowired
     private DeployRecordMapper deployRecordMapper;

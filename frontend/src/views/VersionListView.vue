@@ -1,51 +1,73 @@
 <template>
   <div>
-    <a-space style="margin-bottom: 16px">
-      <a-select v-model:value="projectId" style="width: 200px">
-        <a-select-option v-for="p in projects" :key="p.id" :value="p.id">
-          {{ p.name }}
-        </a-select-option>
-      </a-select>
-      <a-button type="primary" @click="showUploadModal = true">上传Jar包</a-button>
-    </a-space>
-
-    <a-table
-      :columns="columns"
-      :data-source="versions"
-      :loading="loading"
-      :pagination="pagination"
-      @change="handleTableChange"
-    >
-      <template #bodyCell="{ column, record }">
-        <template v-if="column.key === 'action'">
-          <a-space>
-            <a-button size="small" @click="deleteVersion(record.id)">删除</a-button>
-            <a-button size="small" @click="deploy(record)">部署</a-button>
-          </a-space>
-        </template>
+    <a-card :bordered="false" style="border-radius: 8px">
+      <template #title>
+        <a-space>
+          <tag-outlined style="color: #13c2c2" />
+          <span style="font-weight: 600">版本管理</span>
+        </a-space>
       </template>
-    </a-table>
+      <template #extra>
+        <a-space>
+          <a-select v-model:value="projectId" style="width: 200px" placeholder="选择项目">
+            <a-select-option v-for="p in projects" :key="p.id" :value="p.id">
+              {{ p.name }}
+            </a-select-option>
+          </a-select>
+          <a-button type="primary" @click="showUploadModal = true">
+            <upload-outlined /> 上传Jar包
+          </a-button>
+        </a-space>
+      </template>
 
-    <!-- 上传Jar弹窗 -->
+      <a-table
+        :columns="columns"
+        :data-source="versions"
+        :loading="loading"
+        :pagination="pagination"
+        row-key="id"
+        @change="handleTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'version'">
+            <a-tag color="blue">{{ record.version }}</a-tag>
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-space>
+              <a-button type="link" size="small" @click="deleteVersion(record.id)">
+                <delete-outlined /> 删除
+              </a-button>
+              <a-button type="link" size="small" @click="deploy(record)">
+                <rocket-outlined /> 部署
+              </a-button>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+    </a-card>
+
     <a-modal
       title="上传Jar包"
       v-model:open="showUploadModal"
       @ok="handleUpload"
+      ok-text="上传"
+      cancel-text="取消"
     >
       <a-upload
         v-model:file-list="fileList"
         :before-upload="beforeUpload"
         accept=".jar"
       >
-        <a-button>选择文件</a-button>
+        <a-button><upload-outlined /> 选择文件</a-button>
       </a-upload>
     </a-modal>
 
-    <!-- 部署弹窗 -->
     <a-modal
       title="确认部署"
       v-model:open="deployModal"
       @ok="confirmDeploy"
+      ok-text="确定"
+      cancel-text="取消"
     >
       <p>将部署 {{ deployTarget?.jarName }} 到选定节点？</p>
     </a-modal>
@@ -53,11 +75,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import type { ProjectModel, VersionModel } from '../types'
 import { getProjects } from '../api/project'
 import { getVersions, deleteVersion, uploadVersion } from '../api/version'
-import { UploadOutlined } from '@ant-design/icons-vue'
+import {
+  UploadOutlined,
+  DeleteOutlined,
+  RocketOutlined,
+  TagOutlined
+} from '@ant-design/icons-vue'
 
 const versions = ref<VersionModel[]>([])
 const projects = ref<ProjectModel[]>([])
@@ -65,26 +92,25 @@ const loading = ref(false)
 const projectId = ref('')
 const showUploadModal = ref(false)
 const fileList = ref<any[]>([])
-const pagination = ref({ current: 1, pageSize: 20 })
+const pagination = ref({ current: 1, pageSize: 20, total: 0 })
 
 const columns = [
   { title: '版本', dataIndex: 'version', key: 'version' },
   { title: 'Jar包名', dataIndex: 'jarName', key: 'jarName' },
   { title: '文件大小', dataIndex: 'fileSize', key: 'fileSize' },
-  { title: '创建时间', dataIndex: 'createTime', key: 'createTime' },
-  { title: '操作', key: 'action' }
+  { title: '操作', key: 'action', width: 160, fixed: 'right' as const }
 ]
 
 const deployTarget = ref<VersionModel | null>(null)
 const deployModal = ref(false)
-const deployNodeId = ref('')
 
 async function fetchVersions() {
   if (!projectId.value) return
   try {
     loading.value = true
     const res = await getVersions(projectId.value, pagination.value.current, pagination.value.pageSize)
-    versions.value = res.data
+    versions.value = res.data.list
+    pagination.value.total = res.data.total
   } finally {
     loading.value = false
   }
@@ -92,15 +118,16 @@ async function fetchVersions() {
 
 async function fetchProjects() {
   const res = await getProjects()
-  projects.value = res.data
+  projects.value = res.data.list
   if (projects.value.length > 0) {
     projectId.value = projects.value[0].id
     fetchVersions()
   }
 }
 
-function handleTableChange(pagination: any) {
-  pagination.value.current = pagination.current
+function handleTableChange(pag: any) {
+  pagination.value.current = pag.current
+  pagination.value.pageSize = pag.pageSize
   fetchVersions()
 }
 

@@ -9,16 +9,26 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.service.AlarmService;
+import com.ops.server.service.NodeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
+import java.util.HashMap;
+
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/nodes")
 public class NodeController {
+
+    @Autowired
+    private NodeService nodeService;
 
     @Autowired
     private NodeMapper nodeMapper;
@@ -41,12 +51,70 @@ public class NodeController {
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        List<NodeModel> nodes = nodeMapper.findByStatus(status, page, pageSize, keyword);
-        Long total = nodeMapper.countByStatus(status, keyword);
-        Map<String, Object> data = new java.util.HashMap<>();
+        List<NodeModel> nodes = nodeService.findByStatus(status, page, pageSize, keyword);
+        Long total = nodeService.countByStatus(status, keyword);
+        Map<String, Object> data = new HashMap<>();
         data.put("list", nodes);
         data.put("total", total);
         return Result.success(data);
+    }
+
+    /**
+     * POST /api/nodes/export - 导出节点CSV
+     */
+    @GetMapping("/export")
+    public void exportNodes(HttpServletResponse response) {
+        try {
+            List<NodeModel> nodes = nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null);
+            response.setContentType("text/csv;charset=UTF-8");
+            response.setHeader("Content-Disposition", "attachment;filename=nodes.csv");
+            response.getWriter().write("名称,IP,端口,Token,状态,系统信息,创建时间\n");
+            for (NodeModel node : nodes) {
+                response.getWriter().write(String.format("%s,%s,%d,%s,%s,%s,%d%n",
+                        node.getName(), node.getIp(), node.getPort(),
+                        node.getToken() != null ? node.getToken() : "",
+                        node.getStatus() == 1 ? "在线" : "离线",
+                        node.getOsInfo() != null ? node.getOsInfo() : "",
+                        node.getCreateTime() != null ? node.getCreateTime() : 0));
+            }
+            response.getWriter().flush();
+        } catch (Exception e) {
+            throw new RuntimeException("导出失败", e);
+        }
+    }
+
+    /**
+     * POST /api/nodes/import - 导入节点CSV
+     */
+    @PostMapping("/import")
+    public Result<?> importNodes(@RequestParam("file") MultipartFile file) {
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
+            String line;
+            int count = 0;
+            reader.readLine(); // skip header
+            while ((line = reader.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] fields = parseCsvLine(line);
+                if (fields.length < 2) continue;
+                NodeModel node = new NodeModel();
+                node.setName(fields[0].trim());
+                node.setIp(fields[1].trim());
+                node.setPort(fields.length > 2 && !fields[2].trim().isEmpty() ? Integer.parseInt(fields[2].trim()) : 2123);
+                node.setToken(fields.length > 3 ? fields[3].trim() : "");
+                node.setStatus(NodeStatus.ONLINE.getCode());
+                node.setCreateTime(System.currentTimeMillis());
+                node.setUpdateTime(System.currentTimeMillis());
+
+                if (nodeService.findByName(node.getName()) != null) continue; // skip duplicate
+                nodeService.insert(node);
+                count++;
+            }
+            java.util.Map<String, Object> result = new java.util.HashMap<>();
+            result.put("imported", count);
+            return Result.success(result);
+        } catch (Exception e) {
+            return Result.error(500, "导入失败: " + e.getMessage());
+        }
     }
 
     /**
@@ -54,7 +122,7 @@ public class NodeController {
      */
     @GetMapping("/{id}")
     public Result<?> getNode(@PathVariable Long id) {
-        NodeModel node = nodeMapper.findById(id);
+        NodeModel node = nodeService.findById(id);
         return node != null ? Result.success(node) : Result.error(1002, "节点不存在");
     }
 
@@ -63,13 +131,13 @@ public class NodeController {
      */
     @PostMapping
     public Result<?> addNode(@RequestBody NodeModel node, HttpServletRequest httpRequest) {
-        if (nodeMapper.findByName(node.getName()) != null) {
+        if (nodeService.findByName(node.getName()) != null) {
             return Result.paramError("节点名称已存在");
         }
         node.setStatus(NodeStatus.ONLINE.getCode());
         node.setCreateTime(System.currentTimeMillis());
         node.setUpdateTime(System.currentTimeMillis());
-        nodeMapper.insert(node);
+        nodeService.insert(node);
 
         // Log operation
         logOperation(node.getId(), "NODE", "ADD", "添加节点: " + node.getName(), httpRequest.getRemoteAddr());
@@ -81,14 +149,14 @@ public class NodeController {
      */
     @PutMapping("/{id}")
     public Result<?> updateNode(@PathVariable Long id, @RequestBody NodeModel node) {
-        NodeModel existing = nodeMapper.findById(id);
+        NodeModel existing = nodeService.findById(id);
         if (existing == null) {
             return Result.error(1002, "节点不存在");
         }
         node.setId(id);
         node.setCreateTime(existing.getCreateTime());
         node.setUpdateTime(System.currentTimeMillis());
-        nodeMapper.update(node);
+        nodeService.update(node);
         return Result.success();
     }
 
@@ -97,10 +165,10 @@ public class NodeController {
      */
     @DeleteMapping("/{id}")
     public Result<?> deleteNode(@PathVariable Long id) {
-        if (nodeMapper.countByNodeId(id) > 0) {
+        if (nodeService.countByNodeId(id) > 0) {
             return Result.error(1003, "该节点下有项目绑定，无法删除");
         }
-        nodeMapper.deleteById(id);
+        nodeService.deleteById(id);
         return Result.success();
     }
 
@@ -139,6 +207,25 @@ public class NodeController {
         data.put("nodeId", nodeId);
         data.put("projects", projectNames);
         return Result.success(data);
+    }
+
+    private String[] parseCsvLine(String line) {
+        List<String> fields = new java.util.ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                fields.add(sb.toString());
+                sb = new StringBuilder();
+            } else {
+                sb.append(c);
+            }
+        }
+        fields.add(sb.toString());
+        return fields.toArray(new String[0]);
     }
 
     private void logOperation(Long nodeId, String module, String action, String content, String ip) {

@@ -21,13 +21,17 @@ spring:
     active: dev
   datasource:
     driver-class-name: org.h2.Driver
-    url: jdbc:h2:./data/ops;AUTO_SERVER=TRUE;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE
+    url: jdbc:h2:./data/ops;MODE=MySQL
     username: sa
     password:
   h2:
     console:
       enabled: true
       path: /h2-console
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:db/schema.sql
   servlet:
     multipart:
       max-file-size: 500MB
