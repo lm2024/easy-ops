@@ -14,20 +14,21 @@
           EasyOps
         </h2>
       </div>
+
+      <!-- 展开状态 -->
       <a-menu
+        v-if="!appStore.sidebarCollapsed"
         v-model:selectedKeys="selectedKeys"
         v-model:openKeys="openKeys"
         theme="dark"
         mode="inline"
         @select="handleMenuSelect"
       >
-        <!-- 🚀 运维核心 -->
-        <a-sub-menu key="sub-core" :title="appStore.sidebarCollapsed ? '' : '🚀 运维核心'">
-          <template #title v-if="!appStore.sidebarCollapsed">
-            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">🚀 运维核心</span>
-          </template>
-          <template #title v-else>
-            <span>🚀</span>
+        <!-- 运维核心 -->
+        <a-sub-menu key="sub-core">
+          <template #title>
+            <cluster-outlined />
+            <span>运维核心</span>
           </template>
           <a-menu-item key="nodes"><cluster-outlined /><span>节点管理</span></a-menu-item>
           <a-menu-item key="projects"><folder-open-outlined /><span>应用管理</span></a-menu-item>
@@ -35,35 +36,73 @@
           <a-menu-item key="deploy"><rocket-outlined /><span>一键部署</span></a-menu-item>
         </a-sub-menu>
 
-        <!-- 🛠 运维工具 -->
+        <!-- 运维工具 -->
         <a-sub-menu key="sub-tools">
           <template #title>
-            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">🛠 运维工具</span>
+            <code-outlined />
+            <span>运维工具</span>
           </template>
           <a-menu-item key="console"><code-outlined /><span>控制台</span></a-menu-item>
           <a-menu-item key="logs"><file-text-outlined /><span>日志查看</span></a-menu-item>
           <a-menu-item key="config-editor"><setting-outlined /><span>配置编辑</span></a-menu-item>
         </a-sub-menu>
 
-        <!-- 📊 监控告警 -->
+        <!-- 监控告警 -->
         <a-sub-menu key="sub-monitor">
           <template #title>
-            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">📊 监控告警</span>
+            <dashboard-outlined />
+            <span>监控告警</span>
           </template>
           <a-menu-item key="monitor"><dashboard-outlined /><span>仪表盘</span></a-menu-item>
           <a-menu-item key="alarms"><alert-outlined /><span>告警中心</span></a-menu-item>
           <a-menu-item key="alarm-config"><notification-outlined /><span>告警配置</span></a-menu-item>
         </a-sub-menu>
 
-        <!-- ⚙ 系统设置 -->
+        <!-- 系统设置 -->
         <a-sub-menu key="sub-system">
           <template #title>
-            <span style="font-size: 12px; font-weight: 600; letter-spacing: 1px; color: rgba(255,255,255,0.5)">⚙ 系统设置</span>
+            <bulb-outlined />
+            <span>系统设置</span>
           </template>
           <a-menu-item key="ai-config"><bulb-outlined /><span>AI 配置</span></a-menu-item>
           <a-menu-item key="users"><team-outlined /><span>用户管理</span></a-menu-item>
           <a-menu-item key="operations"><audit-outlined /><span>操作审计</span></a-menu-item>
         </a-sub-menu>
+      </a-menu>
+
+      <!-- 折叠状态：扁平图标列表，每个图标用 tooltip 显示名称 -->
+      <a-menu
+        v-else
+        v-model:selectedKeys="selectedKeys"
+        theme="dark"
+        mode="inline"
+        :inline-collapsed="true"
+        @select="handleMenuSelect"
+      >
+        <a-tooltip placement="right" v-for="item in coreItems" :key="item.key" trigger="hover">
+          <template #title>{{ item.title }}</template>
+          <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
+            <component :is="item.icon" />
+          </a-menu-item>
+        </a-tooltip>
+        <a-tooltip placement="right" v-for="item in toolsItems" :key="item.key" trigger="hover">
+          <template #title>{{ item.title }}</template>
+          <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
+            <component :is="item.icon" />
+          </a-menu-item>
+        </a-tooltip>
+        <a-tooltip placement="right" v-for="item in monitorItems" :key="item.key" trigger="hover">
+          <template #title>{{ item.title }}</template>
+          <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
+            <component :is="item.icon" />
+          </a-menu-item>
+        </a-tooltip>
+        <a-tooltip placement="right" v-for="item in systemItems" :key="item.key" trigger="hover">
+          <template #title>{{ item.title }}</template>
+          <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
+            <component :is="item.icon" />
+          </a-menu-item>
+        </a-tooltip>
       </a-menu>
     </a-layout-sider>
     <a-layout>
@@ -110,7 +149,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
@@ -128,8 +167,25 @@ const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
 
-// 将路由路径映射到子菜单
-const routeToSub: Record<string, string> = {
+// 有效菜单 key 集合（不含分组 key sub-core, sub-tools 等）
+const validMenuKeys = new Set([
+  'nodes', 'projects', 'versions', 'deploy',
+  'console', 'logs', 'config-editor',
+  'monitor', 'alarms', 'alarm-config',
+  'ai-config', 'users', 'operations', 'batch-download'
+])
+
+// 路由前缀 -> 菜单 key
+const pathPrefixMap: Record<string, string> = {
+  'nodes': 'nodes', 'projects': 'projects', 'versions': 'versions', 'deploy': 'deploy',
+  'console': 'console', 'logs': 'logs', 'config-editor': 'config-editor',
+  'monitor': 'monitor', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
+  'ai-config': 'ai-config', 'users': 'users', 'operations': 'operations',
+  'batch-download': 'batch-download'
+}
+
+// 路由前缀 -> 分组 key
+const prefixToSub: Record<string, string> = {
   nodes: 'sub-core', projects: 'sub-core', versions: 'sub-core', deploy: 'sub-core',
   console: 'sub-tools', logs: 'sub-tools', 'config-editor': 'sub-tools',
   monitor: 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
@@ -137,22 +193,81 @@ const routeToSub: Record<string, string> = {
 }
 
 const selectedKeys = ref<string[]>([])
-const openKeys = ref<string[]>(['sub-core']) // 默认展开运维核心
+const openKeys = ref<string[]>(['sub-core'])
 
-// 初始化时根据当前路由设置选中和展开状态
-const currentPath = route.path.replace(/^\//, '').split('/')[0]
-if (currentPath) {
-  selectedKeys.value = [currentPath]
-  const parent = routeToSub[currentPath]
-  if (parent && !openKeys.value.includes(parent)) {
+// 解析当前路由对应的菜单 key
+function resolveMenuKey(): string | null {
+  const pathParts = route.path.replace(/^\//, '').split('/')
+  const prefix = pathParts[0]
+  return pathPrefixMap[prefix] || null
+}
+
+// 同步菜单状态到当前路由
+function syncMenuFromRoute() {
+  const key = resolveMenuKey()
+  if (key) {
+    selectedKeys.value = [key]
+    const subKey = prefixToSub[key]
+    if (subKey && !openKeys.value.includes(subKey)) {
+      openKeys.value.push(subKey)
+    }
+  } else {
+    selectedKeys.value = []
+  }
+}
+
+// 监听路由变化，同步菜单选中状态
+watch(() => route.path, () => {
+  syncMenuFromRoute()
+}, { immediate: false })
+
+// 初始化
+const initKey = resolveMenuKey()
+if (initKey) {
+  selectedKeys.value = [initKey]
+  const parent = prefixToSub[initKey]
+  if (parent) {
     openKeys.value.push(parent)
   }
 }
 
+// 折叠菜单项定义
+const coreItems = [
+  { key: 'nodes', title: '节点管理', icon: ClusterOutlined },
+  { key: 'projects', title: '应用管理', icon: FolderOpenOutlined },
+  { key: 'versions', title: '版本管理', icon: TagOutlined },
+  { key: 'deploy', title: '一键部署', icon: RocketOutlined },
+]
+const toolsItems = [
+  { key: 'console', title: '控制台', icon: CodeOutlined },
+  { key: 'logs', title: '日志查看', icon: FileTextOutlined },
+  { key: 'config-editor', title: '配置编辑', icon: SettingOutlined },
+]
+const monitorItems = [
+  { key: 'monitor', title: '仪表盘', icon: DashboardOutlined },
+  { key: 'alarms', title: '告警中心', icon: AlertOutlined },
+  { key: 'alarm-config', title: '告警配置', icon: NotificationOutlined },
+]
+const systemItems = [
+  { key: 'ai-config', title: 'AI 配置', icon: BulbOutlined },
+  { key: 'users', title: '用户管理', icon: TeamOutlined },
+  { key: 'operations', title: '操作审计', icon: AuditOutlined },
+]
+
+// 展开模式下菜单点击（展开模式下 e.key 可能是子菜单 key 或分组 key）
 function handleMenuSelect(e: any) {
-  appStore.setMenu(e.key)
-  selectedKeys.value = [e.key]
-  router.push('/' + e.key)
+  const key = typeof e.key === 'string' ? e.key : (Array.isArray(e.key) ? e.key[0] : null)
+  if (!key || !validMenuKeys.has(key)) return // 分组 key 只展开/折叠，不跳转
+  appStore.setMenu(key)
+  selectedKeys.value = [key]
+  router.push('/' + key)
+}
+
+// 折叠模式下图标按钮点击（通过 tooltip 包裹，直接绑定 click 确保事件可达）
+function handleCollapsedClick(key: string) {
+  appStore.setMenu(key)
+  selectedKeys.value = [key]
+  router.push('/' + key)
 }
 
 function handleLogout() {
@@ -199,6 +314,22 @@ function handleLogout() {
 
 .app-sider :deep(.ant-menu-submenu-title:hover) {
   color: rgba(255,255,255,0.85) !important;
+}
+
+.app-sider :deep(.collapsed-menu-item) {
+  margin: 2px 8px;
+  border-radius: 8px;
+  height: 38px;
+  line-height: 38px;
+}
+
+.app-sider :deep(.collapsed-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.app-sider :deep(.collapsed-menu-item .anticon) {
+  font-size: 16px;
+  margin: 0 auto;
 }
 
 .logo {
