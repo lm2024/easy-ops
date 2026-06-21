@@ -23,12 +23,33 @@ public class DeployHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
         String deployId = session.getUri().getQuery();
+        subscribe(deployId, session);
         log.info("Deploy WebSocket connected: {}, deployId: {}", session.getId(), deployId);
     }
 
     @Override
     public void afterConnectionClosed(@NotNull WebSocketSession session, @NotNull CloseStatus status) {
-        log.info("Deploy WebSocket closed: {}", session.getId());
+        String deployId = null;
+        for (Map.Entry<String, WebSocketSession> entry : deploySessions.entrySet()) {
+            if (entry.getValue().equals(session)) {
+                deployId = entry.getKey();
+                deploySessions.remove(deployId);
+                log.info("Deploy WebSocket session {} removed from deploy {}", session.getId(), deployId);
+                break;
+            }
+        }
+        log.info("Deploy WebSocket closed: {}, status: {}", session.getId(), status);
+    }
+
+    @Override
+    public void handleTransportError(@NotNull WebSocketSession session, @NotNull Throwable exception) {
+        log.error("Deploy WebSocket transport error: {}", session.getId(), exception);
+        // 传输异常后清理会话
+        try {
+            afterConnectionClosed(session, CloseStatus.SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("Error cleaning up deploy session after transport error", e);
+        }
     }
 
     public void subscribe(String deployId, WebSocketSession session) {
@@ -43,6 +64,8 @@ public class DeployHandler extends TextWebSocketHandler {
                 session.sendMessage(new org.springframework.web.socket.TextMessage(message));
             } catch (IOException e) {
                 log.error("Failed to send deploy message to {}", session.getId(), e);
+                // 发送失败时清理会话
+                deploySessions.remove(deployId);
             }
         }
     }

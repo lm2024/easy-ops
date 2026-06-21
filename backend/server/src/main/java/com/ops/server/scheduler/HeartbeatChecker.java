@@ -13,6 +13,11 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+/**
+ * SEC-001: 心跳检测器 - 增加分布式锁
+ * 原问题: @Scheduled 无分布式锁，多实例部署会导致重复告警/重复部署
+ * 修复: 通过 DistributedLock 确保只有一个实例执行定时任务
+ */
 @Component
 public class HeartbeatChecker {
 
@@ -24,14 +29,33 @@ public class HeartbeatChecker {
     @Autowired
     private AlarmRecordMapper alarmRecordMapper;
 
+    @Autowired
+    private DistributedLock distributedLock;
+
     @Value("${server.heart-second:30}")
     private int heartSecond;
 
     @Value("${server.offline-second:90}")
     private int offlineSecond;
 
+    private static final String LOCK_NAME_HEARTBEAT = "heartbeat_checker";
+
     @Scheduled(fixedRate = 10000)
     public void checkOffline() {
+        // SEC-001: 分布式锁 - 仅单实例执行
+        if (!distributedLock.tryLock(LOCK_NAME_HEARTBEAT)) {
+            log.debug("HeartbeatChecker: lock not acquired by this instance, skipping");
+            return;
+        }
+
+        try {
+            doCheckOffline();
+        } finally {
+            distributedLock.releaseLock(LOCK_NAME_HEARTBEAT);
+        }
+    }
+
+    private void doCheckOffline() {
         long cutoff = System.currentTimeMillis() - offlineSecond * 1000L;
         List<NodeModel> nodes = nodeMapper.getOfflineCandidates(cutoff);
         if (nodes == null || nodes.isEmpty()) return;

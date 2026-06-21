@@ -9,12 +9,13 @@ spring:
       max-file-size: 500MB
       max-request-size: 500MB
 
-# Agent configuration
+# Agent configuration (Task 2: 移除默认 Token)
 agent:
-  server-url: http://localhost:8081/api
-  token: ${AGENT_TOKEN:default-agent-token-2024}
+  server-url: ${AGENT_SERVER_URL:http://localhost:8081/api}
+  token: ${AGENT_TOKEN:}
   node-name: ${HOSTNAME:default-node}
   data-path: /app/data
+  check-interval: 30
 
 # Logging
 logging:

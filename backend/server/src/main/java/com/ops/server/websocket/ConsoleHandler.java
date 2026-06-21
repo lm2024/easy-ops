@@ -30,7 +30,8 @@ public class ConsoleHandler extends TextWebSocketHandler {
     @Autowired
     private NodeMapper nodeMapper;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Autowired
+    private RestTemplate restTemplate;
 
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
@@ -103,13 +104,17 @@ public class ConsoleHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(@NotNull WebSocketSession session, @NotNull CloseStatus status) {
-        // 从所有订阅中移除该 session
-        for (Map.Entry<String, Map<String, WebSocketSession>> pEntry : sessionGroups.entrySet()) {
-            String projectId = pEntry.getKey();
-            Map<String, WebSocketSession> nodeMap = pEntry.getValue();
-            nodeMap.values().removeIf(s -> s.equals(session));
-            if (nodeMap.isEmpty()) {
-                sessionGroups.remove(projectId);
+        // BUG-FIX-001: 使用同步块避免 ConcurrentModificationException
+        synchronized (sessionGroups) {
+            for (Map.Entry<String, Map<String, WebSocketSession>> pEntry : sessionGroups.entrySet()) {
+                String projectId = pEntry.getKey();
+                Map<String, WebSocketSession> nodeMap = pEntry.getValue();
+                synchronized (nodeMap) {
+                    nodeMap.values().removeIf(s -> s.equals(session));
+                    if (nodeMap.isEmpty()) {
+                        sessionGroups.remove(projectId);
+                    }
+                }
             }
         }
         log.info("Console WebSocket closed: {}, status: {}", session.getId(), status);
@@ -118,6 +123,12 @@ public class ConsoleHandler extends TextWebSocketHandler {
     @Override
     public void handleTransportError(@NotNull WebSocketSession session, @NotNull Throwable exception) {
         log.error("Console WebSocket transport error: {}", session.getId(), exception);
+        // 传输异常后确保清理会话
+        try {
+            afterConnectionClosed(session, CloseStatus.SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("Error cleaning up session after transport error", e);
+        }
     }
 
     // ====== 内部方法 ======

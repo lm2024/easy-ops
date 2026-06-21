@@ -23,11 +23,31 @@ public class MonitorHandler extends TextWebSocketHandler {
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
         log.info("Monitor WebSocket connected: {}", session.getId());
+        subscribe(String.valueOf(session.getId()), session);
     }
 
     @Override
     public void afterConnectionClosed(@NotNull WebSocketSession session, @NotNull CloseStatus status) {
+        // 清理所有指向该 session 的订阅
+        for (Map.Entry<String, WebSocketSession> entry : monitorSessions.entrySet()) {
+            if (entry.getValue().equals(session)) {
+                monitorSessions.remove(entry.getKey());
+                log.info("Monitor WebSocket session {} removed from nodeId {}", session.getId(), entry.getKey());
+                break;
+            }
+        }
         log.info("Monitor WebSocket closed: {}", session.getId());
+    }
+
+    @Override
+    public void handleTransportError(@NotNull WebSocketSession session, @NotNull Throwable exception) {
+        log.error("Monitor WebSocket transport error: {}", session.getId(), exception);
+        // 传输异常后清理会话
+        try {
+            afterConnectionClosed(session, CloseStatus.SERVER_ERROR);
+        } catch (Exception e) {
+            log.error("Error cleaning up monitor session after transport error", e);
+        }
     }
 
     public void subscribe(String nodeId, WebSocketSession session) {
@@ -41,6 +61,8 @@ public class MonitorHandler extends TextWebSocketHandler {
                 session.sendMessage(new org.springframework.web.socket.TextMessage(message));
             } catch (IOException e) {
                 log.error("Failed to send monitor message", e);
+                // 发送失败时清理会话
+                monitorSessions.remove(nodeId);
             }
         }
     }

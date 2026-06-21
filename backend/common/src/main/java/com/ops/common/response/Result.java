@@ -1,19 +1,27 @@
 package com.ops.common.response;
 
 import com.ops.common.constant.ErrorCode;
-import lombok.Data;
+import lombok.Getter;
 import java.io.Serializable;
 
 /**
  * 统一响应类
+ * 注意：静态工厂方法需要 setter，因此保留 set 方法
  */
-@Data
+@Getter
 public class Result<T> implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private int code;
     private String message;
     private T data;
+
+    /**
+     * 静态工厂方法需要 setter
+     */
+    public void setCode(int code) { this.code = code; }
+    public void setMessage(String message) { this.message = message; }
+    public void setData(T data) { this.data = data; }
 
     public static <T> Result<T> success(T data) {
         Result<T> r = new Result<>();

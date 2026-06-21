@@ -6,7 +6,11 @@ server:
       enabled: true
       charset: UTF-8
       force: true
+  # SEC-010: 响应大小限制
+  max-http-request-size: 10MB
+  max-http-response-size: 10MB
   tomcat:
+    max-swallow-size: 10MB
     accesslog:
       enabled: true
       pattern: '%h %l %u %t "%r" %s %b'
@@ -26,7 +30,7 @@ spring:
     password:
   h2:
     console:
-      enabled: true
+      enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
   sql:
     init:
@@ -40,6 +44,11 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
     default-property-inclusion: non_null
+
+# ========== 安全配置 (Task 1 新增) ==========
+jwt:
+  secret: ${JWT_SECRET:}
+  expire-ms: 86400000
 
 mybatis:
   mapper-locations: classpath:mapper/*.xml
@@ -58,3 +67,21 @@ logging:
     rollingpolicy:
       max-file-size: 100MB
       max-history: 30
+
+# ========== Task 9: CORS 配置 ==========
+cors:
+  allowed-origins: "http://localhost:3000,http://localhost:5173"
+
+# ========== Task 10: AI 配置 (API Key 外部化) ==========
+ai:
+  apiKey: ${AI_API_KEY:}
+
+  # SEC-010: 响应大小限制
+  max-http-request-size: 10MB
+  max-http-response-size: 10MB
+  tomcat:
+    max-swallow-size: 10MB
+
+# WebSocket 安全配置
+websocket:
+  max-connections: 1000

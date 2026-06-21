@@ -38,7 +38,7 @@ class GlobalExceptionHandlerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         Result<?> result = handler.handleException(ex, response);
         assertEquals(500, result.getCode());
-        assertEquals("系统内部错误", result.getMessage());
+        assertEquals("系统内部错误: RuntimeException", result.getMessage());
         assertEquals(500, response.getStatus());
     }
 }
