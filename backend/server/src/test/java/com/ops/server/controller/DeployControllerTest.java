@@ -86,7 +86,7 @@ class DeployControllerTest extends BaseControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(body)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.code").value(1004));
+                .andExpect(jsonPath("$.code").value(1005));
     }
 
     @Test
@@ -140,6 +140,21 @@ class DeployControllerTest extends BaseControllerTest {
         original.setVersionId(1L);
         original.setNodeId(1L);
         when(deployRecordMapper.findById(1L)).thenReturn(original);
+
+        VersionModel version = new VersionModel();
+        version.setId(1L);
+        version.setJarName("app.jar");
+        when(versionPackageMapper.findById(1L)).thenReturn(version);
+
+        ProjectModel project = new ProjectModel();
+        project.setId(1L);
+        when(projectMapper.findById(1L)).thenReturn(project);
+
+        NodeModel node = new NodeModel();
+        node.setId(1L);
+        node.setIp("127.0.0.1");
+        node.setPort(2123);
+        when(nodeMapper.findById(1L)).thenReturn(node);
 
         when(deployRecordMapper.insert(any(DeployModel.class))).thenReturn(1);
 

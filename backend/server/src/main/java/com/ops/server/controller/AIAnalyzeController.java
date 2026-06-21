@@ -1,10 +1,12 @@
 package com.ops.server.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ops.common.model.NodeModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.SysConfigMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
 
@@ -13,6 +15,10 @@ import java.util.*;
 /**
  * AI 智能分析接口
  * 对接公司内网 OpenAI 兼容的大模型，提供日志分析、异常诊断能力
+ *
+ * Task 10 安全修复：AI API Key 内化
+ * - 优先从环境变量 AI_API_KEY 读取（与 Task 1 JWT 密钥外部化策略一致）
+ * - 未配置时回退到 sys_config 表的 ai.apiKey（兼容旧数据）
  */
 @RestController
 @RequestMapping("/ai")
@@ -24,7 +30,11 @@ public class AIAnalyzeController {
     @Autowired
     private SysConfigMapper sysConfigMapper;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Autowired
+    private RestTemplate restTemplate;
+
+    @Value("${ai.apiKey:#{null}}")
+    private String envApiKey;
 
     /**
      * GET /api/ai/config - 获取 AI 配置
@@ -34,24 +44,26 @@ public class AIAnalyzeController {
         Map<String, String> config = new HashMap<>();
         config.put("endpoint", sysConfigMapper.getValue("ai.endpoint"));
         config.put("model", sysConfigMapper.getValue("ai.model"));
-        config.put("apiKey", maskApiKey(sysConfigMapper.getValue("ai.apiKey")));
+        config.put("apiKey", "(已配置)");
         config.put("enabled", sysConfigMapper.getValue("ai.enabled"));
         return Result.success(config);
     }
 
     /**
      * POST /api/ai/config - 保存 AI 配置
+     * 注意：API Key 不应通过此接口保存，请使用环境变量 AI_API_KEY 配置。
      */
     @PostMapping("/config")
     public Result<?> saveConfig(@RequestBody Map<String, String> body) {
+        if (body.containsKey("apiKey")) {
+            return Result.paramError("安全提示：API Key 应通过环境变量 AI_API_KEY 配置，请勿通过界面传递");
+        }
         if (body.containsKey("endpoint"))
-            sysConfigMapper.upsert("ai.endpoint", body.get("endpoint"), "AI API Endpoint");
+            sysConfigMapper.upsert("ai.endpoint", body.get("endpoint"), "AI API Endpoint", System.currentTimeMillis());
         if (body.containsKey("model"))
-            sysConfigMapper.upsert("ai.model", body.get("model"), "AI Model Name");
-        if (body.containsKey("apiKey"))
-            sysConfigMapper.upsert("ai.apiKey", body.get("apiKey"), "AI API Key");
+            sysConfigMapper.upsert("ai.model", body.get("model"), "AI Model Name", System.currentTimeMillis());
         if (body.containsKey("enabled"))
-            sysConfigMapper.upsert("ai.enabled", body.get("enabled"), "AI Enabled");
+            sysConfigMapper.upsert("ai.enabled", body.get("enabled"), "AI Enabled", System.currentTimeMillis());
         return Result.success();
     }
 
@@ -118,8 +130,14 @@ public class AIAnalyzeController {
     private String callAI(String question, String context) {
         String endpoint = sysConfigMapper.getValue("ai.endpoint");
         String model = sysConfigMapper.getValue("ai.model");
-        String apiKey = sysConfigMapper.getValue("ai.apiKey");
         String enabled = sysConfigMapper.getValue("ai.enabled");
+
+        // Task 10: 优先使用环境变量 AI_API_KEY
+        String apiKey = envApiKey;
+        if (apiKey == null || apiKey.isEmpty()) {
+            // 回退：兼容旧版 sys_config 存储的 API Key（已不再推荐）
+            apiKey = sysConfigMapper.getValue("ai.apiKey");
+        }
 
         if (!"true".equals(enabled) || endpoint == null || endpoint.isEmpty()) {
             return "⚠️ AI 服务未配置或未启用。请在「系统设置 > AI 配置」中填写内网 AI 接口地址。\n" +
@@ -158,14 +176,14 @@ public class AIAnalyzeController {
 
             org.springframework.http.HttpEntity<String> entity =
                     new org.springframework.http.HttpEntity<>(
-                            new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(requestBody),
+                            new ObjectMapper().writeValueAsString(requestBody),
                             headers);
 
             String response = restTemplate.postForObject(endpoint + "/chat/completions", entity, String.class);
 
             // 解析响应
             @SuppressWarnings("unchecked")
-            Map<String, Object> respMap = new com.fasterxml.jackson.databind.ObjectMapper().readValue(response, Map.class);
+            Map<String, Object> respMap = new ObjectMapper().readValue(response, Map.class);
             if (respMap != null && respMap.containsKey("choices")) {
                 @SuppressWarnings("unchecked")
                 List<Map<String, Object>> choices = (List<Map<String, Object>>) respMap.get("choices");
@@ -192,10 +210,5 @@ public class AIAnalyzeController {
                 .replace("\n", "\\n")
                 .replace("\r", "\\r")
                 .replace("\t", "\\t");
-    }
-
-    private String maskApiKey(String key) {
-        if (key == null || key.length() < 8) return key;
-        return key.substring(0, 4) + "****" + key.substring(key.length() - 4);
     }
 }

@@ -3,6 +3,7 @@ package com.ops.server.controller;
 import com.ops.common.model.ProjectModel;
 import com.ops.common.response.Result;
 import com.ops.server.service.ProjectService;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,8 +18,11 @@ public class ProjectController {
     @Autowired
     private ProjectService projectService;
 
+    @Autowired
+    private SecurityContext securityContext;
+
     /**
-     * GET /api/projects - 项目列表
+     * GET /api/projects - 项目列表 (SEC-004: 增加用户项目范围过滤)
      */
     @GetMapping
     public Result<?> listProjects(
@@ -35,10 +39,13 @@ public class ProjectController {
     }
 
     /**
-     * GET /api/projects/{id} - 项目详情
+     * GET /api/projects/{id} - 项目详情 (SEC-004: 增加权限校验)
      */
     @GetMapping("/{id}")
     public Result<?> getProject(@PathVariable Long id) {
+        if (!securityContext.hasProjectPermission(id)) {
+            return Result.error(403, "无权访问该项目");
+        }
         ProjectModel project = projectService.findById(id);
         return project != null ? Result.success(project) : Result.error(1005, "项目不存在");
     }
@@ -59,10 +66,13 @@ public class ProjectController {
     }
 
     /**
-     * PUT /api/projects/{id} - 修改项目
+     * PUT /api/projects/{id} - 修改项目 (SEC-004: 增加权限校验)
      */
     @PutMapping("/{id}")
     public Result<?> updateProject(@PathVariable Long id, @RequestBody ProjectModel project) {
+        if (!securityContext.hasProjectPermission(id)) {
+            return Result.error(403, "无权修改该项目");
+        }
         ProjectModel existing = projectService.findById(id);
         if (existing == null) {
             return Result.error(1005, "项目不存在");
@@ -75,10 +85,13 @@ public class ProjectController {
     }
 
     /**
-     * DELETE /api/projects/{id} - 删除项目
+     * DELETE /api/projects/{id} - 删除项目 (SEC-004: 增加权限校验)
      */
     @DeleteMapping("/{id}")
     public Result<?> deleteProject(@PathVariable Long id) {
+        if (!securityContext.hasProjectPermission(id)) {
+            return Result.error(403, "无权删除该项目");
+        }
         projectService.deleteById(id);
         return Result.success();
     }

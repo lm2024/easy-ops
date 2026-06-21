@@ -28,7 +28,7 @@
         <javax.mail.version>1.6.2</javax.mail.version>
         <quartz.version>2.3.2</quartz.version>
         <joda-time.version>2.12.5</joda-time.version>
-        <lombok.version>1.18.36</lombok.version>
+        <lombok.version>1.18.44</lombok.version>
         <jackson.version>2.15.3</jackson.version>
         <javax.activation.version>1.2.0</javax.activation.version>
     </properties>

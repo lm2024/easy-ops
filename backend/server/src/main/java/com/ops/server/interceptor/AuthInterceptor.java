@@ -21,6 +21,13 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     private static final Logger log = LoggerFactory.getLogger(AuthInterceptor.class);
 
+    // Request attribute keys for controllers
+    public static final String ATTR_USER_ID = "currentUserId";
+    public static final String ATTR_USER_NAME = "currentUsername";
+    public static final String ATTR_USER_ROLE = "currentRole";
+    public static final String ATTR_NODE_ID = "currentNodeId";
+    public static final String ATTR_USER_TOKENS = "userAccessibleProjectIds";
+
     @Autowired
     private NodeMapper nodeMapper;
 
@@ -43,10 +50,16 @@ public class AuthInterceptor implements HandlerInterceptor {
             return true;
         }
 
+        // Clear previous user context
+        request.removeAttribute(ATTR_USER_ID);
+        request.removeAttribute(ATTR_USER_NAME);
+        request.removeAttribute(ATTR_USER_ROLE);
+        request.removeAttribute(ATTR_NODE_ID);
+
         // Check Agent token (X-Token header)
         String agentToken = request.getHeader("X-Token");
         if (agentToken != null && !agentToken.isEmpty()) {
-            return validateAgentToken(response, agentToken);
+            return validateAgentToken(request, response, agentToken);
         }
 
         // Check user token (Authorization header)
@@ -56,7 +69,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             if (userToken.startsWith("Bearer ")) {
                 userToken = userToken.substring(7);
             }
-            return validateUserToken(response, userToken);
+            return validateUserToken(request, response, userToken);
         }
 
         // No token provided
@@ -64,7 +77,10 @@ public class AuthInterceptor implements HandlerInterceptor {
         return false;
     }
 
-    private boolean validateAgentToken(HttpServletResponse response, String token) throws java.io.IOException {
+    /**
+     * SEC-003 修复: Agent token 校验并写入 nodeId 到请求属性
+     */
+    private boolean validateAgentToken(HttpServletRequest request, HttpServletResponse response, String token) throws java.io.IOException {
         String nodeId = extractNodeIdFromRequest(token);
         if (nodeId == null) {
             sendUnauthorized(response);
@@ -78,14 +94,42 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
         // Update cache
         agentTokenCache.put(nodeId, token);
+
+        // 写入请求属性供 Controller 使用 (SEC-003)
+        request.setAttribute(ATTR_NODE_ID, nodeId);
         return true;
     }
 
-    private boolean validateUserToken(HttpServletResponse response, String token) throws java.io.IOException {
+    /**
+     * SEC-003 修复: User token 校验并提取 userId/username/role 到请求属性
+     */
+    private boolean validateUserToken(HttpServletRequest request, HttpServletResponse response, String token) throws java.io.IOException {
         TokenData data = userTokenCache.get(token);
         if (data == null) {
-            sendUnauthorized(response);
-            return false;
+            // Token not in cache, verify against database (SEC-003)
+            String userIdStr = userMapper.getUserIdByToken(token);
+            if (userIdStr == null) {
+                sendUnauthorized(response);
+                return false;
+            }
+            try {
+                Long userId = Long.parseLong(userIdStr);
+                String username = userMapper.getUsernameById(userId);
+                // Load user full info for role
+                com.ops.common.model.UserModel user = userMapper.findById(userId);
+                if (user != null) {
+                    data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole());
+                    data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
+                    userTokenCache.put(token, data);
+                }
+            } catch (NumberFormatException e) {
+                sendUnauthorized(response);
+                return false;
+            }
+            if (data == null) {
+                sendUnauthorized(response);
+                return false;
+            }
         }
         // Check expiry
         long now = System.currentTimeMillis();
@@ -96,6 +140,12 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
         // Refresh expiry
         data.expireTime = now + 24 * 60 * 60 * 1000;
+
+        // 写入请求属性供 Controller 使用 (SEC-003)
+        request.setAttribute(ATTR_USER_ID, data.userId);
+        request.setAttribute(ATTR_USER_NAME, data.username);
+        request.setAttribute(ATTR_USER_ROLE, data.role);
+
         return true;
     }
 

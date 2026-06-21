@@ -36,7 +36,7 @@ class SystemControllerTest extends BaseControllerTest {
         UserModel user = new UserModel();
         user.setId(1L);
         user.setUsername("admin");
-        user.setPassword("$2a$10$xxxxxxxxxxxxxxxxxxxxxx");
+        user.setPassword("$2a$10$W7T3JOSYSRZ4olR9IKhrduXBKaHCy5rc071h8tzOblW/XjrklUX52");
         user.setRole("admin");
         user.setStatus(1);
         when(userMapper.findByUsername("admin")).thenReturn(user);

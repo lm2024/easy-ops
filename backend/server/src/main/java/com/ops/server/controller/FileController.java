@@ -92,8 +92,14 @@ public class FileController {
             return Result.error(1007, "仅支持.yml和.yaml文件");
         }
 
+        // SEC-007: 校验路径在允许目录内
+        Path safePath = getSafePath(configPath);
+        if (safePath == null) {
+            return Result.error(1007, "配置文件路径不在允许目录内");
+        }
+
         try {
-            Files.write(Paths.get(configPath), content.getBytes("UTF-8"));
+            Files.write(safePath, content.getBytes("UTF-8"));
             logFileAccess(nodeId, configPath, "view");
             return Result.success();
         } catch (IOException e) {
@@ -113,10 +119,13 @@ public class FileController {
             try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
                 for (Map<String, String> item : items) {
                     String path = item.get("path");
+                    // SEC-007: 路径遍历防护
+                    Path batchSafe = getSafePath(path);
+                    if (batchSafe == null) continue;
                     String fileName = new File(path).getName();
                     zos.putNextEntry(new ZipEntry(fileName));
-                    byte[] content = Files.readAllBytes(Paths.get(path));
-                    zos.write(content);
+                    byte[] fileContent = Files.readAllBytes(batchSafe);
+                    zos.write(fileContent);
                     zos.closeEntry();
                     logFileAccess(
                             Long.parseLong(item.get("nodeId")),
@@ -169,5 +178,22 @@ public class FileController {
         log.put("fileType", FileType.LOG.getExt());
         log.put("createTime", System.currentTimeMillis());
         fileAccessLogMapper.insert(log);
+    }
+
+    /**
+     * SEC-007: 路径遍历防护
+     * 确保目标路径在允许的目录 (serverPath) 内
+     */
+    private Path getSafePath(String requestedPath) {
+        try {
+            Path base = Paths.get(serverPath).toAbsolutePath().normalize();
+            Path target = Paths.get(requestedPath).toAbsolutePath().normalize();
+            if (!target.startsWith(base)) {
+                return null; // 路径遍历尝试
+            }
+            return target;
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

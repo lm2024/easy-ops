@@ -42,10 +42,29 @@ public class DeployScheduler {
     @Value("${server.path:./data}")
     private String serverPath;
 
+    @Autowired
+    private DistributedLock distributedLock;
+
+    private static final String LOCK_NAME_DEPLOY = "deploy_scheduler";
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Scheduled(fixedRate = 10000)
     public void executeScheduledDeploys() {
+        // SEC-001: 分布式锁 - 仅单实例执行
+        if (!distributedLock.tryLock(LOCK_NAME_DEPLOY)) {
+            log.debug("DeployScheduler: lock not acquired by this instance, skipping");
+            return;
+        }
+
+        try {
+            doExecuteScheduledDeploys();
+        } finally {
+            distributedLock.releaseLock(LOCK_NAME_DEPLOY);
+        }
+    }
+
+    private void doExecuteScheduledDeploys() {
         long now = System.currentTimeMillis();
         List<DeployModel> readyList = deployRecordMapper.findScheduledReady(now);
         if (readyList == null || readyList.isEmpty()) return;
@@ -100,7 +119,7 @@ public class DeployScheduler {
             String stopUrl = agentBase + "/api/process/" + projectId + "/stop";
             Map<String, String> stopReq = new HashMap<>();
             stopReq.put("stopScript", project.getStopScript() != null ? project.getStopScript() : "");
-            String agentFileDir = "/app/data/versions/" + projectId + "/" + version.getVersion();
+            String agentFileDir = serverPath + "/versions/" + projectId + "/" + version.getVersion();
             String deployDir = project.getDeployDir();
             if (deployDir == null || deployDir.isEmpty()) {
                 deployDir = agentFileDir;
@@ -133,35 +152,50 @@ public class DeployScheduler {
             restTemplate.postForEntity(agentStartUrl, startReq, String.class);
             logBuf.append("✅ 启动完成\n");
 
-            // Step 5: 健康检查
-            logBuf.append("健康检查...\n");
-            boolean healthy = false;
+            // Step 5: 健康检查 (异步等待，不阻塞调度线程)
+            logBuf.append("健康检查 (异步模式)...\n");
+            final int[] healthAttempt = {0};
+            final java.util.concurrent.atomic.AtomicBoolean healthy = new java.util.concurrent.atomic.AtomicBoolean(false);
             String shellUrl = agentBase + "/api/shell/exec";
-            for (int i = 1; i <= 5; i++) {
-                Thread.sleep(3000);
-                try {
-                    Map<String, String> cmdReq = new HashMap<>();
-                    cmdReq.put("command", "curl -s --max-time 3 http://127.0.0.1:8080/hello");
-                    Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                    String output = "";
-                    if (shellResp != null && shellResp.get("data") instanceof Map) {
-                        output = ((Map<String, Object>) shellResp.get("data")).get("stdout") != null
-                                ? ((Map<String, Object>) shellResp.get("data")).get("stdout").toString() : "";
-                    }
-                    if (output.contains("Hello") || output.contains("DEPLOYED")) {
-                        healthy = true;
-                        logBuf.append("✅ 健康检查通过 (第").append(i).append("次)\n");
-                        break;
-                    } else {
-                        logBuf.append("⏳ 第").append(i).append("次检查: 等待就绪...\n");
-                    }
-                } catch (Exception e) {
-                    logBuf.append("⏳ 第").append(i).append("次检查: ").append(e.getMessage()).append("\n");
-                }
-            }
 
-            int finalStatus = healthy ? DeployStatus.SUCCESS.getCode() : DeployStatus.FAILED.getCode();
-            logBuf.append(healthy ? "\n✅ 定时部署执行成功！" : "\n❌ 健康检查未通过");
+            // 使用独立线程进行健康检查轮询（避免阻塞调度器线程）
+            Thread healthChecker = new Thread(() -> {
+                for (int i = 1; i <= 5; i++) {
+                    healthAttempt[0] = i;
+                    try {
+                        Thread.sleep(3000);
+                        Map<String, String> cmdReq = new HashMap<>();
+                        cmdReq.put("command", "curl -s --max-time 3 http://127.0.0.1:8080/hello");
+                        Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
+                        String output = "";
+                        if (shellResp != null && shellResp.get("data") instanceof Map) {
+                            output = ((Map<String, Object>) shellResp.get("data")).get("stdout") != null
+                                    ? ((Map<String, Object>) shellResp.get("data")).get("stdout").toString() : "";
+                        }
+                        if (output.contains("Hello") || output.contains("DEPLOYED")) {
+                            healthy.set(true);
+                            synchronized (logBuf) {
+                                logBuf.append("✅ 健康检查通过 (第").append(i).append("次)\n");
+                            }
+                            break;
+                        } else {
+                            synchronized (logBuf) {
+                                logBuf.append("⏳ 第").append(i).append("次检查: 等待就绪...\n");
+                            }
+                        }
+                    } catch (Exception e) {
+                        synchronized (logBuf) {
+                            logBuf.append("⏳ 第").append(i).append("次检查: ").append(e.getMessage()).append("\n");
+                        }
+                    }
+                }
+            }, "deploy-health-check-" + recordId);
+            healthChecker.start();
+            // 等待健康检查结果 (最多 15 秒)
+            healthChecker.join(15000);
+
+            int finalStatus = healthy.get() ? DeployStatus.SUCCESS.getCode() : DeployStatus.FAILED.getCode();
+            logBuf.append(healthy.get() ? "\n✅ 定时部署执行成功！" : "\n❌ 健康检查未通过");
             deployRecordMapper.updateStatus(recordId, finalStatus, logBuf.toString(), System.currentTimeMillis());
             log.info("Scheduled deploy ID={} completed status={}", recordId, finalStatus);
 

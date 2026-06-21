@@ -160,3 +160,21 @@ VALUES (1, 'admin', '$2a$10$NatUJE6J35F/fGMeUFFQ/Op7rJeZsK3c9kUD4AwoWXBDphKFHXxr
 MERGE INTO alarm_config (id, enabled, smtp_host, smtp_port, smtp_ssl, receivers, update_time)
 KEY (id)
 VALUES (1, 0, '', 465, 0, '', 1781833996000);
+
+-- 分布式调度锁表 (SEC-001)
+CREATE TABLE IF NOT EXISTS scheduler_lock (
+    lock_name VARCHAR(100) PRIMARY KEY,
+    instance_id VARCHAR(200) NOT NULL,
+    locked_at BIGINT NOT NULL,
+    expire_at BIGINT NOT NULL
+);
+
+-- 用户-项目关系表 (SEC-003/SEC-004)
+CREATE TABLE IF NOT EXISTS user_project_relation (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    project_id BIGINT NOT NULL,
+    create_time BIGINT,
+    UNIQUE INDEX uk_user_project (user_id, project_id),
+    INDEX idx_project_id (project_id)
+);

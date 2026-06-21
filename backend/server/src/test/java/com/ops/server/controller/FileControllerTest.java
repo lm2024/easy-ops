@@ -4,6 +4,9 @@ import com.ops.server.mapper.FileAccessLogMapper;
 import com.ops.server.mapper.NodeMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.http.MediaType;
+
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -51,7 +54,7 @@ class FileControllerTest extends BaseControllerTest {
 
         mockMvc.perform(get("/files/config")
                         .param("nodeId", "1")
-                        .param("path", "/opt/app/application.yml"))
+                        .param("configPath", "/opt/app/application.yml"))
                 .andExpect(status().isOk());
     }
 
@@ -62,11 +65,15 @@ class FileControllerTest extends BaseControllerTest {
         node.setStatus(1);
         when(nodeMapper.findById(1L)).thenReturn(node);
 
+        Map<String, String> body = Map.of(
+            "nodeId", "1",
+            "configPath", "/opt/app/app.properties",
+            "content", "key=value"
+        );
+
         mockMvc.perform(post("/files/config")
-                        .param("nodeId", "1")
-                        .param("path", "/opt/app/app.properties")
-                        .contentType("application/json")
-                        .content("key=value"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"nodeId\":\"1\",\"configPath\":\"/opt/app/app.properties\",\"content\":\"key=value\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(1007));
     }

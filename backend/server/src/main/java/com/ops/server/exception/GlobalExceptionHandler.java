@@ -44,8 +44,20 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public Result<?> handleException(Exception e, HttpServletResponse response) throws IOException {
-        log.error("Unexpected exception", e);
+        // LOG-008: 区分业务异常和系统异常，返回可读错误码
+        String errorMsg;
+        String className = e.getClass().getSimpleName();
+        if (className.contains("Timeout")) {
+            errorMsg = "请求超时: " + e.getMessage();
+        } else if (className.contains("IOException") || className.contains("Connect")) {
+            errorMsg = "连接失败: " + e.getMessage();
+        } else if (className.contains("NullPointerException")) {
+            errorMsg = "空指针异常，请联系管理员";
+        } else {
+            errorMsg = "系统内部错误: " + className;
+        }
+        log.error("Unexpected exception [{}]: {}", className, e.getMessage());
         response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
-        return Result.error(500, "系统内部错误");
+        return Result.error(500, errorMsg);
     }
 }

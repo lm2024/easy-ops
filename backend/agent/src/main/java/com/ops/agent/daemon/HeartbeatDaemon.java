@@ -2,6 +2,7 @@ package com.ops.agent.daemon;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.CommandLineRunner;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -16,23 +17,41 @@ import java.util.Map;
  * 定时向Server发送心跳，上报节点状态
  */
 @Component
-public class HeartbeatDaemon {
+public class HeartbeatDaemon implements CommandLineRunner {
 
-    @Value("${agent.server-url}")
+    @Value("${agent.server-url:http://localhost:8081/api}")
     private String serverUrl;
 
-    @Value("${agent.token}")
+    @Value("${agent.token:}")
     private String agentToken;
 
-    @Value("${agent.node-name}")
+    @Value("${agent.node-name:default-node}")
     private String nodeName;
+
+    @Value("${agent.check-interval:30}")
+    private int checkInterval;
 
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
-     * 每30秒发送一次心跳
+     * 启动时校验 Token 必须配置 (Task 2 新增)
      */
-    @Scheduled(fixedRate = 5000)
+    @Override
+    public void run(String... args) {
+        if (agentToken == null || agentToken.trim().isEmpty()) {
+            throw new IllegalStateException(
+                "SECURITY VIOLATION: AGENT_TOKEN is not configured. " +
+                "Please set the AGENT_TOKEN environment variable. " +
+                "This prevents unauthorized agents from connecting to the server."
+            );
+        }
+        System.out.println("[HeartbeatDaemon] Agent token loaded from environment. Node: " + nodeName);
+    }
+
+    /**
+     * 每 N 秒发送一次心跳（从配置读取）
+     */
+    @Scheduled(fixedRateString = "${agent.check-interval:30}000")
     public void sendHeartbeat() {
         try {
             String ip = InetAddress.getLocalHost().getHostAddress();
@@ -95,7 +114,7 @@ public class HeartbeatDaemon {
         return maxMem > 0 && maxMem < Long.MAX_VALUE ? maxMem / (1024 * 1024) : 4096;
     }
 
-    private String hashNodeId(String ip) {
+    String hashNodeId(String ip) {
         return Integer.toHexString(ip.hashCode());
     }
 }

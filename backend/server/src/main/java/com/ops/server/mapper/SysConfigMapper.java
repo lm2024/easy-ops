@@ -13,5 +13,5 @@ public interface SysConfigMapper {
 
     @Update("MERGE INTO sys_config (config_key, config_value, description, update_time) KEY (config_key) " +
             "VALUES (#{key}, #{value}, #{desc}, #{time})")
-    void upsert(@Param("key") String key, @Param("value") String value, @Param("desc") String desc);
+    void upsert(@Param("key") String key, @Param("value") String value, @Param("desc") String desc, @Param("time") long time);
 }

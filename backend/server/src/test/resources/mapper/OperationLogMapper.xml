@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.OperationLogMapper">
+    <select id="findById" resultType="com.ops.common.model.OperationLogModel">
+        SELECT * FROM operation_log WHERE id = #{id}
+    </select>
+    <select id="findByModule" resultType="com.ops.common.model.OperationLogModel">
+        SELECT * FROM operation_log
+        <where>
+            <if test="module != null and module != ''">
+                AND module = #{module}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countByModule" resultType="long">
+        SELECT COUNT(*) FROM operation_log
+        <where>
+            <if test="module != null and module != ''">
+                AND module = #{module}
+            </if>
+        </where>
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO operation_log (user_id, module, action, content, ip, create_time)
+        VALUES (#{userId}, #{module}, #{action}, #{content}, #{ip}, #{createTime})
+    </insert>
+</mapper>

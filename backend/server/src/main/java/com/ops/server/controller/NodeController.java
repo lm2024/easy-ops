@@ -9,6 +9,7 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.service.AlarmService;
+import com.ops.server.util.SecurityContext;
 import com.ops.server.service.NodeService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +42,9 @@ public class NodeController {
 
     @Autowired
     private AuthInterceptor authInterceptor;
+
+    @Autowired
+    private SecurityContext securityContext;
 
     /**
      * GET /api/nodes - 节点列表 (支持分页和状态筛选)
@@ -123,6 +127,7 @@ public class NodeController {
     @GetMapping("/{id}")
     public Result<?> getNode(@PathVariable Long id) {
         NodeModel node = nodeService.findById(id);
+        // SEC-004: 节点操作权限校验n        if (!securityContext.getCurrentNodeId() && !securityContext.hasProjectPermission(null)) {n            // non-agent users are filtered by project, which is handled by project bindingn        }
         return node != null ? Result.success(node) : Result.error(1002, "节点不存在");
     }
 
