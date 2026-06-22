@@ -1,0 +1,72 @@
+# OpenCode project ignore for auto-test
+# Generated from current workspace: Java/Spring Boot backend + Vue/Vite frontend + MV3 plugins.
+
+# Local agent/workspace artifacts
+.history/
+.advwiki/
+.codegraph/
+.claude/skills/ui-ux-pro-max/data/**
+.claude/skills/ui-ux-pro-max/scripts/__pycache__/
+
+# Build and dependency outputs
+**/node_modules/
+**/dist/
+**/build/
+**/target/
+**/coverage/
+**/.vite/
+**/__pycache__/
+
+# Java / Maven generated artifacts
+**/*.class
+**/*.jar
+**/*.war
+**/*.ear
+
+# Node package locks are large; package.json keeps dependency context
+**/package-lock.json
+**/npm-shrinkwrap.json
+**/pnpm-lock.yaml
+**/yarn.lock
+
+# Logs, caches, temp and backup files
+**/*.log
+**/*.tmp
+**/*.bak
+**/*.swp
+**/*.swo
+**/.DS_Store
+
+# Environment and secret-like files
+.env
+.env.*
+**/.env
+**/.env.*
+**/*-secret.json
+**/*-secrets.json
+**/*credentials*
+**/*credential*
+**/*token*
+**/*key*
+
+# Large binary/data assets that are not source context
+**/*.csv
+**/*.xlsx
+**/*.xls
+**/*.sqlite
+**/*.db
+**/*.png
+**/*.jpg
+**/*.jpeg
+**/*.gif
+**/*.ico
+**/*.pdf
+**/*.zip
+**/*.rar
+**/*.7z
+**/*.gz
+**/*.tar
+
+# Reference/teacher materials and abandoned plugin code
+doc/老师/
+plugin废弃/
