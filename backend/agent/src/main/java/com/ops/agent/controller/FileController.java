@@ -33,24 +33,41 @@ public class FileController {
                                                     @RequestParam MultipartFile file) {
         try {
             String originalFilename = file.getOriginalFilename();
+            if (originalFilename == null || originalFilename.isEmpty()) {
+                originalFilename = "app.jar";
+            }
             String dirPath = dataPath + "/versions/" + projectId + "/" + versionName;
             File dir = new File(dirPath);
             if (!dir.exists()) {
                 dir.mkdirs();
             }
 
-            String savePath = dirPath + "/" + originalFilename;
-            file.transferTo(new File(savePath));
+            File destFile = new File(dir, originalFilename);
+            if (destFile.exists()) {
+                destFile.delete();
+            }
 
-            // Calculate SHA-256
+            // 使用 InputStream 手动写入，避免 transferTo 的临时文件路径问题
+            java.io.InputStream in = file.getInputStream();
+            java.io.OutputStream out = new java.io.FileOutputStream(destFile);
+            byte[] buffer = new byte[8192];
+            int bytesRead;
             MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = file.getBytes();
-            String sha256 = bytesToHex(md.digest(bytes));
+            long totalSize = 0;
+            while ((bytesRead = in.read(buffer)) != -1) {
+                out.write(buffer, 0, bytesRead);
+                md.update(buffer, 0, bytesRead);
+                totalSize += bytesRead;
+            }
+            in.close();
+            out.close();
+
+            String sha256 = bytesToHex(md.digest());
 
             Map<String, Object> data = new HashMap<>();
-            data.put("filePath", savePath);
+            data.put("filePath", destFile.getAbsolutePath());
             data.put("fileName", originalFilename);
-            data.put("fileSize", file.getSize());
+            data.put("fileSize", totalSize);
             data.put("sha256", sha256);
             data.put("status", "RECEIVED");
 

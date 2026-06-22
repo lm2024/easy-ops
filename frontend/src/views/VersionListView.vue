@@ -51,7 +51,7 @@
       cancel-text="取消"
     >
       <a-upload
-        v-model:file-list="fileList"
+        :file-list="fileList"
         :before-upload="beforeUpload"
         accept=".jar"
       >

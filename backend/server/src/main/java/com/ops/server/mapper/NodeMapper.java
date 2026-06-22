@@ -28,6 +28,7 @@ public interface NodeMapper {
                          @Param("osArch") String osArch);
     void updateStatusOffline(@Param("id") Long id);
     void updateTags(@Param("id") Long id, @Param("tags") String tags, @Param("updateTime") Long updateTime);
+    void updatePort(@Param("id") Long id, @Param("port") Integer port, @Param("updateTime") Long updateTime);
     List<NodeModel> getOfflineCandidates(@Param("cutoff") Long cutoff);
     int countByNodeId(@Param("nodeId") Long nodeId);
     List<String> getProjectNamesByNodeId(@Param("nodeId") Long nodeId);

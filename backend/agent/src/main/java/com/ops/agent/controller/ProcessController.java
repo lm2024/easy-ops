@@ -18,13 +18,15 @@ public class ProcessController {
 
     /**
      * POST /api/process/{projectId}/start - 启动应用
-     * 流程：保存 start.sh → cd deployDir → 执行 start.sh
+     * 流程：保存 start.sh → 复制 jar 到 deployDir → cd deployDir → 执行 start.sh
      */
     @PostMapping("/{projectId}/start")
     public Result<Map<String, Object>> start(@PathVariable String projectId,
                                               @RequestBody Map<String, String> body) {
         String startScript = body.get("startScript");
         String deployDir = body.get("deployDir");
+        String jarPath = body.get("jarPath");
+        String jarName = body.get("jarName");
         if (startScript == null || startScript.isEmpty()) {
             return Result.paramError("startScript 不能为空");
         }
@@ -39,6 +41,15 @@ public class ProcessController {
 
             // 写入 start.sh
             writeScript(deployDir, "start.sh", startScript);
+
+            // 将 jar 从存储路径复制到 deployDir，使用项目配置的 jarName
+            if (jarPath != null && !jarPath.isEmpty() && jarName != null && !jarName.isEmpty()) {
+                File srcJar = new File(jarPath);
+                if (srcJar.exists()) {
+                    File destJar = new File(deployDir, jarName);
+                    copyFile(srcJar, destJar);
+                }
+            }
 
             // 用双重 nohup 完全脱离父进程
             // 用双引号包裹目录路径，防止空格导致 shell 解析错误
@@ -116,5 +127,19 @@ public class ProcessController {
         }
         // 设置可执行权限
         scriptFile.setExecutable(true);
+    }
+
+    /** 复制文件（用于将 jar 从 versions 目录复制到 deployDir） */
+    private void copyFile(File src, File dest) throws IOException {
+        if (dest.exists()) dest.delete();
+        java.io.InputStream in = new java.io.FileInputStream(src);
+        java.io.OutputStream out = new java.io.FileOutputStream(dest);
+        byte[] buf = new byte[8192];
+        int len;
+        while ((len = in.read(buf)) > 0) {
+            out.write(buf, 0, len);
+        }
+        in.close();
+        out.close();
     }
 }

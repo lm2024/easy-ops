@@ -27,7 +27,7 @@
     </delete>
 
     <select id="getUserIdByToken" resultType="string">
-        SELECT CAST(user_id AS CHAR) FROM sys_user WHERE token = #{token} AND status = 1 LIMIT 1
+        SELECT CAST(id AS VARCHAR) FROM sys_user WHERE username = #{token} AND status = 1 LIMIT 1
     </select>
     <select id="getUsernameById" resultType="string">
         SELECT username FROM sys_user WHERE id = #{id} LIMIT 1

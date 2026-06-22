@@ -192,7 +192,9 @@ public class NodeController {
      * GET /api/nodes/heartbeat - 心跳接口 (Agent侧)
      */
     @GetMapping("/heartbeat")
-    public Result<?> heartbeat(HttpServletRequest request) {
+    public Result<?> heartbeat(HttpServletRequest request,
+                               @RequestParam(required = false) String nodeIp,
+                               @RequestParam(required = false) Integer nodePort) {
         String token = request.getHeader(SystemConstant.TOKEN_HEADER);
         if (token == null || token.isEmpty()) {
             return Result.authError();
@@ -203,7 +205,8 @@ public class NodeController {
             return Result.authError();
         }
 
-        String ip = request.getRemoteAddr();
+        // 使用 Agent 上报的外部 IP，如果没传则用请求来源 IP
+        String ip = (nodeIp != null && !nodeIp.isEmpty()) ? nodeIp : request.getRemoteAddr();
         String osInfo = request.getHeader("X-OS-Info");
         String javaVersion = request.getHeader("X-Java-Version");
         String cpuInfo = request.getHeader("X-CPU-Info");
@@ -223,6 +226,11 @@ public class NodeController {
 
         nodeMapper.updateHeartbeat(Long.parseLong(nodeId), System.currentTimeMillis(),
                 ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch);
+
+        // 如果 Agent 上报了外部可访问的端口，更新节点端口
+        if (nodePort != null && nodePort > 0) {
+            nodeMapper.updatePort(Long.parseLong(nodeId), nodePort, System.currentTimeMillis());
+        }
 
         // Update agent token cache
         Map<String, String> agentCache = authInterceptor.getAgentTokenCache();

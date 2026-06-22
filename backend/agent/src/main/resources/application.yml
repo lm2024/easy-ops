@@ -13,9 +13,11 @@ spring:
 agent:
   server-url: ${AGENT_SERVER_URL:http://localhost:8081/api}
   token: ${AGENT_TOKEN:}
-  node-name: ${HOSTNAME:default-node}
+  node-name: ${AGENT_NODE_NAME:default-node}
   data-path: /app/data
   check-interval: 30
+  host-ip: ${AGENT_HOST_IP:}
+  host-port: ${AGENT_HOST_PORT:0}
 
 # Logging
 logging:
