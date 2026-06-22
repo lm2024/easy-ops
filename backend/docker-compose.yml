@@ -8,10 +8,13 @@ services:
     container_name: ops-agent-1
     ports:
       - "2123:2123"
+      - "8080:8080"
     environment:
       AGENT_TOKEN: agent-token-1
       AGENT_NODE_NAME: agent-1
       AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_HOST_IP: 127.0.0.1
+      AGENT_HOST_PORT: 2123
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -22,10 +25,13 @@ services:
     container_name: ops-agent-2
     ports:
       - "2124:2123"
+      - "18090:8080"
     environment:
       AGENT_TOKEN: agent-token-2
       AGENT_NODE_NAME: agent-2
       AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_HOST_IP: 127.0.0.1
+      AGENT_HOST_PORT: 2124
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -36,9 +42,12 @@ services:
     container_name: ops-agent-3
     ports:
       - "2125:2123"
+      - "18080:8080"
     environment:
       AGENT_TOKEN: agent-token-3
       AGENT_NODE_NAME: agent-3
       AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_HOST_IP: 127.0.0.1
+      AGENT_HOST_PORT: 2125
     extra_hosts:
       - "host.docker.internal:host-gateway"

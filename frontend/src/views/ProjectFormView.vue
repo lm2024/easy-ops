@@ -24,9 +24,12 @@
           <a-select-option value="test">🧪 测试环境</a-select-option>
           <a-select-option value="prod">🚀 生产环境</a-select-option>
         </a-select>
-        <a-select v-model:value="templateNodeId" style="width: 200px" placeholder="选择参考节点（获取硬件信息）">
+        <a-select v-model:value="templateNodeId" style="width: 200px" placeholder="选择参考节点">
           <a-select-option v-for="n in nodeOptions" :key="n.id" :value="n.id">{{ n.name }} ({{ n.ip }})</a-select-option>
         </a-select>
+        <a-tooltip title="选择一个典型节点作为参考，根据其 CPU/内存生成 JVM 参数和脚本，适用于所有部署节点。如节点硬件差异大，建议选配置最低的节点，生成后可手动微调。">
+          <info-circle-outlined style="color: #999; cursor: help" />
+        </a-tooltip>
         <a-button type="primary" ghost @click="fillTemplate" :loading="templateLoading">
           <thunderbolt-outlined /> 一键填入
         </a-button>
@@ -59,13 +62,13 @@
       <a-row :gutter="16">
         <a-col :span="12">
           <a-form-item label="启动脚本 start.sh">
-            <template #extra><span style="font-size:12px;color:#888">Agent 会 cd 到部署目录后执行此脚本</span></template>
+            <template #extra><span style="font-size:12px;color:#888">部署时自动同步到节点的部署目录并执行，无需手动拷贝</span></template>
             <a-textarea v-model:value="formState.startScript" :rows="6" placeholder="#!/bin/bash&#10;nohup java -jar app.jar > logs/startup.log 2>&1 &" style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
         <a-col :span="12">
           <a-form-item label="停止脚本 stop.sh">
-            <template #extra><span style="font-size:12px;color:#888">Agent 会 cd 到部署目录后执行此脚本</span></template>
+            <template #extra><span style="font-size:12px;color:#888">部署时自动同步到节点的部署目录并执行，无需手动拷贝</span></template>
             <a-textarea v-model:value="formState.stopScript" :rows="6" placeholder="#!/bin/bash&#10;PID_FILE=pid&#10;if [ -f &quot;$PID_FILE&quot; ]; then kill $(cat $PID_FILE); rm -f $PID_FILE; fi" style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
@@ -90,7 +93,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { ProjectModel, NodeModel } from '../types'
 import { createProject, updateProject, getProject } from '../api/project'
@@ -101,7 +104,8 @@ import type { Rule } from 'ant-design-vue/es/form'
 import {
   SaveOutlined,
   FolderOpenOutlined,
-  ThunderboltOutlined
+  ThunderboltOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -129,7 +133,30 @@ const formState = ref<any>({
 })
 
 const rules: Record<string, Rule[]> = {
-  name: [{ required: true, message: '请输入应用名称' }]
+  name: [{ required: true, message: '请输入应用名称' }],
+  jarName: [{ required: true, message: '请输入 Jar 包名（如 demo-test-app.jar）' }],
+  startScript: [{
+    validator: (_rule: Rule, value: string) => {
+      if (!value || !formState.value.jarName) return Promise.resolve()
+      const jarNameInScript = extractJarNameFromScript(value)
+      if (jarNameInScript && jarNameInScript !== formState.value.jarName) {
+        return Promise.reject(`脚本中 JAR_NAME=${jarNameInScript}，但 Jar 包名填写的是 ${formState.value.jarName}，不一致！`)
+      }
+      return Promise.resolve()
+    }
+  }]
+}
+
+/** 从 startScript 中提取 JAR_NAME=xxx 的值 */
+function extractJarNameFromScript(script: string): string | null {
+  const match = script.match(/JAR_NAME=(\S+)/)
+  return match ? match[1] : null
+}
+
+/** 自动修正 startScript 中的 JAR_NAME 使其与 jarName 一致 */
+function fixStartScriptJarName(script: string, jarName: string): string {
+  if (!script || !jarName) return script
+  return script.replace(/JAR_NAME=\S+/, `JAR_NAME=${jarName}`)
 }
 
 /** 格式化内存显示 */
@@ -158,57 +185,26 @@ function generateJVMOpts(env: string, cpuCores: number, totalMemMB: number): str
   xms = Math.max(xms, 256)
   xmx = Math.max(xmx, 512)
 
-  // GC 线程数
-  const parallelGCThreads = Math.min(cpuCores, 8)
-  const concGCThreads = Math.max(1, Math.min(Math.ceil(cpuCores / 4), 4))
-
-  // G1HeapRegionSize 根据堆大小选择
-  let regionSize = '1m'
-  if (xmx >= 16384) regionSize = '4m'
-  else if (xmx >= 4096) regionSize = '2m'
-
   const lines: string[] = []
 
-  // 堆设置
-  lines.push(`-Xms${xms}m`)
-  lines.push(`-Xmx${xmx}m`)
+  // 核心：堆 + GC
+  lines.push(`-Xms${xms}m -Xmx${xmx}m`)
   lines.push('-XX:+UseG1GC')
   lines.push(`-XX:MaxGCPauseMillis=${cfg.pause}`)
-  lines.push(`-XX:ParallelGCThreads=${parallelGCThreads}`)
-  lines.push(`-XX:ConcGCThreads=${concGCThreads}`)
-  lines.push(`-XX:G1HeapRegionSize=${regionSize}`)
-  lines.push('-XX:InitiatingHeapOccupancyPercent=45')
 
-  // 异常处理
-  if (env !== 'dev') {
-    lines.push('-XX:+HeapDumpOnOutOfMemoryError')
-    lines.push('-XX:HeapDumpPath=./logs/dump.hprof')
-  }
+  // OOM 安全退出
   lines.push('-XX:+ExitOnOutOfMemoryError')
 
-  // GC 日志
-  if (env === 'dev') {
-    lines.push('-Xloggc:./logs/gc.log')
-    lines.push('-verbose:gc')
-    lines.push('-XX:+PrintGCDetails')
-    lines.push('-XX:+PrintGCDateStamps')
-    lines.push('-XX:+PrintGCTimeStamps')
-  } else if (env === 'test') {
-    lines.push('-Xloggc:./logs/gc.log')
-    lines.push('-XX:+PrintGCDetails')
-    lines.push('-XX:+PrintGCDateStamps')
-  } else {
-    lines.push('-Xloggc:./logs/gc.log')
-    lines.push('-XX:+PrintGCDateStamps')
+  // 非 dev 环境保留 HeapDump
+  if (env !== 'dev') {
+    lines.push('-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=./logs/dump.hprof')
   }
 
-  // 元空间
-  lines.push('-XX:MetaspaceSize=128m')
-  lines.push('-XX:MaxMetaspaceSize=256m')
+  // GC 日志（精简，只保留关键标志）
+  lines.push('-Xloggc:./logs/gc.log -XX:+PrintGCDateStamps')
 
-  // 其他
+  // 编码
   lines.push('-Dfile.encoding=UTF-8')
-  lines.push('-Djava.net.preferIPv4Stack=true')
 
   return lines.join(' ')
 }
@@ -288,7 +284,22 @@ async function fillTemplate() {
   }
 }
 
+// 当 jarName 变化时，自动修正 startScript 中的 JAR_NAME
+watch(() => formState.value.jarName, (newJarName) => {
+  if (newJarName && formState.value.startScript) {
+    formState.value.startScript = fixStartScriptJarName(formState.value.startScript, newJarName)
+  }
+})
+
 async function handleSubmit() {
+  // 保存前自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
+  if (formState.value.jarName && formState.value.startScript) {
+    const jarNameInScript = extractJarNameFromScript(formState.value.startScript)
+    if (jarNameInScript && jarNameInScript !== formState.value.jarName) {
+      formState.value.startScript = fixStartScriptJarName(formState.value.startScript, formState.value.jarName)
+    }
+  }
+
   try {
     loading.value = true
     const id = route.params.id as string

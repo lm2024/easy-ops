@@ -1,3 +1,6 @@
+-- 注册 MySQL 兼容函数 FIND_IN_SET (H2 不原生支持)
+CREATE ALIAS IF NOT EXISTS FIND_IN_SET FOR "com.ops.server.util.H2CompatFunctions.findInSet";
+
 -- 节点信息表
 CREATE TABLE IF NOT EXISTS node_info (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,

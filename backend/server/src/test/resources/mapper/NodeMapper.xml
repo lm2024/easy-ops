@@ -75,14 +75,13 @@
     <select id="getOfflineCandidates" resultType="com.ops.common.model.NodeModel">
         SELECT id, name, ip, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
     </select>
-    <!-- (Task 5) 修复 nodeIds 模糊匹配 -->
+    <!-- (Task 5) 修复 nodeIds 模糊匹配，CAST nodeId 为 VARCHAR 避免 H2 类型转换错误 -->
     <select id="countByNodeId" resultType="int">
         SELECT COUNT(*) FROM project_info
-        WHERE (FIND_IN_SET(#{nodeId}, node_ids) > 0 OR node_ids = #{nodeId})
+        WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
     </select>
-    <!-- (Task 5) 修复 nodeIds 模糊匹配 -->
     <select id="getProjectNamesByNodeId" resultType="string">
         SELECT name FROM project_info
-        WHERE (FIND_IN_SET(#{nodeId}, node_ids) > 0 OR node_ids = #{nodeId})
+        WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
     </select>
 </mapper>

@@ -113,7 +113,11 @@ public class DeployController {
         String agentFilePath = agentFileDir + "/" + jarName;
 
         // 获取项目的 startScript 和 stopScript
+        // 自动修正 startScript 中 JAR_NAME=xxx 使其与项目的 jarName 一致（最后一道防线）
         String startScript = project.getStartScript();
+        if (startScript != null && project.getJarName() != null && !project.getJarName().isEmpty()) {
+            startScript = startScript.replaceAll("JAR_NAME=\\S+", "JAR_NAME=" + project.getJarName());
+        }
         String stopScript = project.getStopScript();
 
         // 为每个节点执行部署
@@ -198,6 +202,8 @@ public class DeployController {
                 Map<String, String> startReq = new HashMap<>();
                 startReq.put("startScript", startScript != null ? startScript : "");
                 startReq.put("deployDir", deployDir);
+                startReq.put("jarPath", agentFilePath);
+                startReq.put("jarName", project.getJarName() != null ? project.getJarName() : jarName);
                 ResponseEntity<String> startResp = restTemplate.postForEntity(startUrl, startReq, String.class);
                 nodeLog.append("  ").append(startResp.getStatusCode()).append("\n");
 

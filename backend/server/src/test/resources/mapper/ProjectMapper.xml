@@ -13,10 +13,10 @@
             <if test="status != null and status != ''">
                 AND status = #{status}
             </if>
-            <!-- (Task 5) 修复 nodeIds 模糊匹配：使用 FIND_IN_SET 精确匹配 -->
+            <!-- (Task 5) 修复 nodeIds 模糊匹配：FIND_IN_SET + CAST 避免 H2 类型转换错误 -->
             <if test="nodeId != null">
-                AND (FIND_IN_SET(#{nodeId}, node_ids) > 0
-                     OR node_ids = #{nodeId})
+                AND (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0
+                     OR node_ids = CAST(#{nodeId} AS VARCHAR))
             </if>
         </where>
         ORDER BY create_time DESC
@@ -32,8 +32,8 @@
             </if>
             <!-- (Task 5) 修复 nodeIds 模糊匹配 -->
             <if test="nodeId != null">
-                AND (FIND_IN_SET(#{nodeId}, node_ids) > 0
-                     OR node_ids = #{nodeId})
+                AND (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0
+                     OR node_ids = CAST(#{nodeId} AS VARCHAR))
             </if>
         </where>
     </select>

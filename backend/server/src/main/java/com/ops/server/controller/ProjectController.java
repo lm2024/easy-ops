@@ -58,6 +58,8 @@ public class ProjectController {
         if (projectService.findByName(project.getName()) != null) {
             return Result.paramError("项目名称已存在");
         }
+        // 自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
+        fixScriptJarName(project);
         project.setStatus(1);
         project.setCreateTime(System.currentTimeMillis());
         project.setUpdateTime(System.currentTimeMillis());
@@ -77,11 +79,26 @@ public class ProjectController {
         if (existing == null) {
             return Result.error(1005, "项目不存在");
         }
+        // 自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
+        fixScriptJarName(project);
         project.setId(id);
         project.setCreateTime(existing.getCreateTime());
         project.setUpdateTime(System.currentTimeMillis());
         projectService.update(project);
         return Result.success();
+    }
+
+    /** 自动修正 startScript 中 JAR_NAME=xxx 使其与项目 jarName 一致 */
+    private void fixScriptJarName(ProjectModel project) {
+        String jarName = project.getJarName();
+        String startScript = project.getStartScript();
+        if (jarName != null && !jarName.isEmpty() && startScript != null && !startScript.isEmpty()) {
+            // 用正则替换 JAR_NAME=旧值 → JAR_NAME=新值
+            String fixed = startScript.replaceAll("JAR_NAME=\\S+", "JAR_NAME=" + jarName);
+            if (!fixed.equals(startScript)) {
+                project.setStartScript(fixed);
+            }
+        }
     }
 
     /**

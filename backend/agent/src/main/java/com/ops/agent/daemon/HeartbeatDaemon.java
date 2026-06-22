@@ -31,6 +31,12 @@ public class HeartbeatDaemon implements CommandLineRunner {
     @Value("${agent.check-interval:30}")
     private int checkInterval;
 
+    @Value("${agent.host-ip:}")
+    private String hostIp;
+
+    @Value("${agent.host-port:0}")
+    private int hostPort;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
@@ -54,7 +60,12 @@ public class HeartbeatDaemon implements CommandLineRunner {
     @Scheduled(fixedRateString = "${agent.check-interval:30}000")
     public void sendHeartbeat() {
         try {
-            String ip = InetAddress.getLocalHost().getHostAddress();
+            String ip;
+            if (hostIp != null && !hostIp.isEmpty()) {
+                ip = hostIp;
+            } else {
+                ip = InetAddress.getLocalHost().getHostAddress();
+            }
             String osInfo = System.getProperty("os.name") + " " + System.getProperty("os.version");
             String osArch = System.getProperty("os.arch");
             String javaVersion = System.getProperty("java.version");
@@ -65,7 +76,11 @@ public class HeartbeatDaemon implements CommandLineRunner {
             int jvmMaxMb = maxMem > 0 && maxMem < Long.MAX_VALUE ? (int)(maxMem / (1024 * 1024)) : 0;
             long totalMemMb = getTotalMemoryMB();
 
+            // 上报外部可访问的端口（Docker 映射端口）
             String url = serverUrl + "/nodes/heartbeat?nodeIp=" + ip;
+            if (hostPort > 0) {
+                url += "&nodePort=" + hostPort;
+            }
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("X-Token", agentToken);
