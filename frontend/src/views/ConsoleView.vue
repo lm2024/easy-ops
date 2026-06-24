@@ -158,9 +158,20 @@ function toggleConnect() {
 function connectWS() {
   if (!selectedProject.value || !selectedNode.value) return
 
+  const token = localStorage.getItem('token')
+  if (!token) {
+    if (terminal) terminal.writeln('\r\n\x1b[31m[连接失败] 未登录或登录已过期，请重新登录\x1b[0m')
+    return
+  }
+
   connecting.value = true
-  const wsUrl = `/api/ws/console?projectId=${selectedProject.value}&nodeId=${selectedNode.value}`
-  ws = new WebSocket(`ws://${location.host}${wsUrl}`)
+  const params = new URLSearchParams({
+    projectId: String(selectedProject.value),
+    nodeId: String(selectedNode.value),
+    token
+  })
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  ws = new WebSocket(`${wsProtocol}//${location.host}/api/ws/console?${params}`)
 
   ws.onopen = () => {
     connected.value = true

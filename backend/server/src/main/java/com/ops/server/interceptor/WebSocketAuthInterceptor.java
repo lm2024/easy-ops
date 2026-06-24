@@ -1,9 +1,6 @@
 package com.ops.server.interceptor;
 
-import com.alibaba.fastjson2.JSON;
-import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
-import com.ops.server.mapper.UserMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,7 +17,7 @@ import java.util.Map;
 /**
  * WebSocket 握手拦截器 - SEC-002 修复
  * 原问题: Token 从 Sec-WebSocket-Protocol 头部取，浏览器可伪造；无权限校验
- * 修复: 改用标准 Authorization: Bearer <token> 头，增加完整权限校验
+ * 修复: 优先 Authorization: Bearer 头；浏览器 WebSocket 无法自定义 Header 时回退 query token
  */
 @Component
 public class WebSocketAuthInterceptor implements HandshakeInterceptor {
@@ -31,7 +28,7 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
     private NodeMapper nodeMapper;
 
     @Autowired
-    private UserMapper userMapper;
+    private AuthInterceptor authInterceptor;
 
     @Override
     public boolean beforeHandshake(ServerHttpRequest request, ServerHttpResponse response,
@@ -42,58 +39,59 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             servletRequest = ((ServletServerHttpRequest) request).getServletRequest();
         }
 
-        // SEC-002: 不再从 Sec-WebSocket-Protocol 取 token
-        // 改用标准 Authorization: Bearer <token> 头部
-        String authHeader = request.getHeaders().getFirst("Authorization");
-
-        if (authHeader == null || authHeader.isEmpty()) {
-            log.warn("WebSocket handshake rejected: missing Authorization header from {}",
+        String token = resolveToken(request, servletRequest);
+        if (token == null || token.isEmpty()) {
+            log.warn("WebSocket handshake rejected: missing token from {}",
                     servletRequest != null ? servletRequest.getRemoteAddr() : "unknown");
             return false;
         }
 
-        // Remove "Bearer " prefix if present
-        String token;
-        if (authHeader.startsWith("Bearer ")) {
-            token = authHeader.substring(7);
-        } else {
-            log.warn("WebSocket handshake rejected: invalid Authorization header format from {}",
-                    servletRequest != null ? servletRequest.getRemoteAddr() : "unknown");
+        // Validate token against login cache / database (same as REST API)
+        AuthInterceptor.UserAuthContext userAuth = authInterceptor.lookupUserAuth(token);
+        if (userAuth != null) {
+            attributes.put("token", token);
+            attributes.put("userId", userAuth.getUserId());
+            attributes.put("username", userAuth.getUsername());
+            log.debug("WebSocket authenticated successfully for user: {}", userAuth.getUsername());
+            return true;
+        }
+
+        if (!validateAgentToken(token, servletRequest)) {
             return false;
         }
 
-        // Validate token against database (same as REST API)
-        if (!validateToken(token, servletRequest)) {
-            return false;
-        }
-
-        // Store validated token and user info in handshake attributes
         attributes.put("token", token);
-        String userId = userMapper.getUserIdByToken(token);
-        if (userId != null) {
-            attributes.put("userId", userId);
-            try {
-                attributes.put("username", userMapper.getUsernameById(Long.parseLong(userId)));
-            } catch (NumberFormatException e) {
-                // ignore
-            }
-        }
-
-        log.debug("WebSocket authenticated successfully for token: {}", token);
+        log.debug("WebSocket authenticated successfully for agent token");
         return true;
     }
 
     /**
-     * 校验 token 是否有效
+     * 解析 token：优先 Authorization 头，浏览器 WebSocket 回退 query 参数
      */
-    private boolean validateToken(String token, HttpServletRequest servletRequest) {
-        // Validate user token
-        String userId = userMapper.getUserIdByToken(token);
-        if (userId != null) {
-            return true;
+    private String resolveToken(ServerHttpRequest request, HttpServletRequest servletRequest) {
+        String authHeader = request.getHeaders().getFirst("Authorization");
+        if (authHeader != null && !authHeader.isEmpty()) {
+            if (authHeader.startsWith("Bearer ")) {
+                return authHeader.substring(7);
+            }
+            log.warn("WebSocket handshake rejected: invalid Authorization header format from {}",
+                    servletRequest != null ? servletRequest.getRemoteAddr() : "unknown");
+            return null;
         }
 
-        // Validate agent token
+        if (servletRequest != null) {
+            String queryToken = servletRequest.getParameter("token");
+            if (queryToken != null && !queryToken.trim().isEmpty()) {
+                return queryToken.trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 校验 Agent token 是否有效
+     */
+    private boolean validateAgentToken(String token, HttpServletRequest servletRequest) {
         String dbToken = nodeMapper.getTokenByToken(token);
         if (dbToken != null && dbToken.equals(token)) {
             return true;

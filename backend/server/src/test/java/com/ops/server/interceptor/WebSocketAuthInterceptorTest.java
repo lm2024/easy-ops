@@ -1,12 +1,13 @@
 package com.ops.server.interceptor;
 
 import com.ops.server.mapper.NodeMapper;
-import com.ops.server.mapper.UserMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.http.server.ServletServerHttpRequest;
+import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.socket.WebSocketHandler;
 
 import java.util.HashMap;
@@ -23,23 +24,22 @@ class WebSocketAuthInterceptorTest {
 
     private WebSocketAuthInterceptor interceptor;
     private NodeMapper nodeMapper;
-    private UserMapper userMapper;
+    private AuthInterceptor authInterceptor;
     private Map<String, Object> attributes;
 
     @BeforeEach
     void setUp() throws Exception {
         nodeMapper = mock(NodeMapper.class);
-        userMapper = mock(UserMapper.class);
+        authInterceptor = mock(AuthInterceptor.class);
 
         interceptor = new WebSocketAuthInterceptor();
-        // Use reflection to inject mocks
         java.lang.reflect.Field nodeField = WebSocketAuthInterceptor.class.getDeclaredField("nodeMapper");
         nodeField.setAccessible(true);
         nodeField.set(interceptor, nodeMapper);
 
-        java.lang.reflect.Field userField = WebSocketAuthInterceptor.class.getDeclaredField("userMapper");
-        userField.setAccessible(true);
-        userField.set(interceptor, userMapper);
+        java.lang.reflect.Field authField = WebSocketAuthInterceptor.class.getDeclaredField("authInterceptor");
+        authField.setAccessible(true);
+        authField.set(interceptor, authInterceptor);
 
         attributes = new HashMap<>();
     }
@@ -57,14 +57,17 @@ class WebSocketAuthInterceptorTest {
         return mockRequest;
     }
 
+    private ServerHttpRequest createServletRequest(MockHttpServletRequest servletRequest) {
+        return new ServletServerHttpRequest(servletRequest);
+    }
+
     // ==================== 有效 Token 测试 ====================
 
     @Test
     void validUserToken_shouldSucceed() throws Exception {
         String token = "valid-user-token";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn("1");
-        when(userMapper.findById(1L)).thenReturn(createTestUser(1L, "admin"));
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(new AuthInterceptor.UserAuthContext("1", "admin", "admin"));
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
 
@@ -75,8 +78,7 @@ class WebSocketAuthInterceptorTest {
     @Test
     void validUserToken_withNoBearerPrefix_shouldFail() throws Exception {
         ServerHttpRequest request = createServerRequest("plain-token");
-        when(userMapper.getUserIdByToken("plain-token")).thenReturn("1");
-        when(userMapper.findById(1L)).thenReturn(createTestUser(1L, "admin"));
+        when(authInterceptor.lookupUserAuth("plain-token")).thenReturn(new AuthInterceptor.UserAuthContext("1", "admin", "admin"));
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
 
@@ -88,7 +90,7 @@ class WebSocketAuthInterceptorTest {
     void validAgentToken_shouldSucceed() throws Exception {
         String token = "valid-agent-token";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn(token);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
@@ -100,7 +102,7 @@ class WebSocketAuthInterceptorTest {
     void validAgentToken_storedInAttributes() throws Exception {
         String token = "agent-only-token";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn(token);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
@@ -115,7 +117,7 @@ class WebSocketAuthInterceptorTest {
     void invalidUserToken_shouldFail() throws Exception {
         String token = "invalid-token";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn(null);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
@@ -126,6 +128,34 @@ class WebSocketAuthInterceptorTest {
     @Test
     void missingAuthorizationHeader_shouldFail() throws Exception {
         ServerHttpRequest request = createServerRequest(null);
+
+        boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
+
+        assertFalse(result);
+    }
+
+    @Test
+    void validUserToken_fromQueryParam_shouldSucceed() throws Exception {
+        String token = "valid-user-token";
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+        servletRequest.setParameter("token", token);
+        ServerHttpRequest request = createServletRequest(servletRequest);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(new AuthInterceptor.UserAuthContext("1", "admin", "admin"));
+
+        boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
+
+        assertTrue(result);
+        assertEquals("1", attributes.get("userId"));
+    }
+
+    @Test
+    void invalidToken_fromQueryParam_shouldFail() throws Exception {
+        String token = "invalid-token";
+        MockHttpServletRequest servletRequest = new MockHttpServletRequest();
+        servletRequest.setParameter("token", token);
+        ServerHttpRequest request = createServletRequest(servletRequest);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
+        when(nodeMapper.getTokenByToken(token)).thenReturn(null);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
 
@@ -145,7 +175,7 @@ class WebSocketAuthInterceptorTest {
     void wrongAgentToken_shouldFail() throws Exception {
         String token = "wrong-agent-token";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn("correct-token");
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
@@ -159,7 +189,7 @@ class WebSocketAuthInterceptorTest {
     void userTokenNotFound_butAgentTokenValid_shouldSucceedAsAgent() throws Exception {
         String token = "agent-but-user-lookup";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn(token);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
@@ -171,23 +201,11 @@ class WebSocketAuthInterceptorTest {
     void bothTokensInvalid_shouldFail() throws Exception {
         String token = "totally-invalid";
         ServerHttpRequest request = createServerRequest("Bearer " + token);
-        when(userMapper.getUserIdByToken(token)).thenReturn(null);
+        when(authInterceptor.lookupUserAuth(token)).thenReturn(null);
         when(nodeMapper.getTokenByToken(token)).thenReturn(null);
 
         boolean result = interceptor.beforeHandshake(request, mock(ServerHttpResponse.class), mock(WebSocketHandler.class), attributes);
 
         assertFalse(result);
-    }
-
-    // ==================== 工具方法 ====================
-
-    private com.ops.common.model.UserModel createTestUser(Long id, String username) {
-        com.ops.common.model.UserModel user = new com.ops.common.model.UserModel();
-        user.setId(id);
-        user.setUsername(username);
-        user.setRole("admin");
-        user.setStatus(1);
-        user.setCreateTime(System.currentTimeMillis());
-        return user;
     }
 }

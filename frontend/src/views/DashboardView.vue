@@ -5,7 +5,7 @@
         <a-card class="stat-card" :bordered="false">
           <a-statistic title="节点总数" :value="stats.totalNodes">
             <template #prefix>
-              <cluster-outlined style="color: #1890ff" />
+              <cluster-outlined style="color: #e8ff59" />
             </template>
           </a-statistic>
         </a-card>

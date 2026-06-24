@@ -3,7 +3,7 @@
     <a-card :bordered="false" style="border-radius: 8px">
       <template #title>
         <a-space>
-          <cluster-outlined style="color: #1890ff" />
+          <cluster-outlined style="color: #e8ff59" />
           <span style="font-weight: 600">节点管理</span>
           <a-tooltip title="Agent 运行在目标服务器上，通过心跳向平台自动上报。在线节点会被自动识别并显示在这里。">
             <info-circle-outlined style="color: #999; cursor: help" />
@@ -130,7 +130,7 @@
             </a-result>
             <!-- 数据展示 -->
             <template v-else-if="nodeDetailData[record.id]">
-              <a-card size="small" style="background:#fafafa;border-radius:6px">
+              <a-card size="small" style="background:#1a1a1c;border-radius:6px">
                 <a-row :gutter="[24, 16]">
                   <!-- 第一行：基本 + 系统 -->
                   <a-col :span="12">

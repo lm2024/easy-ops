@@ -9,10 +9,8 @@
       class="app-sider"
     >
       <div class="logo">
-        <cloud-server-outlined style="font-size: 24px; color: #1890ff" />
-        <h2 v-if="!appStore.sidebarCollapsed" style="color: white; margin: 0 0 0 10px; font-size: 18px; font-weight: 600">
-          EasyOps
-        </h2>
+        <cloud-server-outlined class="logo-icon" />
+        <h2 v-if="!appStore.sidebarCollapsed" class="logo-text">EasyOps</h2>
       </div>
 
       <!-- 展开状态 -->
@@ -123,11 +121,11 @@
           <a-col>
             <a-dropdown>
               <div class="user-info">
-                <a-avatar :size="32" style="background-color: #1890ff; margin-right: 8px">
+                <a-avatar :size="32" class="user-avatar">
                   <template #icon><user-outlined /></template>
                 </a-avatar>
                 <span class="username">{{ authStore.user?.username || 'Admin' }}</span>
-                <down-outlined style="margin-left: 4px; color: #8c8c8c" />
+                <down-outlined class="user-caret" />
               </div>
               <template #overlay>
                 <a-menu>
@@ -288,6 +286,31 @@ function handleLogout() {
 
 .app-sider :deep(.ant-menu-dark) {
   background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.app-sider :deep(.ant-menu-dark .ant-menu-item),
+.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title) {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.app-sider :deep(.ant-menu-dark .ant-menu-item .anticon),
+.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title .anticon) {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+.app-sider :deep(.ant-menu-dark .ant-menu-submenu-arrow) {
+  color: rgba(255, 255, 255, 0.45) !important;
+}
+
+.app-sider :deep(.ant-menu-dark .ant-menu-item:hover),
+.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title:hover) {
+  color: #ffffff !important;
+}
+
+.app-sider :deep(.ant-menu-dark .ant-menu-item:hover .anticon),
+.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title:hover .anticon) {
+  color: #ffffff !important;
 }
 
 .app-sider :deep(.ant-menu-item) {
@@ -298,7 +321,12 @@ function handleLogout() {
 }
 
 .app-sider :deep(.ant-menu-item-selected) {
-  background: rgba(24, 144, 255, 0.2) !important;
+  background: rgba(232, 255, 89, 0.12) !important;
+  color: #e8ff59 !important;
+}
+
+.app-sider :deep(.ant-menu-item-selected .anticon) {
+  color: #e8ff59 !important;
 }
 
 .app-sider :deep(.ant-menu-item:hover) {
@@ -313,7 +341,7 @@ function handleLogout() {
 }
 
 .app-sider :deep(.ant-menu-submenu-title:hover) {
-  color: rgba(255,255,255,0.85) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 .app-sider :deep(.collapsed-menu-item) {
@@ -341,10 +369,22 @@ function handleLogout() {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+.logo-icon {
+  font-size: 24px;
+  color: #e8ff59;
+}
+
+.logo-text {
+  color: #fafafa;
+  margin: 0 0 0 10px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
 .app-header {
-  background: #fff;
+  background: #141414;
   padding: 0 24px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  border-bottom: 1px solid #2a2a2a;
   z-index: 9;
   height: 64px;
   line-height: 64px;
@@ -355,9 +395,21 @@ function handleLogout() {
   cursor: pointer;
   transition: color 0.3s;
   padding: 4px;
+  color: #a1a1aa;
 }
 
-.trigger:hover { color: #1890ff; }
+.trigger:hover { color: #e8ff59; }
+
+.user-avatar {
+  background-color: rgba(232, 255, 89, 0.2) !important;
+  color: #e8ff59 !important;
+  margin-right: 8px;
+}
+
+.user-caret {
+  margin-left: 4px;
+  color: #71717a;
+}
 
 .user-info {
   display: flex;
@@ -368,14 +420,14 @@ function handleLogout() {
   transition: background 0.3s;
 }
 
-.user-info:hover { background: #f5f5f5; }
+.user-info:hover { background: rgba(255, 255, 255, 0.06); }
 
-.username { font-size: 14px; color: #333; }
+.username { font-size: 14px; color: #f4f4f5; }
 
 .app-content {
   margin: 16px;
   padding: 24px;
-  background: #f0f2f5;
+  background: #0a0a0b;
   min-height: calc(100vh - 64px - 32px);
   border-radius: 8px;
 }

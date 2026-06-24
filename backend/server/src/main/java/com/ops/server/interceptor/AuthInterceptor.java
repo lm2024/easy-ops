@@ -104,42 +104,11 @@ public class AuthInterceptor implements HandlerInterceptor {
      * SEC-003 修复: User token 校验并提取 userId/username/role 到请求属性
      */
     private boolean validateUserToken(HttpServletRequest request, HttpServletResponse response, String token) throws java.io.IOException {
-        TokenData data = userTokenCache.get(token);
+        TokenData data = resolveUserTokenData(token);
         if (data == null) {
-            // Token not in cache, verify against database (SEC-003)
-            String userIdStr = userMapper.getUserIdByToken(token);
-            if (userIdStr == null) {
-                sendUnauthorized(response);
-                return false;
-            }
-            try {
-                Long userId = Long.parseLong(userIdStr);
-                String username = userMapper.getUsernameById(userId);
-                // Load user full info for role
-                com.ops.common.model.UserModel user = userMapper.findById(userId);
-                if (user != null) {
-                    data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole());
-                    data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
-                    userTokenCache.put(token, data);
-                }
-            } catch (NumberFormatException e) {
-                sendUnauthorized(response);
-                return false;
-            }
-            if (data == null) {
-                sendUnauthorized(response);
-                return false;
-            }
-        }
-        // Check expiry
-        long now = System.currentTimeMillis();
-        if (now > data.expireTime) {
-            userTokenCache.remove(token);
             sendUnauthorized(response);
             return false;
         }
-        // Refresh expiry
-        data.expireTime = now + 24 * 60 * 60 * 1000;
 
         // 写入请求属性供 Controller 使用 (SEC-003)
         request.setAttribute(ATTR_USER_ID, data.userId);
@@ -147,6 +116,48 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.setAttribute(ATTR_USER_ROLE, data.role);
 
         return true;
+    }
+
+    /**
+     * 根据用户 token 解析登录态，供 WebSocket 等场景复用内存缓存。
+     */
+    public UserAuthContext lookupUserAuth(String token) {
+        TokenData data = resolveUserTokenData(token);
+        if (data == null) {
+            return null;
+        }
+        return new UserAuthContext(data.userId, data.username, data.role);
+    }
+
+    private TokenData resolveUserTokenData(String token) {
+        TokenData data = userTokenCache.get(token);
+        if (data != null) {
+            long now = System.currentTimeMillis();
+            if (now > data.expireTime) {
+                userTokenCache.remove(token);
+                return null;
+            }
+            data.expireTime = now + 24 * 60 * 60 * 1000;
+            return data;
+        }
+
+        String userIdStr = userMapper.getUserIdByToken(token);
+        if (userIdStr == null) {
+            return null;
+        }
+        try {
+            Long userId = Long.parseLong(userIdStr);
+            com.ops.common.model.UserModel user = userMapper.findById(userId);
+            if (user != null) {
+                data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole());
+                data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
+                userTokenCache.put(token, data);
+                return data;
+            }
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        return null;
     }
 
     private String extractNodeIdFromRequest(String token) {
@@ -186,6 +197,30 @@ public class AuthInterceptor implements HandlerInterceptor {
             this.userId = userId;
             this.username = username;
             this.role = role;
+        }
+    }
+
+    public static final class UserAuthContext {
+        private final String userId;
+        private final String username;
+        private final String role;
+
+        public UserAuthContext(String userId, String username, String role) {
+            this.userId = userId;
+            this.username = username;
+            this.role = role;
+        }
+
+        public String getUserId() {
+            return userId;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public String getRole() {
+            return role;
         }
     }
 }

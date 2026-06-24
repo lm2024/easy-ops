@@ -15297,3 +15297,25 @@ SELECT CAST(user_id AS CHAR) FROM sys_user WHERE token = ? AND status = 1 LIMIT 
 SELECT CAST(user_id AS CHAR) FROM sys_user WHERE token = ? AND status = 1 LIMIT 1 [42122-224]
 2026-06-22 17:29:10 [http-nio-8081-exec-9] ERROR c.o.s.e.GlobalExceptionHandler - Unexpected exception [NestedServletException]: Handler dispatch failed; nested exception is java.lang.NoClassDefFoundError: org/apache/tomcat/util/buf/C2BConverter
 2026-06-22 17:34:53 [http-nio-8081-exec-10] ERROR c.o.s.e.GlobalExceptionHandler - Unexpected exception [NestedServletException]: Handler dispatch failed; nested exception is java.lang.NoClassDefFoundError: org/apache/tomcat/util/buf/C2BConverter
+2026-06-24 19:53:43 [main] ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Failed to execute CommandLineRunner
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:768)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$2(SpringApplication.java:749)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:183)
+	at java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:357)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:483)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:472)
+	at java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:150)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:173)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:485)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:744)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:315)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1300)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1289)
+	at com.ops.server.ServerApplication.main(ServerApplication.java:15)
+Caused by: java.lang.IllegalStateException: SECURITY VIOLATION: jwt.secret is not configured. Please set the JWT_SECRET environment variable. Example: export JWT_SECRET='your-random-256-bit-key-here'
+	at com.ops.server.config.SecurityConfig.lambda$validateSecurityConfig$0(SecurityConfig.java:30)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:765)
+	... 14 common frames omitted
+2026-06-24 20:04:41 [http-nio-8081-exec-3] ERROR c.o.s.e.GlobalExceptionHandler - Unexpected exception [HttpRequestMethodNotSupportedException]: Request method 'GET' not supported
