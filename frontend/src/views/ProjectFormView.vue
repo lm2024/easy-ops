@@ -8,7 +8,7 @@
     </template>
 
     <!-- 环境模板快速填入 JVM 参数（直接生成 start.sh） -->
-    <a-card size="small" style="margin-bottom: 16px; background: #fafafa" :bordered="true">
+    <a-card size="small" style="margin-bottom: 16px; background: #1a1a1c" :bordered="true">
       <template #title>
         <a-space>
           <thunderbolt-outlined style="color: #faad14" />

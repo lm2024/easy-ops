@@ -2,7 +2,7 @@
   <a-card :bordered="false" style="border-radius: 8px; max-width: 700px">
     <template #title>
       <a-space>
-        <cluster-outlined style="color: #1890ff" />
+        <cluster-outlined style="color: #e8ff59" />
         <span style="font-weight: 600">{{ isEdit ? '编辑节点' : '新增节点' }}</span>
       </a-space>
     </template>

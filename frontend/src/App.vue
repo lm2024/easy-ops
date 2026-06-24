@@ -1,51 +1,57 @@
 <template>
-  <router-view />
+  <a-config-provider :theme="easyOpsTheme">
+    <router-view />
+  </a-config-provider>
 </template>
 
 <script setup lang="ts">
+import { easyOpsTheme } from './theme/easyOps'
 </script>
 
 <style>
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
+  background: #0a0a0b;
+  color: #f4f4f5;
+  font-family: 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* 全局卡片样式美化 */
 .ant-card {
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  border: 1px solid #2a2a2a;
+  box-shadow: none;
 }
 
 .ant-card:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
-/* 表格样式 */
 .ant-table-wrapper {
   border-radius: 8px;
   overflow: hidden;
 }
 
-.ant-table {
-  border-radius: 8px;
-}
-
 .ant-table-thead > tr > th {
-  background: #fafafa !important;
+  background: #1a1a1c !important;
   font-weight: 600;
-  color: #262626;
+  color: #f4f4f5 !important;
+  border-bottom: 1px solid #2a2a2a !important;
 }
 
-/* 按钮圆角 */
+.ant-table-tbody > tr > td {
+  border-bottom: 1px solid #2a2a2a !important;
+}
+
+.ant-table-tbody > tr:hover > td {
+  background: #1f1f23 !important;
+}
+
 .ant-btn {
   border-radius: 6px;
 }
 
-/* 输入框圆角 */
 .ant-input,
 .ant-input-affix-wrapper,
 .ant-select-selector,
@@ -53,24 +59,20 @@ body {
   border-radius: 6px !important;
 }
 
-/* Badge 美化 */
 .ant-badge-status-text {
   font-size: 13px;
 }
 
-/* 描述列表 */
 .ant-descriptions-item-label {
   font-weight: 500;
-  color: #595959;
+  color: #a1a1aa;
 }
 
-/* 消息提示 */
 .ant-message-notice-content {
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.45);
 }
 
-/* 页面过渡 */
 .fade-enter-active,
 .fade-leave-active {
   transition: opacity 0.2s ease;
