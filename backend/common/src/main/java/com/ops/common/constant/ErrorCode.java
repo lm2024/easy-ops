@@ -15,4 +15,7 @@ public class ErrorCode {
     public static final int PATH_NOT_ALLOWED = 1007;
     public static final int PROCESS_NOT_RUNNING = 1008;
     public static final int ALARM_SEND_FAIL = 1009;
+    public static final int KB_LOCK_CONFLICT = 1010;
+    public static final int KB_CATEGORY_NOT_EMPTY = 1011;
+    public static final int KB_VERSION_CONFLICT = 1012;
 }

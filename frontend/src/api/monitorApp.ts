@@ -1,0 +1,68 @@
+import request from '../utils/request'
+import type {
+  Result, AppMonitorOverview, AppMonitorNodeInfo,
+  MonitorSnapshotModel, ProjectHealthProbeModel, AIDiagnosisRecordModel
+} from '../types'
+
+/** 项目应用监控总览 */
+export function getAppOverview(projectId: number) {
+  return request.get<any, Result<AppMonitorOverview>>('/monitor/app/overview', {
+    params: { projectId }
+  })
+}
+
+/** 单节点详细指标 */
+export function getAppNodeDetail(projectId: number, nodeId: number) {
+  return request.get<any, Result<AppMonitorNodeInfo>>('/monitor/app/node', {
+    params: { projectId, nodeId }
+  })
+}
+
+/** 指标历史曲线 */
+export function getAppHistory(
+  projectId: number,
+  nodeId?: number,
+  startTime?: number,
+  endTime?: number,
+  limit = 500
+) {
+  return request.get<any, Result<MonitorSnapshotModel[]>>('/monitor/app/history', {
+    params: { projectId, nodeId, startTime, endTime, limit }
+  })
+}
+
+/** 7 天稳定性评分 */
+export function getAppStability(projectId: number, nodeId?: number) {
+  return request.get<any, Result<{ projectId: number; nodeId?: number; stabilityScore: number; periodDays: number }>>(
+    '/monitor/app/stability',
+    { params: { projectId, nodeId } }
+  )
+}
+
+/** 获取探针配置 */
+export function getHealthProbe(projectId: number) {
+  return request.get<any, Result<ProjectHealthProbeModel>>('/monitor/health-probe', {
+    params: { projectId }
+  })
+}
+
+/** 保存探针配置 */
+export function saveHealthProbe(probe: ProjectHealthProbeModel) {
+  return request.post<any, Result<ProjectHealthProbeModel>>('/monitor/health-probe', probe)
+}
+
+/** 触发 AI 诊断 */
+export function triggerDiagnose(params: {
+  projectId: number
+  nodeId?: number
+  triggerType?: string
+  question?: string
+  logPath?: string
+}) {
+  return request.post<any, Result<{ diagnosisId: number; status: string }>>('/ai/diagnose', params)
+}
+
+/** 获取诊断报告 */
+export function getDiagnosis(id: number) {
+  return request.get<any, Result<AIDiagnosisRecordModel>>(`/ai/diagnose/${id}`)
+}

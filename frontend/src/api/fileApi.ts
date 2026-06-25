@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import type { Result } from '../types'
 
 /** 获取日志文件内容 */
 export function getLogFile(nodeId: string, logPath: string, offset = 0, lines = 100) {

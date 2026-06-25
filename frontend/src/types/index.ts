@@ -146,3 +146,270 @@ export interface SysConfigModel {
   createTime?: string
   updateTime?: string
 }
+
+/** 项目配置文件定义 */
+export interface ProjectConfigFileModel {
+  id?: number
+  projectId: number
+  fileName: string
+  relativePath: string
+  isPrimary?: number
+  remark?: string
+  createTime?: number
+  updateTime?: number
+}
+
+/** 节点配置快照 */
+export interface NodeConfigSnapshotModel {
+  id?: number
+  projectId: number
+  nodeId: number
+  configFileId: number
+  contentHash?: string
+  contentSize?: number
+  syncStatus?: number
+  lastSyncTime?: number
+  updateTime?: number
+  nodeName?: string
+}
+
+/** 配置对比结果 */
+export interface ConfigCompareResult {
+  baseNodeId: number
+  diffs: Array<{
+    nodeId: number
+    nodeName?: string
+    identical: boolean
+    diffLines?: string[]
+  }>
+}
+
+/** 项目日志配置 */
+export interface ProjectLogProfileModel {
+  id?: number
+  projectId: number
+  logDir?: string
+  mainLogFile?: string
+  rollingPattern?: string
+  timestampRegex?: string
+  timestampFormat?: string
+  maxLineLength?: number
+  createTime?: number
+  updateTime?: number
+}
+
+/** 日志文件信息 */
+export interface LogFileInfo {
+  name: string
+  size?: number
+  lastModified?: number
+}
+
+/** 日志查看结果 */
+export interface LogViewResult {
+  lines: string[]
+  offset: number
+  totalLines?: number
+  fileName?: string
+}
+
+/** 日志聚合条目 */
+export interface LogAggregateEntry {
+  nodeId: number
+  nodeName?: string
+  timestamp?: string
+  line: string
+}
+
+/** 日志搜索结果 */
+export interface LogSearchResult {
+  matches: Array<{
+    nodeId: number
+    nodeName?: string
+    fileName?: string
+    lineNumber?: number
+    line: string
+    context?: string[]
+  }>
+  total?: number
+}
+
+/** 应用监控节点信息 */
+export interface AppMonitorNodeInfo {
+  nodeId: number
+  nodeName?: string
+  healthStatus: 'UP' | 'DOWN' | 'DEGRADED' | string
+  processStatus?: string
+  cpuPercent?: number
+  memoryMb?: number
+  heapUsedMb?: number
+  heapMaxMb?: number
+  hostCpuPercent?: number
+  hostMemoryPercent?: number
+  diskUsagePercent?: number
+  responseMs?: number
+  collectTime?: number
+  lastError?: string
+}
+
+/** 应用监控总览 */
+export interface AppMonitorOverview {
+  projectId: number
+  projectName: string
+  summary: {
+    totalNodes: number
+    upCount: number
+    downCount: number
+    degradedCount: number
+    avgResponseMs: number
+    stabilityScore: number
+  }
+  nodes: AppMonitorNodeInfo[]
+}
+
+/** 监控快照历史 */
+export interface MonitorSnapshotModel {
+  id?: number
+  projectId: number
+  nodeId: number
+  healthStatus?: string
+  processStatus?: string
+  cpuPercent?: number
+  memoryMb?: number
+  responseMs?: number
+  collectTime?: number
+}
+
+/** HTTP 健康探针配置 */
+export interface ProjectHealthProbeModel {
+  id?: number
+  projectId: number
+  enabled?: number
+  method?: string
+  url?: string
+  headers?: string
+  body?: string
+  expectedStatus?: number
+  bodyContains?: string
+  timeoutMs?: number
+  createTime?: number
+  updateTime?: number
+}
+
+/** AI 诊断记录 */
+export interface AIDiagnosisRecordModel {
+  id: number
+  projectId: number
+  nodeId?: number
+  triggerType?: string
+  status?: string
+  question?: string
+  logSnippet?: string
+  diagnosis?: string
+  createTime?: number
+}
+
+/** 知识库分类 */
+export interface KbCategoryModel {
+  id: number
+  parentId?: number
+  name: string
+  icon?: string
+  sortOrder?: number
+  projectId?: number
+  children?: KbCategoryModel[]
+  createTime?: number
+  updateTime?: number
+}
+
+/** 知识库文档 */
+export interface KbDocumentModel {
+  id?: number
+  categoryId: number
+  title: string
+  summary?: string
+  content?: string
+  contentSize?: number
+  sourceType?: string
+  sourceId?: number
+  projectId?: number
+  authorId?: number
+  lastEditorId?: number
+  versionNo?: number
+  status?: number
+  viewCount?: number
+  createTime?: number
+  updateTime?: number
+}
+
+/** 知识库评论 */
+export interface KbCommentModel {
+  id?: number
+  documentId?: number
+  parentId?: number
+  userId?: number
+  content: string
+  rating?: number
+  createTime?: number
+  updateTime?: number
+}
+
+/** 知识库图片 */
+export interface KbImageModel {
+  id: number
+  documentId: number
+  fileName?: string
+  mimeType?: string
+  url?: string
+}
+
+/** 自愈策略 */
+export interface SelfHealPolicyModel {
+  id?: number
+  projectId: number
+  enabled?: number
+  maxRetries?: number
+  retryIntervalSec?: number
+  checkIntervalSec?: number
+  circuitBreaker?: number
+  circuitBreakTime?: number
+  notifyEmail?: number
+  notifyPopup?: number
+  autoAiDiagnose?: number
+  projectName?: string
+  createTime?: number
+  updateTime?: number
+}
+
+/** 自愈事件 */
+export interface SelfHealEventModel {
+  id: number
+  projectId: number
+  nodeId?: number
+  nodeName?: string
+  eventType: string
+  retryCount?: number
+  maxRetries?: number
+  detail?: string
+  processPid?: number
+  createTime?: number
+}
+
+/** 站内通知 */
+export interface NotificationRecordModel {
+  id: number
+  type: string
+  level: string
+  title: string
+  content?: string
+  projectId?: number
+  nodeId?: number
+  sourceType?: string
+  sourceId?: number
+  requireAck?: number
+  broadcast?: number
+  createTime?: number
+  expireTime?: number
+  readStatus?: number
+  ackStatus?: number
+}

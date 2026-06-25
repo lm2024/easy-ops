@@ -1,28 +1,27 @@
 package com.ops.server.controller;
 
 import com.ops.common.response.Result;
+import com.ops.server.monitorapp.controller.AppMonitorController;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.*;
-
 /**
- * 进程监控接口 (T-01-39)
+ * 监控接口入口（兼容旧 /monitor/process，应用监控委托 AppMonitorController）
  */
 @RestController
 @RequestMapping("/monitor")
 public class MonitorController {
 
+    @Autowired
+    private AppMonitorController appMonitorController;
+
     /**
-     * GET /api/monitor/process - 进程监控
+     * GET /api/monitor/process - 进程监控（委托单节点详情）
      */
     @GetMapping("/process")
     public Result<?> getProcessMonitor(
             @RequestParam Long projectId,
             @RequestParam Long nodeId) {
-        Map<String, Object> data = new HashMap<>();
-        data.put("status", "RUNNING");
-        data.put("cpu", "15.5");
-        data.put("memory", "512MB");
-        return Result.success(data);
+        return appMonitorController.nodeDetail(projectId, nodeId);
     }
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ProjectConfigFileMapper">
+    <select id="findById" resultType="com.ops.common.model.ProjectConfigFileModel">
+        SELECT * FROM project_config_file WHERE id = #{id}
+    </select>
+    <select id="findByProjectId" resultType="com.ops.common.model.ProjectConfigFileModel">
+        SELECT * FROM project_config_file WHERE project_id = #{projectId} ORDER BY is_primary DESC, id ASC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_config_file (project_id, file_name, relative_path, is_primary, remark, create_time, update_time)
+        VALUES (#{projectId}, #{fileName}, #{relativePath}, #{isPrimary}, #{remark}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE project_config_file
+        SET file_name = #{fileName}, relative_path = #{relativePath}, is_primary = #{isPrimary},
+            remark = #{remark}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM project_config_file WHERE id = #{id}
+    </delete>
+</mapper>

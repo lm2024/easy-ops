@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbDocumentVersionMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_document_version (document_id, version_no, title, content, editor_id, change_note, create_time)
+        VALUES (#{documentId}, #{versionNo}, #{title}, #{content}, #{editorId}, #{changeNote}, #{createTime})
+    </insert>
+    <select id="findByDocumentId" resultType="com.ops.common.model.KbDocumentVersionModel">
+        SELECT * FROM kb_document_version WHERE document_id = #{documentId} ORDER BY version_no DESC
+    </select>
+    <select id="findByDocAndVersion" resultType="com.ops.common.model.KbDocumentVersionModel">
+        SELECT * FROM kb_document_version WHERE document_id = #{documentId} AND version_no = #{versionNo}
+    </select>
+    <delete id="deleteByDocumentId">
+        DELETE FROM kb_document_version WHERE document_id = #{documentId}
+    </delete>
+    <delete id="deleteOldestBeyond">
+        DELETE FROM kb_document_version WHERE document_id = #{documentId} AND id NOT IN (
+            SELECT id FROM kb_document_version WHERE document_id = #{documentId}
+            ORDER BY version_no DESC LIMIT #{keepCount}
+        )
+    </delete>
+</mapper>

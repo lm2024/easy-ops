@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import type { Result } from '../types'
 
 /** 获取 AI 配置 */
 export function getAIConfig() {

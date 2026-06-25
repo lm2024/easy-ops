@@ -1,10 +1,11 @@
 package com.ops.server.controller;
 
-import com.ops.common.enums.FileAction;
 import com.ops.common.enums.FileType;
+import com.ops.common.exception.BusinessException;
 import com.ops.common.model.FileAccessLogModel;
 import com.ops.common.model.NodeModel;
 import com.ops.common.response.Result;
+import com.ops.server.client.AgentClient;
 import com.ops.server.mapper.FileAccessLogMapper;
 import com.ops.server.mapper.NodeMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,11 +33,14 @@ public class FileController {
     @Autowired
     private FileAccessLogMapper fileAccessLogMapper;
 
+    @Autowired
+    private AgentClient agentClient;
+
     @Value("${server.path:./data}")
     private String serverPath;
 
     /**
-     * GET /api/files/log - 日志文件查看
+     * GET /api/files/log - 日志文件查看（代理 Agent）
      */
     @GetMapping("/log")
     public Result<?> viewLog(
@@ -45,30 +49,52 @@ public class FileController {
             @RequestParam(defaultValue = "0") Integer offset,
             @RequestParam(defaultValue = "200") Integer lines) {
 
-        if (!isValidNode(nodeId)) {
+        NodeModel node = nodeMapper.findById(nodeId);
+        if (!isValidNode(node)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
-        String content = readLogFileContent(logPath, offset, lines);
-        return Result.success(content);
+        try {
+            Map<String, String> params = new HashMap<>();
+            params.put("logPath", logPath);
+            params.put("offset", String.valueOf(offset));
+            params.put("lines", String.valueOf(lines));
+            String content = agentClient.extractDataString(agentClient.getForMap(node, "/file/log", params));
+            logFileAccess(nodeId, logPath, "view");
+            return Result.success(content);
+        } catch (BusinessException e) {
+            return Result.error(e.getCode(), e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "读取日志失败: " + e.getMessage());
+        }
     }
 
     /**
-     * GET /api/files/config - 读取YML配置
+     * GET /api/files/config - 读取YML配置（代理 Agent）
      */
     @GetMapping("/config")
     public Result<?> viewConfig(@RequestParam Long nodeId,
                                  @RequestParam(name = "configPath") String configPath) {
-        if (!isValidNode(nodeId)) {
+        NodeModel node = nodeMapper.findById(nodeId);
+        if (!isValidNode(node)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
-        String content = readFileContent(configPath);
-        return Result.success(content);
+        try {
+            Map<String, String> params = new HashMap<>();
+            params.put("configPath", configPath);
+            String content = agentClient.extractDataString(agentClient.getForMap(node, "/file/config", params));
+            logFileAccess(nodeId, configPath, "view");
+            return Result.success(content);
+        } catch (BusinessException e) {
+            return Result.error(e.getCode(), e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "读取配置失败: " + e.getMessage());
+        }
     }
 
     /**
-     * POST /api/files/config - 保存YML配置
+     * POST /api/files/config - 保存YML配置（代理 Agent）
      */
     @PostMapping("/config")
     public Result<?> saveConfig(@RequestBody Map<String, Object> body) {
@@ -83,26 +109,26 @@ public class FileController {
         String configPath = configPathObj.toString();
         String content = contentObj.toString();
 
-        if (!isValidNode(nodeId)) {
+        NodeModel node = nodeMapper.findById(nodeId);
+        if (!isValidNode(node)) {
             return Result.error(1002, "节点不存在或离线");
         }
 
-        // Validate file extension
         if (!configPath.endsWith(".yml") && !configPath.endsWith(".yaml")) {
             return Result.error(1007, "仅支持.yml和.yaml文件");
         }
 
-        // SEC-007: 校验路径在允许目录内
-        Path safePath = getSafePath(configPath);
-        if (safePath == null) {
-            return Result.error(1007, "配置文件路径不在允许目录内");
-        }
-
         try {
-            Files.write(safePath, content.getBytes("UTF-8"));
-            logFileAccess(nodeId, configPath, "view");
+            Map<String, Object> agentBody = new HashMap<>();
+            agentBody.put("configPath", configPath);
+            agentBody.put("content", content);
+            agentBody.put("backup", true);
+            agentClient.postForMap(node, "/file/config", agentBody);
+            logFileAccess(nodeId, configPath, "edit");
             return Result.success();
-        } catch (IOException e) {
+        } catch (BusinessException e) {
+            return Result.error(e.getCode(), e.getMessage());
+        } catch (Exception e) {
             return Result.error(500, "保存失败: " + e.getMessage());
         }
     }
@@ -119,7 +145,6 @@ public class FileController {
             try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {
                 for (Map<String, String> item : items) {
                     String path = item.get("path");
-                    // SEC-007: 路径遍历防护
                     Path batchSafe = getSafePath(path);
                     if (batchSafe == null) continue;
                     String fileName = new File(path).getName();
@@ -141,33 +166,8 @@ public class FileController {
                 .body(body);
     }
 
-    private boolean isValidNode(Long nodeId) {
-        NodeModel node = nodeMapper.findById(nodeId);
-        return node != null && node.getStatus() == 1;
-    }
-
-    private String readLogFileContent(String path, int offset, int lines) {
-        if (path.isEmpty()) return "";
-        try {
-            List<String> allLines = Files.readAllLines(Paths.get(path));
-            int start = Math.min(offset, allLines.size());
-            int end = Math.min(start + lines, allLines.size());
-            StringBuilder sb = new StringBuilder();
-            for (int i = start; i < end; i++) {
-                sb.append(allLines.get(i)).append("\n");
-            }
-            return sb.toString().trim();
-        } catch (IOException e) {
-            return "";
-        }
-    }
-
-    private String readFileContent(String path) {
-        try {
-            return new String(Files.readAllBytes(Paths.get(path)), "UTF-8");
-        } catch (IOException e) {
-            return "";
-        }
+    private boolean isValidNode(NodeModel node) {
+        return node != null && node.getStatus() != null && node.getStatus() == 1;
     }
 
     private void logFileAccess(Long nodeId, String path, String action) {
@@ -181,15 +181,14 @@ public class FileController {
     }
 
     /**
-     * SEC-007: 路径遍历防护
-     * 确保目标路径在允许的目录 (serverPath) 内
+     * SEC-007: 路径遍历防护（批量下载仍使用 Server 本地路径）
      */
     private Path getSafePath(String requestedPath) {
         try {
             Path base = Paths.get(serverPath).toAbsolutePath().normalize();
             Path target = Paths.get(requestedPath).toAbsolutePath().normalize();
             if (!target.startsWith(base)) {
-                return null; // 路径遍历尝试
+                return null;
             }
             return target;
         } catch (Exception e) {

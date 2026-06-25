@@ -1,6 +1,7 @@
 package com.ops.server.config;
 
 import com.ops.server.interceptor.WebSocketAuthInterceptor;
+import com.ops.server.selfheal.websocket.NotificationHandler;
 import com.ops.server.websocket.ConsoleHandler;
 import com.ops.server.websocket.DeployHandler;
 import com.ops.server.websocket.MonitorHandler;
@@ -31,6 +32,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Autowired
     private MonitorHandler monitorHandler;
 
+    @Autowired
+    private NotificationHandler notificationHandler;
+
     private String[] allowedOrigins;
 
     @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
@@ -49,6 +53,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(monitorHandler, "/ws/monitor")
+                .setAllowedOrigins(allowedOrigins)
+                .addInterceptors(webSocketAuthInterceptor);
+
+        registry.addHandler(notificationHandler, "/ws/notification")
                 .setAllowedOrigins(allowedOrigins)
                 .addInterceptors(webSocketAuthInterceptor);
     }

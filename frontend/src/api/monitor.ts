@@ -1,9 +1,9 @@
 import request from '../utils/request'
-import type { AlarmModel, AlarmConfigModel } from '../types'
+import type { AlarmModel, AlarmConfigModel, Result } from '../types'
 
 /** 获取告警列表 */
 export function getAlarms(projectId?: string, type = '', page = 1, pageSize = 20) {
-  return request.get<any, Result<AlarmModel[]>>(`/alarms`, {
+  return request.get<any, Result<{ list: AlarmModel[]; total: number }>>(`/alarms`, {
     params: { projectId, type, page, pageSize }
   })
 }

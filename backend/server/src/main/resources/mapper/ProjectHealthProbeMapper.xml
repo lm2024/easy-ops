@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ProjectHealthProbeMapper">
+    <select id="findByProjectId" resultType="com.ops.common.model.ProjectHealthProbeModel">
+        SELECT * FROM project_health_probe WHERE project_id = #{projectId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_health_probe (project_id, enabled, method, url, headers, body,
+            expected_status, body_contains, timeout_ms, create_time, update_time)
+        VALUES (#{projectId}, #{enabled}, #{method}, #{url}, #{headers}, #{body},
+            #{expectedStatus}, #{bodyContains}, #{timeoutMs}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE project_health_probe SET enabled = #{enabled}, method = #{method}, url = #{url},
+            headers = #{headers}, body = #{body}, expected_status = #{expectedStatus},
+            body_contains = #{bodyContains}, timeout_ms = #{timeoutMs}, update_time = #{updateTime}
+        WHERE project_id = #{projectId}
+    </update>
+</mapper>

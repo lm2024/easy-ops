@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NotificationRecordMapper">
+
+    <select id="findById" resultType="com.ops.common.model.NotificationRecordModel">
+        SELECT * FROM notification_record WHERE id = #{id}
+    </select>
+
+    <select id="findByUserId" resultType="com.ops.common.model.NotificationRecordModel">
+        SELECT n.*,
+               COALESCE(s.read_status, 0) AS read_status,
+               COALESCE(s.ack_status, 0) AS ack_status
+        FROM notification_record n
+        LEFT JOIN user_notification_state s
+            ON n.id = s.notification_id AND s.user_id = #{userId}
+        WHERE n.expire_time &gt; #{now}
+          AND (n.broadcast = 1 OR s.user_id = #{userId})
+        ORDER BY n.create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+
+    <select id="countByUserId" resultType="long">
+        SELECT COUNT(*)
+        FROM notification_record n
+        LEFT JOIN user_notification_state s
+            ON n.id = s.notification_id AND s.user_id = #{userId}
+        WHERE n.expire_time &gt; #{now}
+          AND (n.broadcast = 1 OR s.user_id = #{userId})
+    </select>
+
+    <select id="findUnackedAlerts" resultType="com.ops.common.model.NotificationRecordModel">
+        SELECT n.*,
+               COALESCE(s.read_status, 0) AS read_status,
+               COALESCE(s.ack_status, 0) AS ack_status
+        FROM notification_record n
+        LEFT JOIN user_notification_state s
+            ON n.id = s.notification_id AND s.user_id = #{userId}
+        WHERE n.type = 'ALERT'
+          AND n.require_ack = 1
+          AND n.expire_time &gt; #{now}
+          AND COALESCE(s.ack_status, 0) = 0
+        ORDER BY n.create_time ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO notification_record (type, level, title, content, project_id, node_id,
+            source_type, source_id, require_ack, broadcast, create_time, expire_time)
+        VALUES (#{type}, #{level}, #{title}, #{content}, #{projectId}, #{nodeId},
+            #{sourceType}, #{sourceId}, #{requireAck}, #{broadcast}, #{createTime}, #{expireTime})
+    </insert>
+
+    <delete id="deleteExpired">
+        DELETE FROM notification_record WHERE expire_time &lt; #{now}
+    </delete>
+</mapper>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbCategoryMapper">
+    <select id="findAll" resultType="com.ops.common.model.KbCategoryModel">
+        SELECT * FROM kb_category
+        <where>
+            <if test="projectId != null">AND (project_id IS NULL OR project_id = #{projectId})</if>
+        </where>
+        ORDER BY sort_order ASC, id ASC
+    </select>
+    <select id="findById" resultType="com.ops.common.model.KbCategoryModel">
+        SELECT * FROM kb_category WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_category (parent_id, name, icon, sort_order, project_id, create_time, update_time)
+        VALUES (#{parentId}, #{name}, #{icon}, #{sortOrder}, #{projectId}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_category SET parent_id = #{parentId}, name = #{name}, icon = #{icon},
+            sort_order = #{sortOrder}, project_id = #{projectId}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM kb_category WHERE id = #{id}
+    </delete>
+    <select id="countDocuments" resultType="int">
+        SELECT COUNT(*) FROM kb_document WHERE category_id = #{categoryId}
+    </select>
+</mapper>

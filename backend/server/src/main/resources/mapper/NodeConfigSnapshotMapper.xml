@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NodeConfigSnapshotMapper">
+    <select id="findByProjectAndFile" resultType="com.ops.common.model.NodeConfigSnapshotModel">
+        SELECT * FROM node_config_snapshot
+        WHERE project_id = #{projectId} AND config_file_id = #{configFileId}
+    </select>
+    <select id="findByNodeAndFile" resultType="com.ops.common.model.NodeConfigSnapshotModel">
+        SELECT * FROM node_config_snapshot
+        WHERE node_id = #{nodeId} AND config_file_id = #{configFileId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO node_config_snapshot (project_id, node_id, config_file_id, content_hash, content_size,
+            sync_status, last_sync_time, update_time)
+        VALUES (#{projectId}, #{nodeId}, #{configFileId}, #{contentHash}, #{contentSize},
+            #{syncStatus}, #{lastSyncTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE node_config_snapshot
+        SET content_hash = #{contentHash}, content_size = #{contentSize}, sync_status = #{syncStatus},
+            last_sync_time = #{lastSyncTime}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+</mapper>

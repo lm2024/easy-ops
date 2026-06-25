@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ProjectLogProfileMapper">
+    <select id="findByProjectId" resultType="com.ops.common.model.ProjectLogProfileModel">
+        SELECT * FROM project_log_profile WHERE project_id = #{projectId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO project_log_profile (project_id, log_dir, main_log_file, rolling_pattern,
+            timestamp_regex, timestamp_format, max_line_length, create_time, update_time)
+        VALUES (#{projectId}, #{logDir}, #{mainLogFile}, #{rollingPattern},
+            #{timestampRegex}, #{timestampFormat}, #{maxLineLength}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE project_log_profile
+        SET log_dir = #{logDir}, main_log_file = #{mainLogFile}, rolling_pattern = #{rollingPattern},
+            timestamp_regex = #{timestampRegex}, timestamp_format = #{timestampFormat},
+            max_line_length = #{maxLineLength}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteByProjectId">
+        DELETE FROM project_log_profile WHERE project_id = #{projectId}
+    </delete>
+</mapper>

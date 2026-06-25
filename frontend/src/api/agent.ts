@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import type { Result } from '../types'
 
 /** 获取节点系统硬件信息（CPU、内存等） */
 export function getNodeSysInfo(nodeId: string) {

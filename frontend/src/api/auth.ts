@@ -1,5 +1,5 @@
 import request from '../utils/request'
-import type { UserModel } from '../types'
+import type { UserModel, Result } from '../types'
 
 /** 用户登录 */
 export function login(username: string, password: string) {
