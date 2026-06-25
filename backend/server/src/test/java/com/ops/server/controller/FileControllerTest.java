@@ -1,11 +1,13 @@
 package com.ops.server.controller;
 
+import com.ops.server.client.AgentClient;
 import com.ops.server.mapper.FileAccessLogMapper;
 import com.ops.server.mapper.NodeMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -21,17 +23,26 @@ class FileControllerTest extends BaseControllerTest {
     @MockBean
     private FileAccessLogMapper fileAccessLogMapper;
 
+    @MockBean
+    private AgentClient agentClient;
+
     @Test
     void viewLog() throws Exception {
         com.ops.common.model.NodeModel node = new com.ops.common.model.NodeModel();
         node.setId(1L);
         node.setStatus(1);
         when(nodeMapper.findById(1L)).thenReturn(node);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("code", 200);
+        resp.put("data", "log content");
+        when(agentClient.getForMap(eq(node), eq("/file/log"), anyMap())).thenReturn(resp);
+        when(agentClient.extractDataString(resp)).thenReturn("log content");
 
         mockMvc.perform(get("/files/log")
                         .param("nodeId", "1")
-                        .param("path", "/var/log/app.log"))
-                .andExpect(status().isOk());
+                        .param("logPath", "/var/log/app.log"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
     }
 
     @Test
@@ -51,11 +62,17 @@ class FileControllerTest extends BaseControllerTest {
         node.setId(1L);
         node.setStatus(1);
         when(nodeMapper.findById(1L)).thenReturn(node);
+        Map<String, Object> resp = new HashMap<>();
+        resp.put("code", 200);
+        resp.put("data", "config content");
+        when(agentClient.getForMap(eq(node), eq("/file/config"), anyMap())).thenReturn(resp);
+        when(agentClient.extractDataString(resp)).thenReturn("config content");
 
         mockMvc.perform(get("/files/config")
                         .param("nodeId", "1")
                         .param("configPath", "/opt/app/application.yml"))
-                .andExpect(status().isOk());
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(200));
     }
 
     @Test

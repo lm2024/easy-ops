@@ -41,8 +41,8 @@
             <span>运维工具</span>
           </template>
           <a-menu-item key="console"><code-outlined /><span>控制台</span></a-menu-item>
-          <a-menu-item key="logs"><file-text-outlined /><span>日志查看</span></a-menu-item>
-          <a-menu-item key="config-editor"><setting-outlined /><span>配置编辑</span></a-menu-item>
+          <a-menu-item key="config-manage"><setting-outlined /><span>配置文件管理</span></a-menu-item>
+          <a-menu-item key="log-manage"><file-text-outlined /><span>日志管理</span></a-menu-item>
         </a-sub-menu>
 
         <!-- 监控告警 -->
@@ -52,8 +52,19 @@
             <span>监控告警</span>
           </template>
           <a-menu-item key="monitor"><dashboard-outlined /><span>仪表盘</span></a-menu-item>
+          <a-menu-item key="app-monitor"><fund-outlined /><span>应用监控</span></a-menu-item>
           <a-menu-item key="alarms"><alert-outlined /><span>告警中心</span></a-menu-item>
           <a-menu-item key="alarm-config"><notification-outlined /><span>告警配置</span></a-menu-item>
+          <a-menu-item key="self-heal"><medicine-box-outlined /><span>自愈策略</span></a-menu-item>
+        </a-sub-menu>
+
+        <!-- 协同知识 -->
+        <a-sub-menu key="sub-knowledge">
+          <template #title>
+            <book-outlined />
+            <span>协同知识</span>
+          </template>
+          <a-menu-item key="knowledge"><book-outlined /><span>知识库</span></a-menu-item>
         </a-sub-menu>
 
         <!-- 系统设置 -->
@@ -95,6 +106,12 @@
             <component :is="item.icon" />
           </a-menu-item>
         </a-tooltip>
+        <a-tooltip placement="right" v-for="item in knowledgeItems" :key="item.key" trigger="hover">
+          <template #title>{{ item.title }}</template>
+          <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
+            <component :is="item.icon" />
+          </a-menu-item>
+        </a-tooltip>
         <a-tooltip placement="right" v-for="item in systemItems" :key="item.key" trigger="hover">
           <template #title>{{ item.title }}</template>
           <a-menu-item :key="item.key" class="collapsed-menu-item" @click="handleCollapsedClick(item.key)">
@@ -119,6 +136,9 @@
             />
           </a-col>
           <a-col>
+            <a-space :size="16">
+              <NotificationBell @unacked-alerts="onUnackedAlerts" />
+              <AlertModal :alerts="unackedAlerts" />
             <a-dropdown>
               <div class="user-info">
                 <a-avatar :size="32" class="user-avatar">
@@ -136,6 +156,7 @@
                 </a-menu>
               </template>
             </a-dropdown>
+            </a-space>
           </a-col>
         </a-row>
       </a-layout-header>
@@ -151,13 +172,17 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
+import NotificationBell from './NotificationBell.vue'
+import AlertModal from './AlertModal.vue'
+import type { NotificationRecordModel } from '../types'
 import {
   MenuUnfoldOutlined, MenuFoldOutlined, DownOutlined,
   UserOutlined, LogoutOutlined, CloudServerOutlined,
   ClusterOutlined, FolderOpenOutlined, TagOutlined, RocketOutlined,
   CodeOutlined, FileTextOutlined, SettingOutlined,
   DashboardOutlined, AlertOutlined, NotificationOutlined,
-  BulbOutlined, TeamOutlined, AuditOutlined
+  BulbOutlined, TeamOutlined, AuditOutlined,
+  FundOutlined, MedicineBoxOutlined, BookOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -168,16 +193,23 @@ const authStore = useAuthStore()
 // 有效菜单 key 集合（不含分组 key sub-core, sub-tools 等）
 const validMenuKeys = new Set([
   'nodes', 'projects', 'versions', 'deploy',
-  'console', 'logs', 'config-editor',
-  'monitor', 'alarms', 'alarm-config',
+  'console', 'config-manage', 'log-manage',
+  'monitor', 'app-monitor', 'alarms', 'alarm-config', 'self-heal',
+  'knowledge',
   'ai-config', 'users', 'operations', 'batch-download'
 ])
+
+const unackedAlerts = ref<NotificationRecordModel[]>([])
+function onUnackedAlerts(alerts: NotificationRecordModel[]) {
+  unackedAlerts.value = alerts
+}
 
 // 路由前缀 -> 菜单 key
 const pathPrefixMap: Record<string, string> = {
   'nodes': 'nodes', 'projects': 'projects', 'versions': 'versions', 'deploy': 'deploy',
-  'console': 'console', 'logs': 'logs', 'config-editor': 'config-editor',
-  'monitor': 'monitor', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
+  'console': 'console', 'config-manage': 'config-manage', 'log-manage': 'log-manage',
+  'monitor': 'monitor', 'app-monitor': 'app-monitor', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
+  'self-heal': 'self-heal', 'knowledge': 'knowledge',
   'ai-config': 'ai-config', 'users': 'users', 'operations': 'operations',
   'batch-download': 'batch-download'
 }
@@ -185,8 +217,10 @@ const pathPrefixMap: Record<string, string> = {
 // 路由前缀 -> 分组 key
 const prefixToSub: Record<string, string> = {
   nodes: 'sub-core', projects: 'sub-core', versions: 'sub-core', deploy: 'sub-core',
-  console: 'sub-tools', logs: 'sub-tools', 'config-editor': 'sub-tools',
-  monitor: 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
+  console: 'sub-tools', 'config-manage': 'sub-tools', 'log-manage': 'sub-tools',
+  monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', alarms: 'sub-monitor',
+  'alarm-config': 'sub-monitor', 'self-heal': 'sub-monitor',
+  knowledge: 'sub-knowledge',
   'ai-config': 'sub-system', users: 'sub-system', operations: 'sub-system'
 }
 
@@ -238,13 +272,18 @@ const coreItems = [
 ]
 const toolsItems = [
   { key: 'console', title: '控制台', icon: CodeOutlined },
-  { key: 'logs', title: '日志查看', icon: FileTextOutlined },
-  { key: 'config-editor', title: '配置编辑', icon: SettingOutlined },
+  { key: 'config-manage', title: '配置文件管理', icon: SettingOutlined },
+  { key: 'log-manage', title: '日志管理', icon: FileTextOutlined },
 ]
 const monitorItems = [
   { key: 'monitor', title: '仪表盘', icon: DashboardOutlined },
+  { key: 'app-monitor', title: '应用监控', icon: FundOutlined },
   { key: 'alarms', title: '告警中心', icon: AlertOutlined },
   { key: 'alarm-config', title: '告警配置', icon: NotificationOutlined },
+  { key: 'self-heal', title: '自愈策略', icon: MedicineBoxOutlined },
+]
+const knowledgeItems = [
+  { key: 'knowledge', title: '知识库', icon: BookOutlined },
 ]
 const systemItems = [
   { key: 'ai-config', title: 'AI 配置', icon: BulbOutlined },

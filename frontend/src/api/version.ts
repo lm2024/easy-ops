@@ -1,9 +1,9 @@
 import request from '../utils/request'
-import type { VersionModel } from '../types'
+import type { VersionModel, Result } from '../types'
 
 /** 获取版本列表 */
 export function getVersions(projectId: string, page = 1, pageSize = 20) {
-  return request.get<any, Result<VersionModel[]>>(`/versions`, {
+  return request.get<any, Result<{ list: VersionModel[]; total: number }>>(`/versions`, {
     params: { projectId, page, pageSize }
   })
 }

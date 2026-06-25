@@ -1,5 +1,5 @@
 import request from '../utils/request'
-import type { OperationLogModel } from '../types'
+import type { OperationLogModel, Result } from '../types'
 
 /** 获取操作日志列表 */
 export function getOperationLogs(module = '', page = 1, pageSize = 20) {

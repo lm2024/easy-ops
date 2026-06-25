@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbDocumentLockMapper">
+    <select id="findByDocumentId" resultType="com.ops.common.model.KbDocumentLockModel">
+        SELECT * FROM kb_document_lock WHERE document_id = #{documentId}
+    </select>
+    <insert id="upsert">
+        MERGE INTO kb_document_lock (document_id, user_id, user_name, lock_time, expire_time)
+        KEY (document_id)
+        VALUES (#{documentId}, #{userId}, #{userName}, #{lockTime}, #{expireTime})
+    </insert>
+    <delete id="deleteByDocumentId">
+        DELETE FROM kb_document_lock WHERE document_id = #{documentId}
+    </delete>
+    <delete id="deleteExpired">
+        DELETE FROM kb_document_lock WHERE expire_time &lt; #{now}
+    </delete>
+</mapper>

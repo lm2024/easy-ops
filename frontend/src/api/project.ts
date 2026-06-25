@@ -1,9 +1,9 @@
 import request from '../utils/request'
-import type { ProjectModel } from '../types'
+import type { ProjectModel, Result } from '../types'
 
 /** 获取项目列表 */
 export function getProjects(page = 1, pageSize = 20, keyword = '') {
-  return request.get<any, Result<ProjectModel[]>>('/projects', {
+  return request.get<any, Result<{ list: ProjectModel[]; total: number }>>('/projects', {
     params: { page, pageSize, keyword }
   })
 }

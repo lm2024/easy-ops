@@ -14,7 +14,10 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 进程异常自动重启 Daemon (Agent侧)
  * (Task 4: 使用真实 PID 检查进程状态)
+ *
+ * @deprecated 已由 Server 侧 SelfHeal 模块统一调度，Agent 仅提供 /process/status 等检测接口
  */
+@Deprecated
 @Component
 public class AutoRestartDaemon implements CommandLineRunner {
 

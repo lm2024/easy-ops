@@ -23,6 +23,8 @@ public class ProjectModel implements Serializable {
     private String jarName;
     private String deployDir;
     private Integer status;
+    /** 监控采集间隔（秒），默认 60 */
+    private Integer monitorIntervalSec;
     private Long createTime;
     private Long updateTime;
 }

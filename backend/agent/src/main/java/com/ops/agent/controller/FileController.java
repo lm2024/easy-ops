@@ -1,5 +1,7 @@
 package com.ops.agent.controller;
 
+import com.ops.agent.file.ConfigFileService;
+import com.ops.agent.file.LogFileService;
 import com.ops.common.response.Result;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -10,6 +12,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -23,6 +26,9 @@ public class FileController {
 
     @Value("${agent.data-path:/app/data}")
     private String dataPath;
+
+    private final ConfigFileService configFileService = new ConfigFileService();
+    private final LogFileService logFileService = new LogFileService();
 
     /**
      * 接收Server下发的Jar包
@@ -106,14 +112,100 @@ public class FileController {
     @GetMapping("/config")
     public Result<String> getConfig(@RequestParam String configPath) {
         try {
-            File configFile = new File(configPath);
-            if (!configFile.exists()) {
-                return Result.error(400, "配置文件不存在: " + configPath);
+            return Result.success(configFileService.readConfig(configPath));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
             }
-            String content = new String(Files.readAllBytes(configFile.toPath()));
-            return Result.success(content);
-        } catch (Exception e) {
             return Result.error(500, "读取配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 写入配置文件，可选备份原文件。
+     */
+    @PostMapping("/config")
+    public Result<Map<String, Object>> writeConfig(@RequestBody Map<String, Object> body) {
+        Object configPathObj = body.get("configPath");
+        Object contentObj = body.get("content");
+        if (configPathObj == null || contentObj == null) {
+            return Result.paramError("configPath 与 content 不能为空");
+        }
+        boolean backup = Boolean.TRUE.equals(body.get("backup"));
+        try {
+            return Result.success(configFileService.writeConfig(
+                    configPathObj.toString(), contentObj.toString(), backup));
+        } catch (IOException e) {
+            return Result.error(500, "写入配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 备份配置文件到 .backup/{timestamp}/ 目录。
+     */
+    @PostMapping("/config/backup")
+    public Result<Map<String, Object>> backupConfig(@RequestBody Map<String, String> body) {
+        String configPath = body.get("configPath");
+        if (configPath == null || configPath.trim().isEmpty()) {
+            return Result.paramError("configPath 不能为空");
+        }
+        try {
+            return Result.success(configFileService.backupConfig(configPath));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
+            }
+            return Result.error(500, "备份配置失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 列出日志目录下的文件。
+     */
+    @GetMapping("/log/list")
+    public Result<List<Map<String, Object>>> listLogs(@RequestParam String logDir) {
+        try {
+            return Result.success(logFileService.listLogs(logDir));
+        } catch (IOException e) {
+            return Result.error(400, e.getMessage());
+        }
+    }
+
+    /**
+     * 读取日志文件尾部 N 行。
+     */
+    @GetMapping("/log/tail")
+    public Result<Map<String, Object>> tailLog(@RequestParam String logPath,
+                                               @RequestParam(defaultValue = "200") int lines) {
+        try {
+            return Result.success(logFileService.tail(logPath, lines));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
+            }
+            return Result.error(500, "读取日志尾部失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 在日志文件中搜索关键词。
+     */
+    @PostMapping("/log/search")
+    public Result<Map<String, Object>> searchLog(@RequestBody Map<String, Object> body) {
+        Object logPathObj = body.get("logPath");
+        Object keywordObj = body.get("keyword");
+        if (logPathObj == null || keywordObj == null) {
+            return Result.paramError("logPath 与 keyword 不能为空");
+        }
+        int maxResults = body.get("maxResults") != null
+                ? Integer.parseInt(body.get("maxResults").toString()) : 100;
+        int contextLines = body.get("contextLines") != null
+                ? Integer.parseInt(body.get("contextLines").toString()) : 2;
+        try {
+            return Result.success(logFileService.search(
+                    logPathObj.toString(), keywordObj.toString(), maxResults, contextLines));
+        } catch (IOException e) {
+            return Result.error(500, "日志搜索失败: " + e.getMessage());
         }
     }
 

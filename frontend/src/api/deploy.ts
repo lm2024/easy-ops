@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import type { Result } from '../types'
 
 /** 获取部署记录列表 */
 export function getDeployRecords(projectId: string, page = 1, pageSize = 20) {

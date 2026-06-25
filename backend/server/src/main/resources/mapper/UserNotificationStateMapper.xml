@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.UserNotificationStateMapper">
+
+    <select id="findByNotificationAndUser" resultType="com.ops.common.model.UserNotificationStateModel">
+        SELECT * FROM user_notification_state
+        WHERE notification_id = #{notificationId} AND user_id = #{userId}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO user_notification_state (notification_id, user_id, read_status, ack_status, ack_time)
+        VALUES (#{notificationId}, #{userId}, #{readStatus}, #{ackStatus}, #{ackTime})
+    </insert>
+
+    <update id="updateRead">
+        UPDATE user_notification_state SET read_status = #{readStatus}
+        WHERE notification_id = #{notificationId} AND user_id = #{userId}
+    </update>
+
+    <update id="updateAck">
+        UPDATE user_notification_state SET ack_status = #{ackStatus}, ack_time = #{ackTime}
+        WHERE notification_id = #{notificationId} AND user_id = #{userId}
+    </update>
+
+    <select id="countUnread" resultType="long">
+        SELECT COUNT(*)
+        FROM notification_record n
+        LEFT JOIN user_notification_state s
+            ON n.id = s.notification_id AND s.user_id = #{userId}
+        WHERE n.expire_time &gt; #{now}
+          AND (n.broadcast = 1 OR s.user_id = #{userId})
+          AND COALESCE(s.read_status, 0) = 0
+    </select>
+
+    <delete id="deleteByNotificationIds">
+        DELETE FROM user_notification_state
+        WHERE notification_id IN
+        <foreach collection="notificationIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+</mapper>

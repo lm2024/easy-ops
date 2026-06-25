@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ConfigDistributeRecordMapper">
+    <select id="findById" resultType="com.ops.common.model.ConfigDistributeRecordModel">
+        SELECT * FROM config_distribute_record WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO config_distribute_record (project_id, config_file_id, operator_id, target_node_ids,
+            distribute_type, content_hash, restart_after, status, result_detail, create_time)
+        VALUES (#{projectId}, #{configFileId}, #{operatorId}, #{targetNodeIds},
+            #{distributeType}, #{contentHash}, #{restartAfter}, #{status}, #{resultDetail}, #{createTime})
+    </insert>
+    <update id="updateStatus">
+        UPDATE config_distribute_record
+        SET status = #{status}, result_detail = #{resultDetail}
+        WHERE id = #{id}
+    </update>
+</mapper>

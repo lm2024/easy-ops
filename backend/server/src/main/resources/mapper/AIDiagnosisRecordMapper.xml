@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.AIDiagnosisRecordMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO ai_diagnosis_record (project_id, node_id, trigger_type, question, context_summary,
+            diagnosis, severity, saved_to_kb, kb_document_id, operator_id, token_used, create_time)
+        VALUES (#{projectId}, #{nodeId}, #{triggerType}, #{question}, #{contextSummary},
+            #{diagnosis}, #{severity}, #{savedToKb}, #{kbDocumentId}, #{operatorId}, #{tokenUsed}, #{createTime})
+    </insert>
+    <select id="findById" resultType="com.ops.common.model.AIDiagnosisRecordModel">
+        SELECT * FROM ai_diagnosis_record WHERE id = #{id}
+    </select>
+    <update id="updateKbLink">
+        UPDATE ai_diagnosis_record SET kb_document_id = #{kbDocumentId}, saved_to_kb = #{savedToKb}
+        WHERE id = #{id}
+    </update>
+</mapper>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbDocumentMapper">
+    <select id="findById" resultType="com.ops.common.model.KbDocumentModel">
+        SELECT * FROM kb_document WHERE id = #{id}
+    </select>
+    <select id="findByCategory" resultType="com.ops.common.model.KbDocumentModel">
+        SELECT * FROM kb_document WHERE category_id = #{categoryId}
+        ORDER BY update_time DESC
+        <if test="pageSize != null">LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}</if>
+    </select>
+    <select id="countByCategory" resultType="long">
+        SELECT COUNT(*) FROM kb_document WHERE category_id = #{categoryId}
+    </select>
+    <select id="search" resultType="com.ops.common.model.KbDocumentModel">
+        SELECT * FROM kb_document
+        WHERE title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')
+        ORDER BY update_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countSearch" resultType="long">
+        SELECT COUNT(*) FROM kb_document
+        WHERE title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_document (category_id, title, summary, content, content_size, source_type,
+            source_id, project_id, author_id, last_editor_id, version_no, status, view_count, create_time, update_time)
+        VALUES (#{categoryId}, #{title}, #{summary}, #{content}, #{contentSize}, #{sourceType},
+            #{sourceId}, #{projectId}, #{authorId}, #{lastEditorId}, #{versionNo}, #{status},
+            #{viewCount}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_document SET category_id = #{categoryId}, title = #{title}, summary = #{summary},
+            content = #{content}, content_size = #{contentSize}, last_editor_id = #{lastEditorId},
+            version_no = #{versionNo}, status = #{status}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <update id="updateCategory">
+        UPDATE kb_document SET category_id = #{categoryId}, update_time = #{updateTime} WHERE id = #{id}
+    </update>
+    <update id="incrementViewCount">
+        UPDATE kb_document SET view_count = view_count + 1 WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM kb_document WHERE id = #{id}
+    </delete>
+</mapper>
