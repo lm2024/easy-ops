@@ -33,10 +33,10 @@ public class StartCommander {
 
         try {
             if (os.contains("linux") || os.contains("darwin") || os.contains("mac")) {
-                // 使用 ps 命令查找进程
+                // 使用 ps 命令查找进程 (Java 8 兼容)
                 Process ps = Runtime.getRuntime().exec(
                     new String[]{"/bin/sh", "-c",
-                        "ps aux | grep '" + process.info().command().orElse("java") + "' | grep -v grep | head -1 | awk '{print $2}'"}
+                        "ps aux | grep 'java' | grep -v grep | head -1 | awk '{print $2}'"}
                 );
                 String pidStr = new BufferedReader(new InputStreamReader(ps.getInputStream())).readLine();
                 ps.waitFor();

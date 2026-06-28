@@ -11,6 +11,8 @@ import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.service.AlarmService;
 import com.ops.server.util.SecurityContext;
 import com.ops.server.service.NodeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -27,6 +29,8 @@ import org.springframework.web.multipart.MultipartFile;
 @RestController
 @RequestMapping("/nodes")
 public class NodeController {
+
+    private static final Logger log = LoggerFactory.getLogger(NodeController.class);
 
     @Autowired
     private NodeService nodeService;
@@ -190,6 +194,7 @@ public class NodeController {
 
     /**
      * GET /api/nodes/heartbeat - 心跳接口 (Agent侧)
+     * 自动注册：如果 token 不存在，自动创建节点记录
      */
     @GetMapping("/heartbeat")
     public Result<?> heartbeat(HttpServletRequest request,
@@ -201,8 +206,26 @@ public class NodeController {
         }
 
         String nodeId = nodeMapper.getNodeIdByToken(token);
+
+        // 自动注册：如果 token 不存在，自动创建节点
         if (nodeId == null) {
-            return Result.authError();
+            String nodeName = request.getHeader("X-Node-Name");
+            if (nodeName == null || nodeName.isEmpty()) {
+                nodeName = "auto-registered-" + System.currentTimeMillis();
+            }
+
+            NodeModel node = new NodeModel();
+            node.setName(nodeName);
+            node.setIp(request.getRemoteAddr());
+            node.setPort(nodePort != null ? nodePort : 2123);
+            node.setToken(token);
+            node.setStatus(NodeStatus.ONLINE.getCode());
+            node.setCreateTime(System.currentTimeMillis());
+            node.setUpdateTime(System.currentTimeMillis());
+            nodeService.insert(node);
+
+            nodeId = String.valueOf(node.getId());
+            log.info("Auto-registered new node: id={}, name={}, token={}", nodeId, nodeName, token);
         }
 
         // 使用 Agent 上报的外部 IP，如果没传则用请求来源 IP

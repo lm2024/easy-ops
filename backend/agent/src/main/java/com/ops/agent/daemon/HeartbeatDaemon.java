@@ -84,11 +84,14 @@ public class HeartbeatDaemon implements CommandLineRunner {
 
             HttpHeaders headers = new HttpHeaders();
             headers.set("X-Token", agentToken);
+            headers.set("X-Node-Name", nodeName);
             headers.set("X-OS-Info", osInfo);
             headers.set("X-Java-Version", javaVersion);
             headers.set("X-CPU-Info", String.valueOf(cpuCores));
             headers.set("X-Mem-Info", String.valueOf(totalMemMb));
             headers.set("X-OS-Arch", osArch);
+
+            System.out.println("[Agent Heartbeat] Sending headers: X-Node-Name=" + nodeName + ", X-Token=" + agentToken);
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);

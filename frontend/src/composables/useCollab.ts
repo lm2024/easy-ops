@@ -21,27 +21,44 @@ export function useCollab(documentIdRef: Ref<number | null>) {
 
     ydoc.value = new Y.Doc()
     const token = localStorage.getItem('token') || ''
-    const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
 
-    // 关键修复：y-websocket 会把 serverUrl + '/' + roomName 拼接成最终 URL
-    // 所以把所有路径参数放在 serverUrl 中，roomName 设为空字符串
-    const serverUrl = `${wsProtocol}//${location.host}/ws/kb-collab/${docId}?token=${encodeURIComponent(token)}`
-    const roomName = ''
+    // 直接连接后端，不使用 Vite 代理
+    const wsUrl = `ws://localhost:8081/api/ws/kb-collab/${docId}?token=${encodeURIComponent(token)}`
 
     console.log('[Collab] ========== 连接开始 ==========')
     console.log('[Collab] DocID:', docId)
-    console.log('[Collab] Server URL:', serverUrl)
-    console.log('[Collab] Room name:', roomName)
+    console.log('[Collab] WebSocket URL:', wsUrl)
     console.log('[Collab] Token:', token ? '存在' : '缺失')
     console.log('[Collab] Token 值:', token)
 
+    // 先用原生 WebSocket 测试连接
+    console.log('[Collab] 测试原生 WebSocket 连接...')
+    const testWs = new WebSocket(wsUrl)
+    testWs.onopen = () => {
+      console.log('[Collab] ✅ 原生 WebSocket 连接成功!')
+      testWs.close()
+    }
+    testWs.onerror = (e) => {
+      console.error('[Collab] ❌ 原生 WebSocket 连接失败:', e)
+    }
+    testWs.onclose = (e) => {
+      console.log('[Collab] 原生 WebSocket 关闭:', e.code, e.reason)
+    }
+
+    // 同时尝试 y-websocket 连接
+    const serverUrl = `ws://localhost:8081/api/ws/kb-collab`
+    const roomName = `${docId}`
+
     try {
       provider.value = new WebsocketProvider(serverUrl, roomName, ydoc.value, {
-        connect: true
+        connect: true,
+        params: {
+          token: token
+        }
       })
 
       console.log('[Collab] WebsocketProvider 创建成功')
-      console.log('[Collab] 预期实际连接:', serverUrl)
+      console.log('[Collab] y-websocket 预期连接:', `${serverUrl}/${roomName}?token=xxx`)
 
       // 添加详细的事件监听
       provider.value.on('status', (event: { status: string }) => {
