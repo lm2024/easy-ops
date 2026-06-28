@@ -14,6 +14,18 @@
             <a-radio-button value="richtext">富文本</a-radio-button>
             <a-radio-button value="markdown">Markdown</a-radio-button>
           </a-radio-group>
+          <a-tooltip :title="collabEnabled ? '关闭协作' : '开启协作'">
+            <a-button size="small" :type="collabEnabled ? 'primary' : 'default'" @click="toggleCollab">
+              <template #icon><team-outlined /></template>
+              {{ collabEnabled ? '协作中' : '协作' }}
+            </a-button>
+          </a-tooltip>
+          <a-tooltip :title="autoSaveEnabled ? '关闭自动保存' : '开启自动保存'">
+            <a-button size="small" :type="autoSaveEnabled ? 'primary' : 'default'" @click="toggleAutoSave">
+              <template #icon><sync-outlined /></template>
+              {{ autoSaveEnabled ? '自动保存' : '手动' }}
+            </a-button>
+          </a-tooltip>
           <a-button type="primary" size="small" :loading="store.saving" @click="handleSave">
             <save-outlined /> 保存
           </a-button>
@@ -133,7 +145,8 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useKnowledgeStore } from '../../stores/knowledgeStore'
 import { useCollab } from '../../composables/useCollab'
 import {
-  SaveOutlined, CommentOutlined, HistoryOutlined
+  SaveOutlined, CommentOutlined, HistoryOutlined,
+  TeamOutlined, SyncOutlined
 } from '@ant-design/icons-vue'
 import TiptapEditor from './TiptapEditor.vue'
 import MarkdownPreview from './MarkdownPreview.vue'
@@ -145,9 +158,39 @@ import type { KbCommentModel } from '../../types'
 
 const store = useKnowledgeStore()
 
-// ====== 协作 ======
-const currentDocId = computed(() => store.currentDocument?.id || null)
+// ====== 协作开关 ======
+const collabEnabled = ref(true) // 默认开启协作
+const currentDocId = computed(() => collabEnabled.value ? (store.currentDocument?.id || null) : null)
 const collab = useCollab(currentDocId)
+
+function toggleCollab() {
+  collabEnabled.value = !collabEnabled.value
+}
+
+// ====== 自动保存 ======
+const autoSaveEnabled = ref(true) // 默认开启自动保存
+const autoSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const AUTO_SAVE_DELAY = 3000 // 3 秒后自动保存
+
+function toggleAutoSave() {
+  autoSaveEnabled.value = !autoSaveEnabled.value
+  if (!autoSaveEnabled.value && autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+    autoSaveTimer.value = null
+  }
+}
+
+/** 触发自动保存（防抖） */
+function triggerAutoSave() {
+  if (!autoSaveEnabled.value) return
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+  }
+  autoSaveTimer.value = setTimeout(() => {
+    handleSave()
+    autoSaveTimer.value = null
+  }, AUTO_SAVE_DELAY)
+}
 
 // ====== 编辑状态 ======
 const editTitle = ref('')
@@ -171,7 +214,24 @@ function onEditorContentUpdate(newContent: string) {
   if (store.currentDocument) {
     store.currentDocument.content = newContent
   }
+  // 同步到 Y.js 文档（用于协作）
+  if (collabEnabled.value) {
+    collab.updateContent(newContent)
+  }
+  // 触发自动保存
+  triggerAutoSave()
 }
+
+// ====== 监听远程协作内容更新 ======
+watch(() => collab.remoteContent.value, (newContent: string) => {
+  if (newContent && newContent !== editContent.value) {
+    console.log('[Collab] 📥 应用远程内容, 长度:', newContent.length)
+    editContent.value = newContent
+    if (store.currentDocument) {
+      store.currentDocument.content = newContent
+    }
+  }
+})
 
 /** 标题变化 */
 function onTitleChange() {
@@ -272,6 +332,10 @@ onMounted(() => {
 
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown)
+  // 清除自动保存定时器
+  if (autoSaveTimer.value) {
+    clearTimeout(autoSaveTimer.value)
+  }
 })
 </script>
 
