@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbTagMapper">
+    <select id="selectAll" resultType="com.ops.common.model.KbTagModel">
+        SELECT * FROM kb_tag ORDER BY id ASC
+    </select>
+    <select id="selectById" resultType="com.ops.common.model.KbTagModel">
+        SELECT * FROM kb_tag WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_tag (name, color, create_time)
+        VALUES (#{name}, #{color}, #{createTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_tag SET name = #{name}, color = #{color}
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        DELETE FROM kb_tag WHERE id = #{id}
+    </delete>
+    <select id="findByDocumentId" resultType="com.ops.common.model.KbTagModel">
+        SELECT t.* FROM kb_tag t
+        INNER JOIN kb_document_tag dt ON t.id = dt.tag_id
+        WHERE dt.document_id = #{documentId}
+        ORDER BY t.id ASC
+    </select>
+    <select id="findByName" resultType="com.ops.common.model.KbTagModel">
+        SELECT * FROM kb_tag WHERE name = #{name}
+    </select>
+</mapper>

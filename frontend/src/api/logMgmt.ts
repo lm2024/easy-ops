@@ -1,7 +1,7 @@
 import request from '../utils/request'
 import type {
   Result, ProjectLogProfileModel, LogFileInfo, LogViewResult,
-  LogAggregateEntry, LogSearchResult
+  LogAggregateResult, LogSearchResult
 } from '../types'
 
 /** 获取项目日志配置 */
@@ -38,7 +38,7 @@ export function aggregateLogs(
   pageSize = 100,
   since?: number
 ) {
-  return request.get<any, Result<{ list: LogAggregateEntry[]; total: number }>>('/logs/aggregate', {
+  return request.get<any, Result<LogAggregateResult>>('/logs/aggregate', {
     params: { projectId, nodeIds, page, pageSize, since }
   })
 }

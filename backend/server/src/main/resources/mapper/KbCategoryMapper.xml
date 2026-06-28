@@ -12,11 +12,11 @@
         SELECT * FROM kb_category WHERE id = #{id}
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO kb_category (parent_id, name, icon, sort_order, project_id, create_time, update_time)
-        VALUES (#{parentId}, #{name}, #{icon}, #{sortOrder}, #{projectId}, #{createTime}, #{updateTime})
+        INSERT INTO kb_category (parent_id, name, icon, color, sort_order, project_id, create_time, update_time)
+        VALUES (#{parentId}, #{name}, #{icon}, #{color}, #{sortOrder}, #{projectId}, #{createTime}, #{updateTime})
     </insert>
     <update id="update">
-        UPDATE kb_category SET parent_id = #{parentId}, name = #{name}, icon = #{icon},
+        UPDATE kb_category SET parent_id = #{parentId}, name = #{name}, icon = #{icon}, color = #{color},
             sort_order = #{sortOrder}, project_id = #{projectId}, update_time = #{updateTime}
         WHERE id = #{id}
     </update>
@@ -26,4 +26,10 @@
     <select id="countDocuments" resultType="int">
         SELECT COUNT(*) FROM kb_document WHERE category_id = #{categoryId}
     </select>
+    <update id="batchUpdateSortOrder">
+        <foreach collection="list" item="item" separator=";">
+            UPDATE kb_category SET sort_order = #{item.sortOrder}, parent_id = #{item.parentId}, update_time = #{item.updateTime}
+            WHERE id = #{item.id}
+        </foreach>
+    </update>
 </mapper>

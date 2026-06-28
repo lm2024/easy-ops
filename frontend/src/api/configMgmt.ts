@@ -1,5 +1,5 @@
 import request from '../utils/request'
-import type { Result, ProjectConfigFileModel, NodeConfigSnapshotModel, ConfigCompareResult } from '../types'
+import type { Result, ProjectConfigFileModel, ConfigSnapshotResult, ConfigCompareResult } from '../types'
 
 /** 查询项目配置文件列表 */
 export function listConfigFiles(projectId: number) {
@@ -25,7 +25,7 @@ export function deleteConfigFile(id: number, projectId: number) {
 
 /** 获取各节点配置快照 */
 export function getConfigSnapshot(projectId: number, configFileId: number) {
-  return request.get<any, Result<NodeConfigSnapshotModel[]>>('/config/snapshot', {
+  return request.get<any, Result<ConfigSnapshotResult>>('/config/snapshot', {
     params: { projectId, configFileId }
   })
 }

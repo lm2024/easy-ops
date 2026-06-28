@@ -159,6 +159,13 @@ export interface ProjectConfigFileModel {
   updateTime?: number
 }
 
+/** 配置快照查询结果 */
+export interface ConfigSnapshotResult {
+  configFile: ProjectConfigFileModel
+  nodes: NodeConfigSnapshotModel[]
+  allSame: boolean
+}
+
 /** 节点配置快照 */
 export interface NodeConfigSnapshotModel {
   id?: number
@@ -207,8 +214,10 @@ export interface LogFileInfo {
 
 /** 日志查看结果 */
 export interface LogViewResult {
-  lines: string[]
+  content: string
+  lines: number
   offset: number
+  logPath: string
   totalLines?: number
   fileName?: string
 }
@@ -218,20 +227,34 @@ export interface LogAggregateEntry {
   nodeId: number
   nodeName?: string
   timestamp?: string
-  line: string
+  content: string
+  lineNo?: number
+  sourceFile?: string
 }
 
-/** 日志搜索结果 */
+export interface LogAggregateResult {
+  lines: LogAggregateEntry[]
+  total: number
+  pageSize: number
+  page: number
+}
+
+/** 日志搜索结果（后端返回 { hits: [...], totalHits, keyword }） */
 export interface LogSearchResult {
-  matches: Array<{
-    nodeId: number
-    nodeName?: string
-    fileName?: string
-    lineNumber?: number
-    line: string
-    context?: string[]
-  }>
-  total?: number
+  hits: LogSearchHit[]
+  totalHits: number
+  keyword?: string
+}
+
+/** 单条搜索命中 */
+export interface LogSearchHit {
+  nodeId: number
+  nodeName?: string
+  file?: string
+  lineNo?: number
+  matchedLine?: string
+  timestamp?: number
+  context?: string[]
 }
 
 /** 应用监控节点信息 */
@@ -315,6 +338,7 @@ export interface KbCategoryModel {
   parentId?: number
   name: string
   icon?: string
+  color?: string
   sortOrder?: number
   projectId?: number
   children?: KbCategoryModel[]
@@ -338,6 +362,7 @@ export interface KbDocumentModel {
   versionNo?: number
   status?: number
   viewCount?: number
+  yjsState?: ArrayBuffer | null
   createTime?: number
   updateTime?: number
 }
@@ -347,8 +372,13 @@ export interface KbCommentModel {
   id?: number
   documentId?: number
   parentId?: number
+  replyToId?: number
   userId?: number
   content: string
+  mentionUserIds?: string
+  likes?: number
+  type?: 'COMMENT' | 'ANNOTATION'
+  annotationId?: string
   rating?: number
   createTime?: number
   updateTime?: number
@@ -392,6 +422,74 @@ export interface SelfHealEventModel {
   maxRetries?: number
   detail?: string
   processPid?: number
+  createTime?: number
+}
+
+/** 知识库标签 */
+export interface KbTagModel {
+  id: number
+  name: string
+  color?: string
+  createTime?: number
+}
+
+/** 文档-标签关联 */
+export interface KbDocumentTagModel {
+  id: number
+  documentId: number
+  tagId: number
+  createTime?: number
+}
+
+/** 文档权限 */
+export interface KbDocumentPermissionModel {
+  id: number
+  targetId: number
+  targetType: 'CATEGORY' | 'DOCUMENT'
+  userId: number
+  permissionLevel: 'VIEW' | 'EDIT' | 'MANAGE'
+  createTime?: number
+}
+
+/** 知识库模板 */
+export interface KbTemplateModel {
+  id: number
+  name: string
+  description?: string
+  content?: string
+  icon?: string
+  category?: string
+  userId?: number
+  isSystem?: number
+  createTime?: number
+  updateTime?: number
+}
+
+/** 知识库收藏 */
+export interface KbFavoriteModel {
+  id: number
+  documentId: number
+  userId: number
+  createTime?: number
+}
+
+/** 知识库最近访问 */
+export interface KbRecentAccessModel {
+  id: number
+  documentId: number
+  userId: number
+  accessType?: 'VIEW' | 'EDIT'
+  createTime?: number
+}
+
+/** 知识库外链分享 */
+export interface KbShareLinkModel {
+  id: number
+  documentId: number
+  token: string
+  password?: string
+  expireTime?: number
+  createUserId?: number
   createTime?: number
 }
 

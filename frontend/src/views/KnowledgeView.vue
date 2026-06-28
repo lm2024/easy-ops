@@ -1,252 +1,256 @@
 <template>
-  <div>
-    <a-card :bordered="false" style="border-radius: 8px">
-      <template #title>
-        <a-space>
-          <book-outlined style="color: #722ed1" />
-          <span style="font-weight: 600">知识库</span>
-        </a-space>
-      </template>
-      <template #extra>
+  <div class="knowledge-view">
+    <!-- 顶部 Header -->
+    <div class="knowledge-header">
+      <div class="header-left">
+        <book-outlined style="color: #722ed1; font-size: 18px" />
+        <span class="header-title">运维文档</span>
+      </div>
+      <div class="header-center">
         <a-input-search
-          v-model:value="searchQ"
+          v-model:value="store.searchQuery"
           placeholder="搜索文档..."
-          style="width: 240px"
-          @search="handleSearch"
+          style="width: 300px"
+          @search="handleGlobalSearch"
         />
-      </template>
+      </div>
+      <div class="header-right">
+        <a-button type="primary" size="small" :disabled="!store.currentCategoryId" @click="handleNewDoc">
+          <plus-outlined /> 新建文档
+        </a-button>
+        <a-button size="small" @click="templateModalVisible = true">
+          <file-text-outlined /> 从模板创建
+        </a-button>
+        <a-button size="small" @click="tagModalVisible = true">
+          <tags-outlined /> 标签管理
+        </a-button>
+      </div>
+    </div>
 
-      <a-row :gutter="16">
-        <a-col :span="5">
-          <a-tree
-            v-if="categoryTree.length"
-            :tree-data="categoryTree"
-            :field-names="{ title: 'name', key: 'id', children: 'children' }"
-            default-expand-all
-            @select="onCategorySelect"
-          />
-          <a-empty v-else description="暂无分类" />
-          <a-button block style="margin-top: 8px" size="small" @click="showAddCategory">
-            <plus-outlined /> 新建分类
-          </a-button>
-        </a-col>
+    <!-- 三栏布局 -->
+    <div class="knowledge-body">
+      <!-- 左侧：笔记本树 -->
+      <div class="panel-left">
+        <NotebookTreePanel />
+      </div>
 
-        <a-col :span="7">
-          <a-list
-            :data-source="documents"
-            :loading="docsLoading"
-            size="small"
-            :locale="{ emptyText: '选择分类查看文档' }"
+      <!-- 中间：文档列表 -->
+      <div class="panel-middle">
+        <DocumentListPanel />
+      </div>
+
+      <!-- 右侧：编辑器 -->
+      <div class="panel-right">
+        <DocumentEditorPanel />
+      </div>
+    </div>
+
+    <!-- 从模板创建弹窗 -->
+    <a-modal
+      v-model:open="templateModalVisible"
+      title="从模板创建文档"
+      @ok="handleCreateFromTemplate"
+      :ok-button-props="{ disabled: !selectedTemplateId }"
+    >
+      <a-list :data-source="store.templates" size="small" :loading="templateLoading">
+        <template #renderItem="{ item }">
+          <a-list-item
+            @click="selectedTemplateId = item.id"
+            :class="{ 'template-selected': selectedTemplateId === item.id }"
+            style="cursor: pointer"
           >
-            <template #renderItem="{ item }">
-              <a-list-item
-                class="doc-item"
-                :class="{ active: currentDoc?.id === item.id }"
-                @click="openDocument(item)"
-              >
-                <a-list-item-meta :title="item.title" :description="item.summary || '无摘要'" />
-              </a-list-item>
-            </template>
-          </a-list>
-          <a-button
-            v-if="selectedCategoryId"
-            block
-            type="dashed"
-            style="margin-top: 8px"
-            @click="createNewDoc"
-          >
-            <plus-outlined /> 新建文档
-          </a-button>
-        </a-col>
+            <a-list-item-meta :title="item.name" :description="item.description" />
+          </a-list-item>
+        </template>
+      </a-list>
+    </a-modal>
 
-        <a-col :span="12">
-          <template v-if="currentDoc">
-            <a-input v-model:value="editTitle" placeholder="文档标题" style="margin-bottom: 8px" />
-            <a-textarea
-              v-model:value="editContent"
-              :rows="14"
-              placeholder="Markdown 内容..."
-              class="md-editor"
-            />
-            <a-space style="margin-top: 8px">
-              <a-button type="primary" :loading="saving" @click="saveDoc">
-                <save-outlined /> 保存
-              </a-button>
-              <a-upload :show-upload-list="false" :before-upload="handleImageUpload">
-                <a-button><picture-outlined /> 上传图片</a-button>
-              </a-upload>
-              <a-button @click="handleExport"><export-outlined /> 导出</a-button>
-            </a-space>
-
-            <a-divider>评论</a-divider>
-            <a-list :data-source="comments" size="small">
-              <template #renderItem="{ item }">
-                <a-list-item>
-                  <a-rate v-if="item.rating" :value="item.rating" disabled style="font-size: 12px" />
-                  <div>{{ item.content }}</div>
-                </a-list-item>
-              </template>
-            </a-list>
-            <a-space style="margin-top: 8px">
-              <a-input v-model:value="newComment" placeholder="添加评论..." style="width: 300px" />
-              <a-button type="primary" size="small" @click="submitComment">发表</a-button>
-            </a-space>
-          </template>
-          <a-empty v-else description="选择或创建文档" />
-        </a-col>
-      </a-row>
-    </a-card>
-
-    <a-modal v-model:open="categoryModalVisible" title="新建分类" @ok="handleAddCategory">
-      <a-input v-model:value="newCategoryName" placeholder="分类名称" />
+    <!-- 标签管理弹窗 -->
+    <a-modal v-model:open="tagModalVisible" title="标签管理" :footer="null">
+      <div style="margin-bottom: 12px">
+        <a-input-search
+          v-model:value="newTagName"
+          placeholder="输入标签名称..."
+          enter-button="创建"
+          @search="handleCreateTag"
+        />
+      </div>
+      <a-list :data-source="store.tags" size="small">
+        <template #renderItem="{ item }">
+          <a-list-item>
+            <a-tag :color="item.color || '#722ed1'">{{ item.name }}</a-tag>
+          </a-list-item>
+        </template>
+      </a-list>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
-import type { KbCategoryModel, KbDocumentModel, KbCommentModel } from '../types'
+import { useKnowledgeStore } from '../stores/knowledgeStore'
+import NotebookTreePanel from '../components/knowledge/NotebookTreePanel.vue'
+import DocumentListPanel from '../components/knowledge/DocumentListPanel.vue'
+import DocumentEditorPanel from '../components/knowledge/DocumentEditorPanel.vue'
 import {
-  listCategories, createCategory, listDocuments, getDocument,
-  createDocument, updateDocument, lockDocument,
-  listComments, addComment, uploadDocumentImage, searchDocuments, exportDocument
-} from '../api/knowledge'
-import {
-  BookOutlined, PlusOutlined, SaveOutlined, PictureOutlined, ExportOutlined
+  BookOutlined, PlusOutlined, FileTextOutlined, TagsOutlined
 } from '@ant-design/icons-vue'
 
-const categoryTree = ref<KbCategoryModel[]>([])
-const selectedCategoryId = ref<number>()
-const documents = ref<KbDocumentModel[]>([])
-const docsLoading = ref(false)
-const currentDoc = ref<KbDocumentModel | null>(null)
-const editTitle = ref('')
-const editContent = ref('')
-const saving = ref(false)
-const comments = ref<KbCommentModel[]>([])
-const newComment = ref('')
-const searchQ = ref('')
-const categoryModalVisible = ref(false)
-const newCategoryName = ref('')
+const store = useKnowledgeStore()
 
-async function loadCategories() {
-  const res = await listCategories()
-  categoryTree.value = res.data || []
+const templateModalVisible = ref(false)
+const selectedTemplateId = ref<number | null>(null)
+const templateLoading = ref(false)
+const tagModalVisible = ref(false)
+const newTagName = ref('')
+
+/** 全局搜索 */
+function handleGlobalSearch(value: string) {
+  if (!value) return
+  // 切换到搜索结果视图（由 DocumentListPanel 处理）
+  store.setCurrentView('category')
+  message.info(`搜索: ${value}`)
 }
 
-function onCategorySelect(keys: (string | number)[]) {
-  if (keys.length) {
-    selectedCategoryId.value = Number(keys[0])
-    loadDocuments()
+/** 新建文档 */
+function handleNewDoc() {
+  if (!store.currentCategoryId) {
+    message.warning('请先选择分类')
+    return
+  }
+  store.setCurrentDocument({
+    categoryId: store.currentCategoryId,
+    title: '新文档',
+    content: '',
+    status: 0
+  })
+}
+
+/** 从模板创建 */
+async function handleCreateFromTemplate() {
+  if (!selectedTemplateId.value || !store.currentCategoryId) {
+    message.warning('请选择模板和分类')
+    return
+  }
+  await store.createFromTemplateAction(selectedTemplateId.value, store.currentCategoryId)
+  templateModalVisible.value = false
+  selectedTemplateId.value = null
+}
+
+/** 创建标签 */
+async function handleCreateTag() {
+  if (!newTagName.value) return
+  await store.addTag({ name: newTagName.value })
+  newTagName.value = ''
+}
+
+/** 打开模板弹窗时加载模板 */
+async function loadTemplates() {
+  templateLoading.value = true
+  await store.fetchTemplates()
+  templateLoading.value = false
+}
+
+// 监听模板弹窗打开
+import { watch } from 'vue'
+watch(templateModalVisible, (val) => {
+  if (val) {
+    selectedTemplateId.value = null
+    loadTemplates()
+  }
+})
+
+/** Ctrl+S 保存快捷键 */
+function onKeyDown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault()
+    store.saveDocument()
   }
 }
 
-async function loadDocuments() {
-  if (!selectedCategoryId.value) return
-  docsLoading.value = true
-  try {
-    const res = await listDocuments(selectedCategoryId.value)
-    documents.value = res.data?.list || []
-  } finally {
-    docsLoading.value = false
-  }
-}
+onMounted(() => {
+  store.fetchCategories()
+  store.fetchTags()
+  store.fetchFavorites()
+  store.fetchRecentAccess()
+  document.addEventListener('keydown', onKeyDown)
+})
 
-async function openDocument(doc: KbDocumentModel) {
-  const res = await getDocument(doc.id!)
-  currentDoc.value = res.data
-  editTitle.value = res.data.title
-  editContent.value = res.data.content || ''
-  try { await lockDocument(doc.id!) } catch { /* lock conflict ok */ }
-  const cRes = await listComments(doc.id!)
-  comments.value = cRes.data || []
-}
-
-function createNewDoc() {
-  currentDoc.value = { categoryId: selectedCategoryId.value!, title: '新文档', content: '' }
-  editTitle.value = '新文档'
-  editContent.value = ''
-  comments.value = []
-}
-
-async function saveDoc() {
-  saving.value = true
-  try {
-    if (currentDoc.value?.id) {
-      await updateDocument(currentDoc.value.id, {
-        title: editTitle.value,
-        content: editContent.value,
-        versionNo: currentDoc.value.versionNo
-      })
-      message.success('已保存')
-    } else if (selectedCategoryId.value) {
-      const res = await createDocument({
-        categoryId: selectedCategoryId.value,
-        title: editTitle.value,
-        content: editContent.value
-      })
-      currentDoc.value = res.data
-      message.success('已创建')
-      loadDocuments()
-    }
-  } finally {
-    saving.value = false
-  }
-}
-
-async function handleImageUpload(file: File) {
-  if (!currentDoc.value?.id) {
-    message.warning('请先保存文档')
-    return false
-  }
-  const res = await uploadDocumentImage(currentDoc.value.id, file)
-  const imgUrl = `/api/kb/images/${res.data.id}`
-  editContent.value += `\n![${file.name}](${imgUrl})\n`
-  message.success('图片已插入')
-  return false
-}
-
-async function handleExport() {
-  if (!currentDoc.value?.id) return
-  await exportDocument(currentDoc.value.id, 'md')
-}
-
-async function submitComment() {
-  if (!currentDoc.value?.id || !newComment.value) return
-  await addComment(currentDoc.value.id, { content: newComment.value })
-  newComment.value = ''
-  const cRes = await listComments(currentDoc.value.id)
-  comments.value = cRes.data || []
-}
-
-async function handleSearch() {
-  if (!searchQ.value) return
-  const res = await searchDocuments(searchQ.value)
-  documents.value = res.data?.list || []
-  selectedCategoryId.value = undefined
-}
-
-function showAddCategory() {
-  newCategoryName.value = ''
-  categoryModalVisible.value = true
-}
-
-async function handleAddCategory() {
-  if (!newCategoryName.value) return
-  await createCategory({ name: newCategoryName.value, parentId: 0, sortOrder: 0 })
-  categoryModalVisible.value = false
-  loadCategories()
-}
-
-onMounted(loadCategories)
+onUnmounted(() => {
+  document.removeEventListener('keydown', onKeyDown)
+})
 </script>
 
 <style scoped>
-.doc-item { cursor: pointer; border-radius: 4px; padding: 4px 8px; }
-.doc-item.active { background: rgba(114, 46, 209, 0.12); }
-.md-editor {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 13px;
+.knowledge-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: #0a0a0b;
+  color: #f4f4f5;
+}
+
+.knowledge-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #141414;
+  border-bottom: 1px solid #2a2a2a;
+  min-height: 48px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f4f4f5;
+}
+
+.header-center {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.knowledge-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.panel-left {
+  width: 260px;
+  border-right: 1px solid #2a2a2a;
+  overflow-y: auto;
+}
+
+.panel-middle {
+  width: 280px;
+  border-right: 1px solid #2a2a2a;
+  overflow-y: auto;
+}
+
+.panel-right {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.template-selected {
+  background: rgba(114, 46, 209, 0.12);
+  border-radius: 4px;
 }
 </style>

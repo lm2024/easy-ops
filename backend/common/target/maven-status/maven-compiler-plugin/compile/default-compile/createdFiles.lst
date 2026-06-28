@@ -1,6 +1,8 @@
 com/ops/common/enums/UserRole.class
+com/ops/common/model/KbTagModel.class
 com/ops/common/model/UserModel.class
 com/ops/common/exception/SystemException.class
+com/ops/common/model/KbDocumentPermissionModel.class
 com/ops/common/enums/NodeStatus.class
 com/ops/common/model/KbCategoryModel.class
 com/ops/common/model/ConfigDistributeRecordModel.class
@@ -28,8 +30,13 @@ com/ops/common/model/KbDocumentModel.class
 com/ops/common/model/KbDocumentLockModel.class
 com/ops/common/model/KbCommentModel.class
 com/ops/common/model/SelfHealPolicyModel.class
+com/ops/common/model/KbShareLinkModel.class
 com/ops/common/response/Result.class
+com/ops/common/model/KbRecentAccessModel.class
 com/ops/common/model/NodeConfigSnapshotModel.class
 com/ops/common/model/ProjectConfigFileModel.class
 com/ops/common/model/NodeModel.class
 com/ops/common/model/SelfHealEventModel.class
+com/ops/common/model/KbTemplateModel.class
+com/ops/common/model/KbDocumentTagModel.class
+com/ops/common/model/KbFavoriteModel.class

@@ -37,9 +37,59 @@ public class KnowledgeCommentService {
         if (comment.getParentId() == null) {
             comment.setParentId(0L);
         }
+        if (comment.getLikes() == null) {
+            comment.setLikes(0);
+        }
+        if (comment.getType() == null) {
+            comment.setType("COMMENT");
+        }
         comment.setCreateTime(now);
         comment.setUpdateTime(now);
         commentMapper.insert(comment);
         return comment;
+    }
+
+    /**
+     * 回复评论（设置 replyToId）
+     */
+    public KbCommentModel addReply(KbCommentModel reply) {
+        long now = System.currentTimeMillis();
+        reply.setUserId(securityContext.getCurrentUserId());
+        if (reply.getParentId() == null) {
+            reply.setParentId(0L);
+        }
+        if (reply.getLikes() == null) {
+            reply.setLikes(0);
+        }
+        if (reply.getType() == null) {
+            reply.setType("COMMENT");
+        }
+        reply.setCreateTime(now);
+        reply.setUpdateTime(now);
+        commentMapper.insert(reply);
+        return reply;
+    }
+
+    /**
+     * 点赞评论（likes +1）
+     */
+    public void likeComment(Long id) {
+        commentMapper.incrementLikes(id);
+    }
+
+    /**
+     * 按类型查询评论/批注
+     * @param documentId 文档 ID
+     * @param type 类型（COMMENT / ANNOTATION）
+     */
+    public List<KbCommentModel> listByDocumentAndType(Long documentId, String type) {
+        return commentMapper.findByDocumentIdAndType(documentId, type);
+    }
+
+    /**
+     * 查询回复列表
+     */
+    public List<KbCommentModel> listReplies(Long replyToId) {
+        return commentMapper.findByReplyToId(replyToId);
     }
 }

@@ -24,6 +24,7 @@ public class KbDocumentModel implements Serializable {
     private Integer versionNo;
     private Integer status;
     private Integer viewCount;
+    private byte[] yjsState;
     private Long createTime;
     private Long updateTime;
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbDocumentTagMapper">
+    <select id="selectAll" resultType="com.ops.common.model.KbDocumentTagModel">
+        SELECT * FROM kb_document_tag ORDER BY id ASC
+    </select>
+    <select id="selectById" resultType="com.ops.common.model.KbDocumentTagModel">
+        SELECT * FROM kb_document_tag WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_document_tag (document_id, tag_id, create_time)
+        VALUES (#{documentId}, #{tagId}, #{createTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_document_tag SET document_id = #{documentId}, tag_id = #{tagId}
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        DELETE FROM kb_document_tag WHERE id = #{id}
+    </delete>
+    <select id="findByDocumentId" resultType="com.ops.common.model.KbDocumentTagModel">
+        SELECT * FROM kb_document_tag WHERE document_id = #{documentId} ORDER BY id ASC
+    </select>
+    <delete id="deleteByDocumentIdAndTagId">
+        DELETE FROM kb_document_tag WHERE document_id = #{documentId} AND tag_id = #{tagId}
+    </delete>
+    <delete id="deleteByDocumentId">
+        DELETE FROM kb_document_tag WHERE document_id = #{documentId}
+    </delete>
+</mapper>

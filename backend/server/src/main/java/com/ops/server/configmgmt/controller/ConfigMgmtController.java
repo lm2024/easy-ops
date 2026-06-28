@@ -7,8 +7,10 @@ import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 配置文件管理接口
@@ -101,8 +103,7 @@ public class ConfigMgmtController {
         Long projectId = toLong(body.get("projectId"));
         Long configFileId = toLong(body.get("configFileId"));
         Long baseNodeId = toLong(body.get("baseNodeId"));
-        @SuppressWarnings("unchecked")
-        List<Long> targetNodeIds = (List<Long>) body.get("targetNodeIds");
+        List<Long> targetNodeIds = toLongList(body.get("targetNodeIds"));
         if (!securityContext.hasProjectPermission(projectId)) {
             return Result.error(403, "无权访问该项目");
         }
@@ -120,8 +121,7 @@ public class ConfigMgmtController {
         }
         Long configFileId = toLong(body.get("configFileId"));
         String content = body.get("content") != null ? body.get("content").toString() : "";
-        @SuppressWarnings("unchecked")
-        List<Long> targetNodeIds = (List<Long>) body.get("targetNodeIds");
+        List<Long> targetNodeIds = toLongList(body.get("targetNodeIds"));
         String distributeType = body.get("distributeType") != null
                 ? body.get("distributeType").toString() : "BATCH";
         boolean restartAfter = Boolean.TRUE.equals(body.get("restartAfter"));
@@ -150,5 +150,18 @@ public class ConfigMgmtController {
             return ((Number) value).longValue();
         }
         return Long.parseLong(value.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Long> toLongList(Object value) {
+        if (value == null) {
+            return new ArrayList<>();
+        }
+        if (value instanceof List) {
+            return (List<Long>) ((List<?>) value).stream()
+                    .map(this::toLong)
+                    .collect(Collectors.toList());
+        }
+        return new ArrayList<>();
     }
 }

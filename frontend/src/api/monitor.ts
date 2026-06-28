@@ -22,3 +22,8 @@ export function saveAlarmConfig(config: AlarmConfigModel) {
 export function sendTestAlarm(configId: number) {
   return request.post<any, Result>('/alarms/send', { configId })
 }
+
+/** 清空所有告警 */
+export function clearAlarms() {
+  return request.delete<any, Result>('/alarms')
+}

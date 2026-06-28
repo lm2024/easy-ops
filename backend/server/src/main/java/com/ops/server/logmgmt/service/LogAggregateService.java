@@ -110,10 +110,16 @@ public class LogAggregateService {
     }
 
     String resolveLogPath(ProjectModel project, ProjectLogProfileModel profile, String fileName) {
-        String base = project.getDeployDir();
         String logDir = profile.getLogDir();
         String file = fileName != null ? fileName : profile.getMainLogFile();
-        String dir = logDir.startsWith("/") ? base + logDir : joinPath(base, logDir);
+        // absolute path in container → use as-is; relative → prepend deployDir
+        String dir;
+        if (logDir.startsWith("/")) {
+            dir = logDir;
+        } else {
+            String base = project.getDeployDir();
+            dir = joinPath(base, logDir);
+        }
         return joinPath(dir, file);
     }
 

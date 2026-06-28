@@ -29,4 +29,7 @@
         INSERT INTO alarm_record (project_id, node_id, type, content, send_result, send_time, create_time)
         VALUES (#{projectId}, #{nodeId}, #{type}, #{content}, #{sendResult}, #{sendTime}, #{createTime})
     </insert>
+    <delete id="deleteAll">
+        DELETE FROM alarm_record
+    </delete>
 </mapper>

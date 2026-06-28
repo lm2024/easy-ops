@@ -58,13 +58,13 @@
           <a-menu-item key="self-heal"><medicine-box-outlined /><span>自愈策略</span></a-menu-item>
         </a-sub-menu>
 
-        <!-- 协同知识 -->
+        <!-- 运维文档 -->
         <a-sub-menu key="sub-knowledge">
           <template #title>
             <book-outlined />
-            <span>协同知识</span>
+            <span>运维文档</span>
           </template>
-          <a-menu-item key="knowledge"><book-outlined /><span>知识库</span></a-menu-item>
+          <a-menu-item key="knowledge"><book-outlined /><span>文档管理</span></a-menu-item>
         </a-sub-menu>
 
         <!-- 系统设置 -->
@@ -283,7 +283,7 @@ const monitorItems = [
   { key: 'self-heal', title: '自愈策略', icon: MedicineBoxOutlined },
 ]
 const knowledgeItems = [
-  { key: 'knowledge', title: '知识库', icon: BookOutlined },
+  { key: 'knowledge', title: '运维文档', icon: BookOutlined },
 ]
 const systemItems = [
   { key: 'ai-config', title: 'AI 配置', icon: BulbOutlined },

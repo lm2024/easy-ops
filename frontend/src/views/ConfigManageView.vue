@@ -100,12 +100,28 @@
               <cloud-upload-outlined /> 分发
             </a-button>
           </a-space>
-          <a-textarea
-            v-model:value="content"
-            :rows="22"
-            placeholder="选择配置文件和节点后读取内容..."
-            class="config-editor"
+          <a-alert
+            v-if="contentError"
+            type="warning"
+            :message="contentError"
+            closable
+            style="margin-bottom: 8px"
+            @close="contentError = ''"
           />
+          <a-space v-if="contentSource.type !== 'none'" style="margin-bottom: 8px">
+            <a-tag v-if="contentSource.type === 'read'" color="blue">
+              已读取节点: {{ contentSource.nodeName || contentSource.nodeId }}
+            </a-tag>
+            <a-tag v-else-if="contentSource.type === 'manual'" color="orange">
+              手动编辑中 — 未从节点 {{ projectNodes.find(n => n.id === editNodeId)?.name || editNodeId }} 读取
+            </a-tag>
+          </a-space>
+          <a-textarea
+              v-model:value="content"
+              :rows="22"
+              placeholder="选择配置文件和节点后点击「读取」获取远程内容，也可直接手动输入内容后分发..."
+              class="config-editor"
+            />
         </a-col>
       </a-row>
     </a-card>
@@ -126,15 +142,71 @@
     </a-modal>
 
     <!-- 分发 -->
-    <a-modal v-model:open="distributeVisible" title="分发配置" @ok="handleDistribute">
-      <a-form layout="vertical">
-        <a-form-item label="目标节点">
-          <a-checkbox-group v-model:value="distributeNodeIds" :options="nodeOptions" />
-        </a-form-item>
-        <a-form-item>
-          <a-checkbox v-model:checked="restartAfter">分发后重启进程</a-checkbox>
-        </a-form-item>
-      </a-form>
+    <a-modal
+      v-model:open="distributeVisible"
+      :title="distributeResult ? '分发结果' : '分发配置'"
+      :ok-text="distributeResult ? '关闭' : '开始分发'"
+      :cancel-text="distributeResult ? undefined : '取消'"
+      :cancel-button-props="distributeResult ? { style: { display: 'none' } } : {}"
+      @ok="distributeResult ? distributeVisible = false : handleDistribute()"
+      @cancel="distributeResult = null"
+    >
+      <template v-if="!distributeResult">
+        <a-alert
+          v-if="contentSource.type === 'manual'"
+          type="warning"
+          message="当前内容为手动编辑，未从目标节点读取。建议先点击「读取」获取节点当前配置后再修改。"
+          style="margin-bottom: 12px"
+        />
+        <a-form layout="vertical">
+          <a-form-item label="内容来源">
+            <a-tag v-if="contentSource.type === 'read'" color="blue">已读取: {{ contentSource.nodeName }}</a-tag>
+            <a-tag v-else-if="contentSource.type === 'manual'" color="orange">手动编辑</a-tag>
+            <span v-else style="color: #999">无</span>
+            <a-tag v-if="editNodeId && projectNodes.find(n => n.id === editNodeId)?.name !== contentSource.nodeName" style="margin-left: 4px">
+              编辑节点: {{ projectNodes.find(n => n.id === editNodeId)?.name }}
+            </a-tag>
+          </a-form-item>
+          <a-form-item label="目标节点">
+            <a-checkbox-group v-model:value="distributeNodeIds" :options="nodeOptions" />
+          </a-form-item>
+          <a-form-item>
+            <a-checkbox v-model:checked="restartAfter">分发后重启进程</a-checkbox>
+          </a-form-item>
+        </a-form>
+      </template>
+      <template v-else>
+        <a-alert
+          :type="distributeResult.status === 1 ? 'success' : distributeResult.status === 3 ? 'error' : 'warning'"
+          :message="distributeResult.status === 1 ? '全部分发成功' : distributeResult.status === 3 ? '全部分发失败' : '部分分发成功'"
+          style="margin-bottom: 12px"
+        />
+        <a-table
+          :columns="resultColumns"
+          :data-source="distributeResult.results"
+          row-key="nodeId"
+          size="small"
+          :pagination="false"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'nodeId'">
+              {{ projectNodes.find(n => Number(n.id) === record.nodeId)?.name || record.nodeId }}
+            </template>
+            <template v-if="column.key === 'result'">
+              <a-tag :color="record.success ? 'green' : 'red'">
+                {{ record.success ? '成功' : '失败' }}
+              </a-tag>
+            </template>
+            <template v-if="column.key === 'restart'">
+              <template v-if="record.restarted">
+                <a-tag v-if="record.restartSuccess" color="green">已重启</a-tag>
+                <a-tag v-else color="red">重启失败</a-tag>
+              </template>
+              <span v-else style="color: #999">—</span>
+            </template>
+          </template>
+        </a-table>
+      </template>
     </a-modal>
 
     <!-- 对比结果 -->
@@ -150,9 +222,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import type { ProjectModel, NodeModel, ProjectConfigFileModel, NodeConfigSnapshotModel } from '../types'
+import type { ProjectModel, NodeModel, ProjectConfigFileModel, NodeConfigSnapshotModel, ConfigSnapshotResult } from '../types'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
 import {
@@ -172,6 +244,8 @@ const configFiles = ref<ProjectConfigFileModel[]>([])
 const selectedFileId = ref<number>()
 const snapshots = ref<NodeConfigSnapshotModel[]>([])
 const content = ref('')
+const contentError = ref('')
+const contentSource = ref<{ type: 'read' | 'manual' | 'none'; nodeId?: number; nodeName?: string }>({ type: 'none' })
 const editNodeId = ref<number>()
 const filesLoading = ref(false)
 const snapshotLoading = ref(false)
@@ -185,6 +259,7 @@ const diffVisible = ref(false)
 const diffResults = ref<Array<{ nodeId: number; nodeName?: string; identical: boolean; diffLines?: string[] }>>([])
 const distributeNodeIds = ref<number[]>([])
 const restartAfter = ref(false)
+const distributeResult = ref<{ status: number; results: Array<{ nodeId: number; success: boolean; error?: string }> } | null>(null)
 const newFile = ref({ fileName: '', relativePath: '', remark: '' })
 
 const fileColumns = [
@@ -199,12 +274,18 @@ const snapshotColumns = [
   { title: '状态', key: 'syncStatus', width: 80 },
   { title: '操作', key: 'action', width: 60 }
 ]
+const resultColumns = [
+  { title: '节点', dataIndex: 'nodeId', key: 'nodeId' },
+  { title: '分发', key: 'result', width: 100 },
+  { title: '重启', key: 'restart', width: 100 },
+  { title: '详情', dataIndex: 'error', key: 'error', ellipsis: true }
+]
 
 const projectNodes = computed(() => {
   if (!projectId.value) return []
   const proj = projects.value.find(p => Number(p.id) === projectId.value)
   if (!proj?.nodeIds) return []
-  const ids = proj.nodeIds.split(',').map(s => s.trim())
+  const ids = proj.nodeIds.split(',').map(s => Number(s.trim()))
   return allNodes.value.filter(n => ids.includes(n.id))
 })
 
@@ -237,6 +318,8 @@ async function onProjectChange() {
   configFiles.value = []
   snapshots.value = []
   content.value = ''
+  contentError.value = ''
+  contentSource.value = { type: 'none' }
   if (!projectId.value) return
   filesLoading.value = true
   try {
@@ -249,10 +332,12 @@ async function onProjectChange() {
 
 async function selectFile(file: ProjectConfigFileModel) {
   selectedFileId.value = file.id
+  contentError.value = ''
   snapshotLoading.value = true
   try {
     const res = await getConfigSnapshot(projectId.value!, file.id!)
-    snapshots.value = (res.data || []).map(s => ({
+    const data: ConfigSnapshotResult = res.data
+    snapshots.value = (data.nodes || []).map((s: NodeConfigSnapshotModel) => ({
       ...s,
       nodeName: projectNodes.value.find(n => Number(n.id) === s.nodeId)?.name
     }))
@@ -269,9 +354,17 @@ async function loadNodeContent(nodeId: number) {
 async function loadContent() {
   if (!projectId.value || !editNodeId.value || !selectedFileId.value) return
   contentLoading.value = true
+  contentError.value = ''
   try {
     const res = await getConfigContent(projectId.value, editNodeId.value, selectedFileId.value)
     content.value = res.data || ''
+    const node = projectNodes.value.find(n => n.id === editNodeId.value)
+    contentSource.value = { type: 'read', nodeId: editNodeId.value, nodeName: node?.name }
+  } catch (e: any) {
+    const msg = e?.response?.data?.message || e?.message || '读取失败'
+    contentError.value = msg + '。你可以直接在下方编辑区手动输入配置内容后分发。'
+    const node = projectNodes.value.find(n => n.id === editNodeId.value)
+    contentSource.value = { type: 'manual', nodeId: editNodeId.value, nodeName: node?.name }
   } finally {
     contentLoading.value = false
   }
@@ -313,6 +406,17 @@ async function handleRefresh() {
   }
 }
 
+// 静默刷新快照（不分发后不弹提示）
+async function refreshSnapshotsSilently() {
+  try {
+    await refreshConfigSnapshots(projectId.value!, selectedFileId.value!)
+    const file = configFiles.value.find(f => f.id === selectedFileId.value)
+    if (file) await selectFile(file)
+  } catch {
+    // 静默忽略
+  }
+}
+
 async function handleCompare() {
   if (snapshots.value.length < 2) return
   comparing.value = true
@@ -333,15 +437,18 @@ async function handleCompare() {
 }
 
 function showDistribute() {
-  distributeNodeIds.value = projectNodes.value.map(n => Number(n.id))
+  // 默认只选当前编辑节点，避免误分发到所有节点
+  distributeNodeIds.value = editNodeId.value ? [editNodeId.value] : []
+  distributeResult.value = null
   distributeVisible.value = true
 }
 
 async function handleDistribute() {
   if (!distributeNodeIds.value.length) return
   distributing.value = true
+  distributeResult.value = null
   try {
-    await distributeConfig({
+    const res = await distributeConfig({
       projectId: projectId.value!,
       configFileId: selectedFileId.value!,
       content: content.value,
@@ -349,12 +456,40 @@ async function handleDistribute() {
       distributeType: distributeNodeIds.value.length > 1 ? 'BATCH' : 'SINGLE',
       restartAfter: restartAfter.value
     })
-    distributeVisible.value = false
-    message.success('分发成功')
+    // 展示分发结果
+    distributeResult.value = res.data
+    // 分发后自动刷新节点快照
+    if (res.data?.status === 1 || res.data?.status === 2) {
+      refreshSnapshotsSilently()
+    }
+    if (res.data?.status === 1) {
+      message.success('全部分发成功')
+    } else if (res.data?.status === 3) {
+      message.error('全部分发失败')
+    } else {
+      message.warning('部分分发成功')
+    }
+  } catch (e: any) {
+    message.error(e?.response?.data?.message || e?.message || '分发失败')
   } finally {
     distributing.value = false
   }
 }
+
+// 切换编辑节点时清空所有状态
+watch(editNodeId, (newId, oldId) => {
+  if (!newId || newId === oldId) return
+  content.value = ''
+  contentError.value = ''
+  contentSource.value = { type: 'none' }
+})
+
+// 监听手动编辑：用户修改 textarea 内容时，如果之前是从节点读取的，标记为已修改
+watch(content, (newVal, oldVal) => {
+  if (contentSource.value.type === 'read' && newVal !== oldVal && contentSource.value.nodeId) {
+    contentSource.value = { ...contentSource.value, type: 'manual' }
+  }
+})
 
 onMounted(fetchProjects)
 </script>

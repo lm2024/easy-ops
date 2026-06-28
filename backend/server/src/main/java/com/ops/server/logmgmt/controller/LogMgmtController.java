@@ -97,8 +97,7 @@ public class LogMgmtController {
         }
         String keyword = body.get("keyword") != null ? body.get("keyword").toString() : "";
         String scope = body.get("scope") != null ? body.get("scope").toString() : "AGGREGATE";
-        @SuppressWarnings("unchecked")
-        List<Long> nodeIds = (List<Long>) body.get("nodeIds");
+        List<Long> nodeIds = toLongList(body.get("nodeIds"));
         int contextLines = body.get("contextLines") != null
                 ? Integer.parseInt(body.get("contextLines").toString()) : 3;
         int maxResults = body.get("maxResults") != null
@@ -115,5 +114,24 @@ public class LogMgmtController {
             return ((Number) value).longValue();
         }
         return Long.parseLong(value.toString());
+    }
+
+    @SuppressWarnings("unchecked")
+    private List<Long> toLongList(Object value) {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof List) {
+            List<Long> result = new java.util.ArrayList<>();
+            for (Object item : (List<?>) value) {
+                if (item instanceof Number) {
+                    result.add(((Number) item).longValue());
+                } else if (item != null) {
+                    result.add(Long.parseLong(item.toString()));
+                }
+            }
+            return result;
+        }
+        return null;
     }
 }

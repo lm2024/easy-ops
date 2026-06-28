@@ -5,10 +5,21 @@
         SELECT * FROM kb_comment WHERE document_id = #{documentId} ORDER BY create_time ASC
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO kb_comment (document_id, parent_id, user_id, content, rating, create_time, update_time)
-        VALUES (#{documentId}, #{parentId}, #{userId}, #{content}, #{rating}, #{createTime}, #{updateTime})
+        INSERT INTO kb_comment (document_id, parent_id, reply_to_id, user_id, content,
+            mention_user_ids, likes, type, annotation_id, rating, create_time, update_time)
+        VALUES (#{documentId}, #{parentId}, #{replyToId}, #{userId}, #{content},
+            #{mentionUserIds}, #{likes}, #{type}, #{annotationId}, #{rating}, #{createTime}, #{updateTime})
     </insert>
     <delete id="deleteByDocumentId">
         DELETE FROM kb_comment WHERE document_id = #{documentId}
     </delete>
+    <select id="findByDocumentIdAndType" resultType="com.ops.common.model.KbCommentModel">
+        SELECT * FROM kb_comment WHERE document_id = #{documentId} AND type = #{type} ORDER BY create_time ASC
+    </select>
+    <update id="incrementLikes">
+        UPDATE kb_comment SET likes = likes + 1 WHERE id = #{id}
+    </update>
+    <select id="findByReplyToId" resultType="com.ops.common.model.KbCommentModel">
+        SELECT * FROM kb_comment WHERE reply_to_id = #{replyToId} ORDER BY create_time ASC
+    </select>
 </mapper>

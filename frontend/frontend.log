@@ -3,7 +3,51 @@
 > vite
 
 
-  [32m[1mVITE[22m v5.4.21[39m  [2mready in [0m[1m1171[22m[2m[0m ms[22m
+  VITE v5.4.21  ready in 171 ms
 
-  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m3000[22m/[39m
-[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: use --host to expose
+9:57:14 PM [vite] http proxy error: /api/notifications/unread-count
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+9:57:14 PM [vite] http proxy error: /api/notifications/unacked-alerts
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+9:58:14 PM [vite] http proxy error: /api/notifications/unread-count
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+9:58:14 PM [vite] http proxy error: /api/notifications/unacked-alerts
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+10:03:09 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:03:16 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:05:28 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:05:39 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:05:54 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:06:40 PM [vite] hmr update /src/components/knowledge/DocumentEditorPanel.vue
+10:06:48 PM [vite] hmr update /src/components/knowledge/DocumentEditorPanel.vue
+10:06:59 PM [vite] hmr update /src/components/knowledge/TiptapEditor.vue
+10:19:14 PM [vite] http proxy error: /api/notifications/unread-count
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+10:19:14 PM [vite] http proxy error: /api/notifications/unacked-alerts
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+10:27:17 PM [vite] hmr update /src/components/MainLayout.vue
+10:27:56 PM [vite] hmr update /src/views/KnowledgeView.vue
+10:28:06 PM [vite] hmr update /src/components/MainLayout.vue
+8:28:14 AM [vite] http proxy error: /api/notifications/unread-count
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+8:28:14 AM [vite] http proxy error: /api/notifications/unacked-alerts
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+8:35:42 AM [vite] hmr update /src/components/knowledge/DocumentEditorPanel.vue

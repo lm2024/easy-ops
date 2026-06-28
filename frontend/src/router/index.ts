@@ -8,6 +8,11 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/LoginView.vue')
   },
   {
+    path: '/knowledge/share/:token',
+    name: 'KnowledgeShare',
+    component: () => import('../views/knowledge/ShareView.vue')
+  },
+  {
     path: '/',
     component: () => import('../components/MainLayout.vue'),
     redirect: '/nodes',
@@ -51,7 +56,7 @@ const router = createRouter({
 // 路由守卫
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('token')
-  if (to.path !== '/login' && !token) {
+  if (to.path !== '/login' && !to.path.startsWith('/knowledge/share') && !token) {
     next('/login')
   } else {
     next()

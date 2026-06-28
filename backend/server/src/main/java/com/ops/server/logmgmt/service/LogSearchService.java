@@ -187,6 +187,18 @@ public class LogSearchService {
                     hit.put("lineNo", i + 1);
                     hit.put("timestamp", logAggregateService.parseTimestamp(lines[i], profile));
                     hit.put("matchedLine", LogAggregateService.maskSensitive(lines[i]));
+                    // 添加上下文行
+                    if (contextLines > 0) {
+                        List<String> ctx = new ArrayList<>();
+                        for (int j = Math.max(0, i - contextLines); j < i; j++) {
+                            ctx.add(LogAggregateService.maskSensitive(lines[j]));
+                        }
+                        ctx.add(">>> " + LogAggregateService.maskSensitive(lines[i]));
+                        for (int j = i + 1; j < Math.min(lines.length, i + contextLines + 1); j++) {
+                            ctx.add(LogAggregateService.maskSensitive(lines[j]));
+                        }
+                        hit.put("context", ctx);
+                    }
                     hits.add(hit);
                 }
             }

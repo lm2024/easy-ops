@@ -20,6 +20,17 @@
           <a-button @click="$router.push('/alarm-config')">
             <setting-outlined /> 告警配置
           </a-button>
+          <a-popconfirm
+            title="确定要清空所有告警记录吗？"
+            ok-text="确认清空"
+            cancel-text="取消"
+            placement="bottomRight"
+            @confirm="handleClearAll"
+          >
+            <a-button danger>
+              <delete-outlined /> 清空
+            </a-button>
+          </a-popconfirm>
         </a-space>
       </template>
 
@@ -48,13 +59,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
+import { message } from 'ant-design-vue'
 import type { AlarmModel } from '../types'
-import { getAlarms } from '../api/monitor'
+import { getAlarms, clearAlarms } from '../api/monitor'
 import {
   SearchOutlined,
   SettingOutlined,
   EyeOutlined,
-  AlertOutlined
+  AlertOutlined,
+  DeleteOutlined
 } from '@ant-design/icons-vue'
 
 const alarms = ref<AlarmModel[]>([])
@@ -84,6 +97,17 @@ function handleTableChange(pag: any) {
   pagination.value.current = pag.current
   pagination.value.pageSize = pag.pageSize
   fetchAlarms()
+}
+
+async function handleClearAll() {
+  try {
+    await clearAlarms()
+    message.success('已清空所有告警')
+    pagination.value.current = 1
+    await fetchAlarms()
+  } catch {
+    message.error('清空失败')
+  }
 }
 
 onMounted(fetchAlarms)

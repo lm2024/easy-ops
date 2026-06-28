@@ -7,6 +7,8 @@ import com.ops.common.model.KbCommentModel;
 import com.ops.common.model.KbDocumentModel;
 import com.ops.common.model.KbImageModel;
 import com.ops.common.response.Result;
+import com.ops.server.knowledge.service.KbFavoriteService;
+import com.ops.server.knowledge.service.KbRecentAccessService;
 import com.ops.server.knowledge.service.KnowledgeCategoryService;
 import com.ops.server.knowledge.service.KnowledgeCommentService;
 import com.ops.server.knowledge.service.KnowledgeDocumentService;
@@ -24,6 +26,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,6 +44,10 @@ public class KnowledgeController {
     private KnowledgeCommentService commentService;
     @Autowired
     private KnowledgeImageService imageService;
+    @Autowired
+    private KbFavoriteService favoriteService;
+    @Autowired
+    private KbRecentAccessService recentAccessService;
     @Autowired
     private SecurityContext securityContext;
 
@@ -89,6 +96,11 @@ public class KnowledgeController {
             return Result.error(1004, "文档不存在");
         }
         documentService.incrementView(id);
+        // 记录最近访问
+        Long userId = securityContext.getCurrentUserId();
+        if (userId != null) {
+            recentAccessService.recordAccess(id, userId, "VIEW");
+        }
         return Result.success(doc);
     }
 
@@ -207,11 +219,63 @@ public class KnowledgeController {
                 .body(documentService.exportMd(id));
     }
 
-    @GetMapping("/search")
-    public Result<?> search(@RequestParam String q,
-                            @RequestParam(defaultValue = "1") Integer page,
-                            @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(documentService.search(q, page, pageSize));
+    // ====== 新增：收藏接口 ======
+
+    /** 检查是否已收藏 */
+    @GetMapping("/documents/{id}/favorite")
+    public Result<?> checkFavorite(@PathVariable Long id) {
+        Long userId = securityContext.getCurrentUserId();
+        boolean isFavorite = favoriteService.isFavorite(id, userId);
+        return Result.success(isFavorite);
+    }
+
+    /** 收藏文档 */
+    @PostMapping("/documents/{id}/favorite")
+    public Result<?> addFavorite(@PathVariable Long id) {
+        Long userId = securityContext.getCurrentUserId();
+        return Result.success(favoriteService.addFavorite(id, userId));
+    }
+
+    /** 取消收藏 */
+    @DeleteMapping("/documents/{id}/favorite")
+    public Result<?> removeFavorite(@PathVariable Long id) {
+        Long userId = securityContext.getCurrentUserId();
+        favoriteService.removeFavorite(id, userId);
+        return Result.success();
+    }
+
+    // ====== 新增：收藏列表接口 ======
+
+    /** 收藏列表（当前用户所有收藏） */
+    @GetMapping("/favorites")
+    public Result<?> listFavorites() {
+        Long userId = securityContext.getCurrentUserId();
+        return Result.success(favoriteService.listByUser(userId));
+    }
+
+    /** 添加收藏（按 documentId） */
+    @PostMapping("/favorites")
+    public Result<?> addFavoriteByDocId(@RequestBody Map<String, Object> body) {
+        Long documentId = Long.parseLong(body.get("documentId").toString());
+        Long userId = securityContext.getCurrentUserId();
+        return Result.success(favoriteService.addFavorite(documentId, userId));
+    }
+
+    /** 移除收藏（按 documentId） */
+    @DeleteMapping("/favorites/{documentId}")
+    public Result<?> removeFavoriteByDocId(@PathVariable Long documentId) {
+        Long userId = securityContext.getCurrentUserId();
+        favoriteService.removeFavorite(documentId, userId);
+        return Result.success();
+    }
+
+    // ====== 新增：最近访问接口 ======
+
+    /** 最近访问列表 */
+    @GetMapping("/recent")
+    public Result<?> listRecent(@RequestParam(defaultValue = "20") Integer limit) {
+        Long userId = securityContext.getCurrentUserId();
+        return Result.success(recentAccessService.listByUser(userId, limit));
     }
 
     private KbDocumentModel mapDocument(Map<String, Object> body) {

@@ -43,6 +43,14 @@ service.interceptors.response.use(
       window.location.href = '/login'
       return Promise.reject(error)
     }
+    // 400 是业务异常，由调用方自行处理提示（如 displayMessage: false 则静默）
+    if (error.response && error.response.status === 400) {
+      const body = error.response.data
+      const bizMsg = body?.message || error.message
+      // 用更友好的业务消息替换 axios 的原始错误消息
+      error.message = bizMsg
+      return Promise.reject(error)
+    }
     message.error(error.message || '网络错误')
     return Promise.reject(error)
   }

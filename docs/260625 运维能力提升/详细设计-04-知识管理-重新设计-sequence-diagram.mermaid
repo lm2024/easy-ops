@@ -1,0 +1,60 @@
+sequenceDiagram
+    actor UserA as 用户A
+    actor UserB as 用户B
+    participant FE as Vue前端
+    participant YP as Yjs WS Provider
+    participant WS as KbCollabHandler
+    participant SVC as KnowledgeDocumentService
+    participant DB as H2数据库
+
+    UserA->>FE: 打开文档(id=123)
+    FE->>SVC: GET /kb/documents/123
+    SVC->>DB: findById(123)
+    DB-->>SVC: KbDocumentModel (content + yjsState)
+    SVC-->>FE: 返回文档数据
+    FE->>FE: TiptapEditor 加载 content
+
+    FE->>YP: connect(/ws/kb-collab/123?token=xxx)
+    YP->>WS: WebSocket 连接请求
+    WS->>WS: 提取token→校验→获取userId
+    WS->>WS: 加入房间 docId=123
+    WS-->>YP: 连接建立
+    YP-->>FE: sync step 1 (发送本地Yjs Doc状态)
+    WS->>WS: 收到UserA的Yjs Update
+    WS->>DB: 加载该文档持久化的 yjsState
+    WS-->>YP: sync step 2 (发送服务端Yjs状态)
+    YP->>FE: Yjs 合并服务端状态→渲染
+
+    UserB->>FE: 打开文档(id=123)
+    FE->>YP: connect(/ws/kb-collab/123?token=xxx)
+    YP->>WS: WebSocket 连接请求
+    WS->>WS: 加入房间 docId=123
+    WS-->>YP: 连接建立
+    WS->>YP: 转发房间内其他用户状态
+    YP-->>FE: 合并→渲染
+    FE-->>UserB: 显示UserA光标(蓝色)
+
+    UserA->>FE: 编辑第3段
+    FE->>YP: 本地Yjs Doc产生update
+    YP->>WS: 发送Yjs Update(binary)
+    WS->>YP: 转发给房间内UserB
+    YP-->>FE: UserB端Yjs合并→渲染变更
+
+    UserB->>FE: 同时编辑附录
+    FE->>YP: 本地Yjs Doc产生update
+    YP->>WS: 发送Yjs Update(binary)
+    WS->>YP: 转发给房间内UserA
+    WS->>WS: 合并两个Update到服务端Yjs Doc
+
+    UserA->>FE: 关闭文档
+    FE->>YP: disconnect()
+    YP->>WS: WebSocket关闭
+    WS->>SVC: saveYjsState(123, yjsDoc.encodeStateAsUpdate())
+    SVC->>DB: UPDATE kb_document SET yjs_state=? WHERE id=123
+    WS->>YP: 通知UserB: UserA离开
+    YP-->>FE: 更新CollabStatusBar移除UserA头像
+
+    UserB->>FE: 保存文档(Ctrl+S)
+    FE->>SVC: PUT /kb/documents/123 (content=MD, versionNo=12)
+    SVC->>DB: 更新文档content和versionNo
+    SVC->>DB: 保存新版本到kb_document_version
