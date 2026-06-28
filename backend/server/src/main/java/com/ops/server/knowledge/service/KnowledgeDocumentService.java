@@ -26,7 +26,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 /**
- * 知识库文档服务：CRUD、锁、版本、导出
+ * 知识库文档服务：CRUD、锁、版本、导出、Yjs 状态存取
  */
 @Service
 @Transactional(rollbackFor = Exception.class)
@@ -97,7 +97,10 @@ public class KnowledgeDocumentService {
         if (expectedVersion != null && !expectedVersion.equals(existing.getVersionNo())) {
             throw new BusinessException(ErrorCode.KB_VERSION_CONFLICT, "版本冲突，请刷新后重试");
         }
-        assertLockHolder(id);
+        // CRDT 模式下如果 yjsState 存在则跳过强制锁校验
+        if (existing.getYjsState() == null || existing.getYjsState().length == 0) {
+            assertLockHolder(id);
+        }
         Long userId = securityContext.getCurrentUserId();
         doc.setId(id);
         if (doc.getCategoryId() == null) {
@@ -242,6 +245,37 @@ public class KnowledgeDocumentService {
         };
     }
 
+    // ====== 新增：Yjs 状态存取 ======
+
+    /**
+     * 保存 Yjs 状态到 kb_document.yjs_state
+     */
+    public void saveYjsState(Long id, byte[] yjsState) {
+        documentMapper.updateYjsState(id, yjsState);
+    }
+
+    /**
+     * 加载 Yjs 状态
+     */
+    public byte[] loadYjsState(Long id) {
+        return documentMapper.selectYjsState(id);
+    }
+
+    /**
+     * 从 Yjs 导出的 Markdown 更新文档 content
+     */
+    public KbDocumentModel updateContentFromYjs(Long id, String content) {
+        KbDocumentModel existing = documentMapper.findById(id);
+        if (existing == null) {
+            throw new BusinessException(1004, "文档不存在");
+        }
+        int contentSize = content != null ? content.length() : 0;
+        documentMapper.updateContentFromYjs(id, content, contentSize, System.currentTimeMillis());
+        return documentMapper.findById(id);
+    }
+
+    // ====== 内部方法 ======
+
     private void saveVersion(KbDocumentModel doc, Long editorId, String changeNote) {
         KbDocumentVersionModel ver = new KbDocumentVersionModel();
         ver.setDocumentId(doc.getId());
@@ -269,5 +303,36 @@ public class KnowledgeDocumentService {
         }
         String plain = content.replaceAll("[#*`>\\[\\]]", "").trim();
         return plain.length() > 200 ? plain.substring(0, 200) : plain;
+    }
+
+    // ====== Yjs 协作相关方法 ======
+
+    /**
+     * 获取文档内容（用于 Yjs 协作同步）
+     */
+    public String getDocumentContent(Long docId) {
+        KbDocumentModel doc = documentMapper.findById(docId);
+        return doc != null ? doc.getContent() : "";
+    }
+
+    /**
+     * 保存文档内容（用于 Yjs 协作同步）
+     */
+    public void saveDocumentContent(Long docId, String content) {
+        KbDocumentModel doc = documentMapper.findById(docId);
+        if (doc == null) {
+            throw new BusinessException(1004, "文档不存在");
+        }
+        
+        long now = System.currentTimeMillis();
+        doc.setContent(content);
+        doc.setContentSize(content != null ? content.length() : 0);
+        doc.setUpdateTime(now);
+        
+        // 创建新版本
+        Long userId = securityContext.getCurrentUserId();
+        saveVersion(doc, userId != null ? userId : 1L, "协作编辑自动保存");
+        
+        documentMapper.update(doc);
     }
 }

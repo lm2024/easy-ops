@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbShareLinkMapper">
+    <select id="selectAll" resultType="com.ops.common.model.KbShareLinkModel">
+        SELECT * FROM kb_share_link ORDER BY create_time DESC
+    </select>
+    <select id="selectById" resultType="com.ops.common.model.KbShareLinkModel">
+        SELECT * FROM kb_share_link WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_share_link (document_id, token, password, expire_time, create_user_id, create_time)
+        VALUES (#{documentId}, #{token}, #{password}, #{expireTime}, #{createUserId}, #{createTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_share_link SET password = #{password}, expire_time = #{expireTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        DELETE FROM kb_share_link WHERE id = #{id}
+    </delete>
+    <select id="findByToken" resultType="com.ops.common.model.KbShareLinkModel">
+        SELECT * FROM kb_share_link WHERE token = #{token}
+    </select>
+    <select id="findByDocumentId" resultType="com.ops.common.model.KbShareLinkModel">
+        SELECT * FROM kb_share_link WHERE document_id = #{documentId} ORDER BY create_time DESC
+    </select>
+    <delete id="deleteByDocumentId">
+        DELETE FROM kb_share_link WHERE document_id = #{documentId}
+    </delete>
+</mapper>

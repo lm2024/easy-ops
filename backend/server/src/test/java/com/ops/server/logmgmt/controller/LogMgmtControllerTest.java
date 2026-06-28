@@ -35,8 +35,7 @@ class LogMgmtControllerTest extends com.ops.server.controller.BaseControllerTest
 
     @Test
     void listFiles() throws Exception {
-        Map<String, Object> files = new HashMap<>();
-        files.put("files", Collections.singletonList("app.log"));
+        java.util.List<Map<String, Object>> files = Collections.emptyList();
         when(logMgmtService.listLogFiles(1L, 10L)).thenReturn(files);
 
         mockMvc.perform(get("/logs/files")

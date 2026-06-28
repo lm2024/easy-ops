@@ -12,6 +12,7 @@ fi
 
 echo "启动后端服务 (端口 8081)..."
 cd "$SCRIPT_DIR/server"
+export JWT_SECRET="${JWT_SECRET:-easy-ops-jwt-secret-key-2024-secure-random}"
 JAVA_HOME="$HOME/.jdk8/Contents/Home" nohup "$HOME/.jdk8/Contents/Home/bin/java" \
   -jar "$JAR" \
   > "$SCRIPT_DIR/server/backend.log" 2>&1 &

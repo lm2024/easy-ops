@@ -4,6 +4,7 @@ import com.ops.server.interceptor.WebSocketAuthInterceptor;
 import com.ops.server.selfheal.websocket.NotificationHandler;
 import com.ops.server.websocket.ConsoleHandler;
 import com.ops.server.websocket.DeployHandler;
+import com.ops.server.websocket.KbCollabHandler;
 import com.ops.server.websocket.MonitorHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -35,6 +36,9 @@ public class WebSocketConfig implements WebSocketConfigurer {
     @Autowired
     private NotificationHandler notificationHandler;
 
+    @Autowired
+    private KbCollabHandler kbCollabHandler;
+
     private String[] allowedOrigins;
 
     @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
@@ -57,6 +61,10 @@ public class WebSocketConfig implements WebSocketConfigurer {
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(notificationHandler, "/ws/notification")
+                .setAllowedOrigins(allowedOrigins)
+                .addInterceptors(webSocketAuthInterceptor);
+
+        registry.addHandler(kbCollabHandler, "/ws/kb-collab", "/ws/kb-collab/**")
                 .setAllowedOrigins(allowedOrigins)
                 .addInterceptors(webSocketAuthInterceptor);
     }

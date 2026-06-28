@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbTemplateMapper">
+    <select id="selectAll" resultType="com.ops.common.model.KbTemplateModel">
+        SELECT * FROM kb_template ORDER BY id ASC
+    </select>
+    <select id="selectById" resultType="com.ops.common.model.KbTemplateModel">
+        SELECT * FROM kb_template WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_template (name, description, content, icon, category, user_id, is_system, create_time, update_time)
+        VALUES (#{name}, #{description}, #{content}, #{icon}, #{category}, #{userId}, #{isSystem}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_template SET name = #{name}, description = #{description}, content = #{content},
+            icon = #{icon}, category = #{category}, is_system = #{isSystem}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        DELETE FROM kb_template WHERE id = #{id}
+    </delete>
+    <select id="findByCategory" resultType="com.ops.common.model.KbTemplateModel">
+        SELECT * FROM kb_template WHERE category = #{category} ORDER BY id ASC
+    </select>
+    <select id="findSystemTemplates" resultType="com.ops.common.model.KbTemplateModel">
+        SELECT * FROM kb_template WHERE is_system = 1 ORDER BY id ASC
+    </select>
+</mapper>

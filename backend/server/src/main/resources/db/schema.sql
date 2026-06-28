@@ -458,3 +458,104 @@ VALUES (4, 0, '常见问题 FAQ', 'question', 4, 1781833996000, 1781833996000);
 MERGE INTO kb_category (id, parent_id, name, icon, sort_order, create_time, update_time)
 KEY (id)
 VALUES (5, 0, '开发交接', 'code', 5, 1781833996000, 1781833996000);
+
+-- ========== 知识管理重新设计 2026-06-27 ==========
+
+-- ALTER 旧表新增字段
+ALTER TABLE kb_category ADD COLUMN IF NOT EXISTS color VARCHAR(20) DEFAULT '';
+ALTER TABLE kb_document ADD COLUMN IF NOT EXISTS yjs_state BLOB DEFAULT NULL;
+ALTER TABLE kb_comment ADD COLUMN IF NOT EXISTS reply_to_id BIGINT DEFAULT 0;
+ALTER TABLE kb_comment ADD COLUMN IF NOT EXISTS mention_user_ids VARCHAR(500) DEFAULT '';
+ALTER TABLE kb_comment ADD COLUMN IF NOT EXISTS likes INT DEFAULT 0;
+ALTER TABLE kb_comment ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'COMMENT';
+ALTER TABLE kb_comment ADD COLUMN IF NOT EXISTS annotation_id VARCHAR(50) DEFAULT '';
+
+-- CREATE 新表
+CREATE TABLE IF NOT EXISTS kb_tag (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    color VARCHAR(20) DEFAULT '#722ED1',
+    create_time BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS kb_document_tag (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL,
+    tag_id BIGINT NOT NULL,
+    create_time BIGINT,
+    UNIQUE INDEX uk_doc_tag (document_id, tag_id),
+    INDEX idx_tag_id (tag_id)
+);
+
+CREATE TABLE IF NOT EXISTS kb_document_permission (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    target_id BIGINT NOT NULL,
+    target_type VARCHAR(20) NOT NULL,
+    user_id BIGINT NOT NULL,
+    permission_level VARCHAR(20) NOT NULL DEFAULT 'VIEW',
+    create_time BIGINT,
+    UNIQUE INDEX uk_perm_target_user (target_id, target_type, user_id),
+    INDEX idx_perm_target (target_id, target_type)
+);
+
+CREATE TABLE IF NOT EXISTS kb_template (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    description VARCHAR(500) DEFAULT '',
+    content LONGTEXT NOT NULL,
+    icon VARCHAR(50) DEFAULT '',
+    category VARCHAR(50) DEFAULT '',
+    user_id BIGINT,
+    is_system TINYINT DEFAULT 0,
+    create_time BIGINT,
+    update_time BIGINT
+);
+
+CREATE TABLE IF NOT EXISTS kb_favorite (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    create_time BIGINT,
+    UNIQUE INDEX uk_fav_doc_user (document_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS kb_recent_access (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    access_type VARCHAR(20) NOT NULL DEFAULT 'VIEW',
+    create_time BIGINT,
+    INDEX idx_recent_user_time (user_id, create_time)
+);
+
+CREATE TABLE IF NOT EXISTS kb_share_link (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    document_id BIGINT NOT NULL,
+    token VARCHAR(64) UNIQUE NOT NULL,
+    password VARCHAR(100) DEFAULT '',
+    expire_time BIGINT DEFAULT 0,
+    create_user_id BIGINT NOT NULL,
+    create_time BIGINT,
+    INDEX idx_share_token (token)
+);
+
+-- 预置模板初始数据
+MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
+KEY (id)
+VALUES (1, '故障报告', '记录故障处理全过程', '# 故障概述\n\n## 影响范围\n\n## 根因分析\n\n## 解决方案\n\n## 验证结果\n\n## 预防措施\n', 'alert', '故障案例', 1, 1, 1781833996000, 1781833996000);
+
+MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
+KEY (id)
+VALUES (2, '部署检查清单', '规范化部署流程', '# 部署检查清单\n\n## 部署前检查\n\n| 项目 | 状态 | 备注 |\n|------|------|------|\n| 服务运行 | ☐ | |\n| 端口可用 | ☐ | |\n| 配置文件 | ☐ | |\n\n## 部署步骤\n\n1. ...\n2. ...\n\n## 部署后验证\n\n| 项目 | 预期 | 实际 |\n|------|------|------|\n| 服务启动 | ✅ | |\n| 日志无异常 | ✅ | |\n\n## 回滚方案\n\n', 'rocket', '部署手册', 1, 1, 1781833996000, 1781833996000);
+
+MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
+KEY (id)
+VALUES (3, '交接文档', '开发→运维交接', '# 交接文档\n\n## 系统概述\n\n## 架构说明\n\n## 关键配置\n\n| 配置项 | 值 | 说明 |\n|--------|----|------|\n| JVM 参数 | -Xmx4g | |\n| 日志路径 | /var/log/app/ | |\n\n## 常见问题\n\n## 联系方式\n\n', 'code', '开发交接', 1, 1, 1781833996000, 1781833996000);
+
+MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
+KEY (id)
+VALUES (4, '配置变更记录', '配置变更审批记录', '# 配置变更记录\n\n## 变更原因\n\n## 变更内容\n\n| 配置项 | 变更前 | 变更后 |\n|--------|--------|--------|\n| Xmx | 2g | 4g |\n\n## 影响评估\n\n## 执行步骤\n\n## 验证结果\n\n', 'setting', '配置说明', 1, 1, 1781833996000, 1781833996000);
+
+MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
+KEY (id)
+VALUES (5, 'FAQ', '运维常见问题汇总', '# FAQ\n\n## Q1: 微服务启动失败？\n\n**A:** 常见原因：\n- OOM\n- 端口占用\n- 配置错误\n\n## Q2: 如何查看日志？\n\n**A:** ...\n\n> 相关文档：[链接]\n\n', 'question', '常见问题', 1, 1, 1781833996000, 1781833996000);

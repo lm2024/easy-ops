@@ -23,7 +23,7 @@ public class KnowledgeCategoryService {
     private KbCategoryMapper categoryMapper;
 
     /**
-     * 获取分类树
+     * 获取分类树（返回节点包含 color 字段）
      */
     public List<Map<String, Object>> getCategoryTree(Long projectId) {
         List<KbCategoryModel> all = categoryMapper.findAll(projectId);
@@ -66,6 +66,18 @@ public class KnowledgeCategoryService {
         categoryMapper.deleteById(id);
     }
 
+    /**
+     * 批量更新排序
+     * @param sortList 包含 id, sortOrder, parentId 的列表
+     */
+    public void updateSortOrder(List<Map<String, Object>> sortList) {
+        long now = System.currentTimeMillis();
+        for (Map<String, Object> item : sortList) {
+            item.put("updateTime", now);
+        }
+        categoryMapper.batchUpdateSortOrder(sortList);
+    }
+
     private List<Map<String, Object>> buildTree(List<KbCategoryModel> all, Long parentId) {
         List<Map<String, Object>> tree = new ArrayList<Map<String, Object>>();
         if (all == null) {
@@ -78,6 +90,7 @@ public class KnowledgeCategoryService {
                 node.put("id", cat.getId());
                 node.put("name", cat.getName());
                 node.put("icon", cat.getIcon());
+                node.put("color", cat.getColor());
                 node.put("sortOrder", cat.getSortOrder());
                 node.put("projectId", cat.getProjectId());
                 node.put("children", buildTree(all, cat.getId()));

@@ -152,6 +152,13 @@ public class AgentClient {
      * 从响应中提取 data 字符串
      */
     public String extractDataString(Map<String, Object> response) {
+        if (response == null) {
+            return "";
+        }
+        Object rawData = response.get("data");
+        if (rawData instanceof String) {
+            return (String) rawData;
+        }
         Map<String, Object> data = extractDataMap(response);
         if (data == null) {
             return "";

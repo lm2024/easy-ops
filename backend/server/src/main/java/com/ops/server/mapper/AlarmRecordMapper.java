@@ -12,4 +12,5 @@ public interface AlarmRecordMapper {
                                    @Param("page") Integer page, @Param("pageSize") Integer pageSize);
     Long countByFilters(@Param("projectId") Long projectId, @Param("type") String type);
     int insert(AlarmModel alarm);
+    int deleteAll();
 }

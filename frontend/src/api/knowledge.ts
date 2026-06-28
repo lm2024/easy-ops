@@ -1,5 +1,5 @@
 import request from '../utils/request'
-import type { Result, KbCategoryModel, KbDocumentModel, KbCommentModel, KbImageModel } from '../types'
+import type { Result, KbCategoryModel, KbDocumentModel, KbCommentModel, KbImageModel, KbFavoriteModel, KbRecentAccessModel } from '../types'
 
 /** 获取分类树 */
 export function listCategories(projectId?: number) {
@@ -96,6 +96,28 @@ export function getImageUrl(imageId: number) {
 export function searchDocuments(q: string, page = 1, pageSize = 20) {
   return request.get<any, Result<{ list: KbDocumentModel[]; total: number }>>('/kb/search', {
     params: { q, page, pageSize }
+  })
+}
+
+/** 获取收藏列表 */
+export function listFavorites() {
+  return request.get<any, Result<KbFavoriteModel[]>>('/kb/favorites')
+}
+
+/** 添加收藏 */
+export function addFavorite(documentId: number) {
+  return request.post<any, Result<KbFavoriteModel>>('/kb/favorites', { documentId })
+}
+
+/** 移除收藏 */
+export function removeFavorite(documentId: number) {
+  return request.delete<any, Result<void>>(`/kb/favorites/${documentId}`)
+}
+
+/** 获取最近访问列表 */
+export function listRecentAccess(limit = 20) {
+  return request.get<any, Result<KbRecentAccessModel[]>>('/kb/recent', {
+    params: { limit }
   })
 }
 

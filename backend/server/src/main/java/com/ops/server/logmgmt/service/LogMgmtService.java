@@ -41,7 +41,23 @@ public class LogMgmtService {
     private LogSearchService logSearchService;
 
     public ProjectLogProfileModel getProfile(Long projectId) {
-        return logProfileMapper.findByProjectId(projectId);
+        ProjectLogProfileModel profile = logProfileMapper.findByProjectId(projectId);
+        if (profile == null) {
+            // 自动创建默认日志配置
+            profile = new ProjectLogProfileModel();
+            profile.setProjectId(projectId);
+            profile.setLogDir("/app/data/logs");
+            profile.setMainLogFile("agent.log");
+            profile.setRollingPattern("");
+            profile.setTimestampRegex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}");
+            profile.setTimestampFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            profile.setMaxLineLength(4096);
+            long now = System.currentTimeMillis();
+            profile.setCreateTime(now);
+            profile.setUpdateTime(now);
+            logProfileMapper.insert(profile);
+        }
+        return profile;
     }
 
     public ProjectLogProfileModel saveProfile(ProjectLogProfileModel profile) {
@@ -64,11 +80,10 @@ public class LogMgmtService {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> listLogFiles(Long projectId, Long nodeId) {
+    public List<Map<String, Object>> listLogFiles(Long projectId, Long nodeId) {
         ProjectLogProfileModel profile = requireProfile(projectId);
-        ProjectModel project = requireProject(projectId);
         NodeModel node = requireOnlineNode(nodeId);
-        String logDir = logAggregateService.resolveLogPath(project, profile, "").replaceAll("/$", "");
+        String logDir = profile.getLogDir().replaceAll("/$", "");
 
         Map<String, String> params = new HashMap<>();
         params.put("logDir", logDir);
@@ -76,12 +91,15 @@ public class LogMgmtService {
             params.put("pattern", profile.getRollingPattern());
         }
         try {
-            return agentClient.extractDataMap(agentClient.getForMap(node, "/file/log/list", params));
+            Map<String, Object> agentResp = agentClient.getForMap(node, "/file/log/list", params);
+            if (agentResp != null && agentResp.get("data") instanceof List) {
+                return (List<Map<String, Object>>) agentResp.get("data");
+            }
         } catch (Exception e) {
-            Map<String, Object> fallback = new HashMap<>();
-            fallback.put("files", java.util.Collections.singletonList(profile.getMainLogFile()));
-            return fallback;
+            // fall through to empty fallback
         }
+        // fallback: empty list
+        return java.util.Collections.emptyList();
     }
 
     public Map<String, Object> viewLog(Long projectId, Long nodeId, String fileName,
@@ -124,7 +142,19 @@ public class LogMgmtService {
     private ProjectLogProfileModel requireProfile(Long projectId) {
         ProjectLogProfileModel profile = logProfileMapper.findByProjectId(projectId);
         if (profile == null) {
-            throw new BusinessException(ErrorCode.PARAM_ERROR, "项目日志配置不存在，请先配置");
+            // 自动创建默认日志配置
+            profile = new ProjectLogProfileModel();
+            profile.setProjectId(projectId);
+            profile.setLogDir("/app/data/logs");
+            profile.setMainLogFile("agent.log");
+            profile.setRollingPattern("");
+            profile.setTimestampRegex("\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}\\.\\d{3}");
+            profile.setTimestampFormat("yyyy-MM-dd HH:mm:ss.SSS");
+            profile.setMaxLineLength(4096);
+            long now = System.currentTimeMillis();
+            profile.setCreateTime(now);
+            profile.setUpdateTime(now);
+            logProfileMapper.insert(profile);
         }
         return profile;
     }

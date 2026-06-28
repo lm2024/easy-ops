@@ -1,0 +1,147 @@
+classDiagram
+    direction TB
+
+    class KbCategoryModel {
+        +Long id
+        +Long parentId
+        +String name
+        +String icon
+        +String color
+        +Integer sortOrder
+        +Long projectId
+        +Long createTime
+        +Long updateTime
+    }
+
+    class KbDocumentModel {
+        +Long id
+        +Long categoryId
+        +String title
+        +String summary
+        +String content
+        +Integer contentSize
+        +String sourceType
+        +Long sourceId
+        +Long projectId
+        +Long authorId
+        +Long lastEditorId
+        +Integer versionNo
+        +Integer status
+        +Integer viewCount
+        +byte[] yjsState
+        +Long createTime
+        +Long updateTime
+    }
+
+    class KbDocumentVersionModel {
+        +Long id
+        +Long documentId
+        +Integer versionNo
+        +String title
+        +String content
+        +Long editorId
+        +String changeNote
+        +Long createTime
+    }
+
+    class KbCommentModel {
+        +Long id
+        +Long documentId
+        +Long parentId
+        +Long replyToId
+        +Long userId
+        +String content
+        +Integer likes
+        +String type
+        +String annotationId
+        +String mentionUserIds
+        +Integer rating
+        +Long createTime
+        +Long updateTime
+    }
+
+    class KbTagModel {
+        +Long id
+        +String name
+        +String color
+        +Long createTime
+    }
+
+    class KbDocumentTagModel {
+        +Long id
+        +Long documentId
+        +Long tagId
+        +Long createTime
+    }
+
+    class KbDocumentPermissionModel {
+        +Long id
+        +Long targetId
+        +String targetType
+        +Long userId
+        +String roleType
+        +String permissionLevel
+        +Long createTime
+    }
+
+    class KbTemplateModel {
+        +Long id
+        +String name
+        +String description
+        +String content
+        +String icon
+        +String category
+        +Long userId
+        +Integer isSystem
+        +Long createTime
+        +Long updateTime
+    }
+
+    class KbFavoriteModel {
+        +Long id
+        +Long documentId
+        +Long userId
+        +Long createTime
+    }
+
+    class KbRecentAccessModel {
+        +Long id
+        +Long documentId
+        +Long userId
+        +String accessType
+        +Long createTime
+    }
+
+    class KbShareLinkModel {
+        +Long id
+        +Long documentId
+        +String token
+        +String password
+        +Long expireTime
+        +Long createUserId
+        +Long createTime
+    }
+
+    class KbImageModel {
+        +Long id
+        +Long documentId
+        +String fileName
+        +String filePath
+        +Integer fileSize
+        +String mimeType
+        +Long uploaderId
+        +Long createTime
+    }
+
+    KbCategoryModel "1" --> "*" KbCategoryModel : children
+    KbCategoryModel "1" --> "*" KbDocumentModel : contains
+    KbDocumentModel "1" --> "*" KbDocumentVersionModel : versions
+    KbDocumentModel "1" --> "*" KbCommentModel : comments
+    KbDocumentModel "1" --> "*" KbDocumentTagModel : tagRefs
+    KbTagModel "1" --> "*" KbDocumentTagModel : usedIn
+    KbDocumentModel "1" --> "*" KbDocumentPermissionModel : permissions
+    KbDocumentModel "1" --> "*" KbFavoriteModel : favorites
+    KbDocumentModel "1" --> "*" KbRecentAccessModel : recentAccess
+    KbDocumentModel "1" --> "*" KbShareLinkModel : shareLinks
+    KbDocumentModel "1" --> "*" KbImageModel : images
+    KbCommentModel "1" --> "*" KbCommentModel : replies

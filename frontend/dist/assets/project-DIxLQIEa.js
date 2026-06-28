@@ -1,0 +1,1 @@
+import{s as e}from"./request-DkdqLV4w.js";function s(t=1,r=20,o=""){return e.get("/projects",{params:{page:t,pageSize:r,keyword:o}})}function n(t){return e.get(`/projects/${t}`)}function u(t){return e.post("/projects",t)}function a(t,r){return e.put(`/projects/${t}`,r)}function p(t){return e.delete(`/projects/${t}`)}export{n as a,u as c,p as d,s as g,a as u};

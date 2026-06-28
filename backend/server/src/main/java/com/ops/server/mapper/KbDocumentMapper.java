@@ -22,4 +22,14 @@ public interface KbDocumentMapper {
     int updateCategory(@Param("id") Long id, @Param("categoryId") Long categoryId, @Param("updateTime") Long updateTime);
     int incrementViewCount(@Param("id") Long id);
     int deleteById(@Param("id") Long id);
+
+    /** 保存 Yjs 状态到 kb_document.yjs_state */
+    int updateYjsState(@Param("id") Long id, @Param("yjsState") byte[] yjsState);
+
+    /** 加载 Yjs 状态 */
+    byte[] selectYjsState(@Param("id") Long id);
+
+    /** 从 Yjs 导出的 Markdown 更新文档 content */
+    int updateContentFromYjs(@Param("id") Long id, @Param("content") String content,
+                             @Param("contentSize") Integer contentSize, @Param("updateTime") Long updateTime);
 }

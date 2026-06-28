@@ -91,8 +91,15 @@ public class ConfigDistributeService {
                 body.put("backup", true);
                 agentClient.postForMap(node, "/file/config", body);
                 upsertSnapshot(projectId, nodeId, configFileId, content, hash, 1);
+                item.put("restarted", restartAfter);
                 if (restartAfter) {
-                    restartProject(projectId, node);
+                    try {
+                        restartProject(projectId, node);
+                        item.put("restartSuccess", true);
+                    } catch (Exception re) {
+                        item.put("restartSuccess", false);
+                        item.put("restartError", re.getMessage());
+                    }
                 }
                 item.put("success", true);
                 successCount++;
@@ -141,12 +148,8 @@ public class ConfigDistributeService {
     }
 
     private void restartProject(Long projectId, NodeModel node) {
-        try {
-            String url = agentClient.getAgentBase(node) + "/process/" + projectId + "/restart";
-            restTemplate.postForObject(url, null, Map.class);
-        } catch (Exception ignored) {
-            // 重启失败不阻断分发结果
-        }
+        String url = agentClient.getAgentBase(node) + "/process/" + projectId + "/restart";
+        restTemplate.postForObject(url, null, Map.class);
     }
 
     static String resolveConfigPath(ProjectModel project, ProjectConfigFileModel file) {

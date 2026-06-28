@@ -59,6 +59,15 @@ public class AlarmController {
     }
 
     /**
+     * DELETE /api/alarms - 清空所有告警
+     */
+    @DeleteMapping
+    public Result<?> clearAlarms() {
+        int count = alarmRecordMapper.deleteAll();
+        return Result.success("已清空 " + count + " 条告警");
+    }
+
+    /**
      * POST /api/alarms/send - 发送告警
      */
     @PostMapping("/send")

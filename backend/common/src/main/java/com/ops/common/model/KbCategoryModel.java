@@ -14,6 +14,7 @@ public class KbCategoryModel implements Serializable {
     private Long parentId;
     private String name;
     private String icon;
+    private String color;
     private Integer sortOrder;
     private Long projectId;
     private Long createTime;

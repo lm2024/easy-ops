@@ -44,4 +44,15 @@
     <delete id="deleteById">
         DELETE FROM kb_document WHERE id = #{id}
     </delete>
+    <!-- Yjs 状态存取 -->
+    <update id="updateYjsState">
+        UPDATE kb_document SET yjs_state = #{yjsState} WHERE id = #{id}
+    </update>
+    <select id="selectYjsState" resultType="byte[]">
+        SELECT yjs_state FROM kb_document WHERE id = #{id}
+    </select>
+    <update id="updateContentFromYjs">
+        UPDATE kb_document SET content = #{content}, content_size = #{contentSize}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
 </mapper>

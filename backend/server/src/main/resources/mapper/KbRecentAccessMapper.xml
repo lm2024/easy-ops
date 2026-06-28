@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.KbRecentAccessMapper">
+    <select id="selectAll" resultType="com.ops.common.model.KbRecentAccessModel">
+        SELECT * FROM kb_recent_access ORDER BY create_time DESC
+    </select>
+    <select id="selectById" resultType="com.ops.common.model.KbRecentAccessModel">
+        SELECT * FROM kb_recent_access WHERE id = #{id}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO kb_recent_access (document_id, user_id, access_type, create_time)
+        VALUES (#{documentId}, #{userId}, #{accessType}, #{createTime})
+    </insert>
+    <update id="update">
+        UPDATE kb_recent_access SET access_type = #{accessType}
+        WHERE id = #{id}
+    </update>
+    <delete id="delete">
+        DELETE FROM kb_recent_access WHERE id = #{id}
+    </delete>
+    <select id="findByUserId" resultType="com.ops.common.model.KbRecentAccessModel">
+        SELECT * FROM kb_recent_access WHERE user_id = #{userId}
+        ORDER BY create_time DESC
+        <if test="limit != null">LIMIT #{limit}</if>
+    </select>
+    <delete id="deleteByUserIdAndDocumentId">
+        DELETE FROM kb_recent_access WHERE user_id = #{userId} AND document_id = #{documentId}
+    </delete>
+</mapper>

@@ -16,7 +16,7 @@ server:
       pattern: '%h %l %u %t "%r" %s %b'
   path: ./data
   heart-second: 5
-  offline-second: 20
+  offline-second: 90
 
 spring:
   application:
