@@ -1,11 +1,10 @@
 import * as Y from 'yjs'
 import { WebsocketProvider } from 'y-websocket'
 import { ref, onUnmounted, watch } from 'vue'
-import { saveCollabState, getOnlineUsers } from '../api/knowledge-collab'
 import type { Ref } from 'vue'
 
 /**
- * Yjs 协作编辑 composable — 封装 Yjs Doc + y-websocket Provider 的生命周期管理
+ * Yjs 协作编辑 composable — 简化实现：使用 Y.Text 做纯文本协作
  * @param documentIdRef 文档 ID 的响应式引用（当 ID 变化时自动重连）
  */
 export function useCollab(documentIdRef: Ref<number | null>) {
@@ -13,116 +12,64 @@ export function useCollab(documentIdRef: Ref<number | null>) {
   const onlineUsers = ref<number[]>([])
   const ydoc = ref<Y.Doc | null>(null)
   const provider = ref<WebsocketProvider | null>(null)
+  const ytext = ref<Y.Text | null>(null)
+  const remoteContent = ref<string>('')
+  let isLocalUpdate = false
 
   /** 连接 Yjs WebSocket Provider */
   function connect(docId: number) {
     // 先断开旧连接
     disconnect()
 
-    ydoc.value = new Y.Doc()
+    const doc = new Y.Doc()
+    ydoc.value = doc
+    ytext.value = doc.getText('content')
+
+    // 监听 Y.Text 变化（来自远程的更新）
+    ytext.value.observe((event: Y.YTextEvent) => {
+      if (isLocalUpdate) return // 忽略本地更新
+      const content = ytext.value?.toString() || ''
+      remoteContent.value = content
+      console.log('[Collab] 📨 远程内容更新, 长度:', content.length)
+    })
+
     const token = localStorage.getItem('token') || ''
 
-    // 直接连接后端，不使用 Vite 代理
-    const wsUrl = `ws://localhost:8081/api/ws/kb-collab/${docId}?token=${encodeURIComponent(token)}`
-
-    console.log('[Collab] ========== 连接开始 ==========')
-    console.log('[Collab] DocID:', docId)
-    console.log('[Collab] WebSocket URL:', wsUrl)
-    console.log('[Collab] Token:', token ? '存在' : '缺失')
-    console.log('[Collab] Token 值:', token)
-
-    // 先用原生 WebSocket 测试连接
-    console.log('[Collab] 测试原生 WebSocket 连接...')
-    const testWs = new WebSocket(wsUrl)
-    testWs.onopen = () => {
-      console.log('[Collab] ✅ 原生 WebSocket 连接成功!')
-      testWs.close()
-    }
-    testWs.onerror = (e) => {
-      console.error('[Collab] ❌ 原生 WebSocket 连接失败:', e)
-    }
-    testWs.onclose = (e) => {
-      console.log('[Collab] 原生 WebSocket 关闭:', e.code, e.reason)
-    }
-
-    // 同时尝试 y-websocket 连接
+    // 直接连接后端
     const serverUrl = `ws://localhost:8081/api/ws/kb-collab`
     const roomName = `${docId}`
 
+    console.log('[Collab] ========== 连接开始 ==========')
+    console.log('[Collab] DocID:', docId)
+
     try {
-      provider.value = new WebsocketProvider(serverUrl, roomName, ydoc.value, {
+      provider.value = new WebsocketProvider(serverUrl, roomName, doc, {
         connect: true,
         params: {
           token: token
         }
       })
 
-      console.log('[Collab] WebsocketProvider 创建成功')
-      console.log('[Collab] y-websocket 预期连接:', `${serverUrl}/${roomName}?token=xxx`)
-
-      // 添加详细的事件监听
       provider.value.on('status', (event: { status: string }) => {
-        console.log('[Collab] ✅ Status 事件:', event.status)
+        console.log('[Collab] Status:', event.status)
         connected.value = event.status === 'connected'
       })
 
       provider.value.on('sync', (isSynced: boolean) => {
-        console.log('[Collab] ✅ Sync 事件:', isSynced)
+        console.log('[Collab] Sync:', isSynced)
+        if (isSynced && ytext.value) {
+          // 同步完成后，获取当前内容
+          const content = ytext.value.toString()
+          remoteContent.value = content
+        }
       })
 
       provider.value.on('connection-error', (event: any) => {
-        console.error('[Collab] ❌ Connection error 事件:', event)
+        console.error('[Collab] Connection error:', event)
       })
 
-      // 立即检查 WebSocket 实例
-      const ws = provider.value.ws
-      console.log('[Collab] WebSocket 实例:', ws ? '已创建' : '未创建')
-
-      if (ws) {
-        console.log('[Collab] WebSocket readyState:', ws.readyState)
-        // 0=CONNECTING, 1=OPEN, 2=CLOSING, 3=CLOSED
-
-        ws.addEventListener('open', () => {
-          console.log('[Collab] ✅ WebSocket open 事件触发')
-        })
-
-        ws.addEventListener('close', (event: any) => {
-          console.log('[Collab] ❌ WebSocket close 事件:', {
-            code: event.code,
-            reason: event.reason,
-            wasClean: event.wasClean
-          })
-        })
-
-        ws.addEventListener('error', (event: any) => {
-          console.error('[Collab] ❌ WebSocket error 事件:', event)
-        })
-
-        ws.addEventListener('message', (event: any) => {
-          console.log('[Collab] 📨 收到消息, 大小:', event.data?.byteLength || event.data?.length)
-        })
-      }
-
-      // 3秒后检查最终状态
-      setTimeout(() => {
-        console.log('[Collab] ========== 3秒后状态检查 ==========')
-        console.log('[Collab] connected (ref):', connected.value)
-        console.log('[Collab] provider.wsconnected:', provider.value?.wsconnected)
-        console.log('[Collab] provider.synced:', provider.value?.synced)
-        console.log('[Collab] WebSocket 实例:', provider.value?.ws ? '存在' : '不存在')
-        if (provider.value?.ws) {
-          console.log('[Collab] WebSocket readyState:', provider.value.ws.readyState)
-          console.log('[Collab] WebSocket readyState 含义:',
-            provider.value.ws.readyState === 0 ? 'CONNECTING' :
-            provider.value.ws.readyState === 1 ? 'OPEN' :
-            provider.value.ws.readyState === 2 ? 'CLOSING' :
-            provider.value.ws.readyState === 3 ? 'CLOSED' : '未知')
-        }
-        console.log('[Collab] ================================')
-      }, 3000)
-
     } catch (error) {
-      console.error('[Collab] ❌ 创建 WebsocketProvider 失败:', error)
+      console.error('[Collab] 创建 WebsocketProvider 失败:', error)
     }
   }
 
@@ -137,31 +84,22 @@ export function useCollab(documentIdRef: Ref<number | null>) {
     }
     ydoc.value = null
     provider.value = null
+    ytext.value = null
     connected.value = false
     onlineUsers.value = []
+    remoteContent.value = ''
   }
 
-  /** 保存协作状态到服务器（将 Yjs Doc 内容转为 Markdown 并通过 REST API 保存） */
-  async function saveState() {
-    const docId = documentIdRef.value
-    if (!docId) return
-    try {
-      await saveCollabState(docId)
-    } catch {
-      // 保存失败静默处理，不阻断用户操作
-    }
-  }
+  /** 更新本地内容到 Y.js 文档（编辑器内容变化时调用） */
+  function updateContent(content: string) {
+    if (!ytext.value) return
+    const currentContent = ytext.value.toString()
+    if (currentContent === content) return
 
-  /** 手动获取在线用户列表（从服务器 REST API 获取，作为 WebSocket awareness 的补充） */
-  async function refreshOnlineUsers() {
-    const docId = documentIdRef.value
-    if (!docId) return
-    try {
-      const res = await getOnlineUsers(docId)
-      onlineUsers.value = res.data || []
-    } catch {
-      // 静默处理
-    }
+    isLocalUpdate = true
+    ytext.value.delete(0, ytext.value.length)
+    ytext.value.insert(0, content)
+    isLocalUpdate = false
   }
 
   // 监听 documentId 变化，自动重连
@@ -183,9 +121,9 @@ export function useCollab(documentIdRef: Ref<number | null>) {
     onlineUsers,
     ydoc,
     provider,
+    remoteContent,
     connect,
     disconnect,
-    saveState,
-    refreshOnlineUsers
+    updateContent
   }
 }
