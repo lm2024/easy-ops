@@ -1,0 +1,216 @@
+{
+  "summary": {
+    "total": 34,
+    "passed": 34,
+    "failed": 0,
+    "warn": 0
+  },
+  "results": [
+    {
+      "name": "登录(admin)",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:节点管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:应用管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:版本管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:一键部署",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:控制台",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:配置文件管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:日志管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:仪表盘",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:应用监控",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:告警中心",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:告警配置",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:自愈策略",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:文档管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:AI 配置",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:用户管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:操作审计",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "节点-新增并删除",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "节点-展开sys-info(agent代理)",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "应用-新增",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "版本-上传Jar包",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "部署-立即部署与定时取消",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "控制台-WebSocket连接并执行命令",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "配置-读取(agent代理)",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "文档-新建文档",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "告警配置-保存",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "仪表盘-卡片/图表",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "应用监控-数据",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "告警中心-告警项",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "自愈策略-新增并保存",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "日志管理-查看日志",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "AI配置-保存",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "用户-新增并删除",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "操作审计-记录",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    }
+  ],
+  "consoleErrors": [],
+  "apiErrors": []
+}

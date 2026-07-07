@@ -82,6 +82,29 @@
         </a-select>
       </a-form-item>
 
+      <a-divider orientation="left" style="font-size: 13px; color: #888">部署后健康检查</a-divider>
+      <a-form-item label="启用健康检查">
+        <template #extra><span style="font-size:12px;color:#888">部署后探测应用是否存活；若你的工程暂无健康地址，可关闭此项，部署将跳过健康检查直接判定成功</span></template>
+        <a-switch v-model:checked="formState.healthCheckEnabled" checked-children="开" un-checked-children="关" />
+      </a-form-item>
+      <a-row :gutter="16" v-if="formState.healthCheckEnabled">
+        <a-col :span="8">
+          <a-form-item label="端口">
+            <a-input-number v-model:value="formState.healthCheckPort" :min="1" :max="65535" style="width: 100%" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="8">
+          <a-form-item label="路径">
+            <a-input v-model:value="formState.healthCheckPath" placeholder="/hello" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="8">
+          <a-form-item label="关键字(逗号分隔)">
+            <a-input v-model:value="formState.healthCheckKeyword" placeholder="Hello,DEPLOYED" />
+          </a-form-item>
+        </a-col>
+      </a-row>
+
       <a-form-item>
         <a-space>
           <a-button type="primary" html-type="submit" :loading="loading"><save-outlined /> 保存</a-button>
@@ -129,7 +152,11 @@ const formState = ref<any>({
   stopScript: '',
   jvmOpts: '',
   envVars: '',
-  nodeIds: [] as string[]
+  nodeIds: [] as string[],
+  healthCheckEnabled: true,
+  healthCheckPort: 8080,
+  healthCheckPath: '/hello',
+  healthCheckKeyword: 'Hello,DEPLOYED'
 })
 
 const rules: Record<string, Rule[]> = {

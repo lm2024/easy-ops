@@ -186,6 +186,10 @@ CREATE TABLE IF NOT EXISTS user_project_relation (
 
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS config_dir VARCHAR(500) DEFAULT '';
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS monitor_interval_sec INT DEFAULT 60;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_enabled TINYINT DEFAULT 1;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_port INT DEFAULT 8080;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_path VARCHAR(200) DEFAULT '/hello';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_keyword VARCHAR(200) DEFAULT 'Hello,DEPLOYED';
 
 -- M1 配置文件管理
 CREATE TABLE IF NOT EXISTS project_config_file (

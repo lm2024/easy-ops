@@ -82,11 +82,10 @@ class FileControllerTest extends BaseControllerTest {
         node.setStatus(1);
         when(nodeMapper.findById(1L)).thenReturn(node);
 
-        Map<String, String> body = Map.of(
-            "nodeId", "1",
-            "configPath", "/opt/app/app.properties",
-            "content", "key=value"
-        );
+        Map<String, String> body = new java.util.HashMap<>();
+        body.put("nodeId", "1");
+        body.put("configPath", "/opt/app/app.properties");
+        body.put("content", "key=value");
 
         mockMvc.perform(post("/files/config")
                         .contentType(MediaType.APPLICATION_JSON)

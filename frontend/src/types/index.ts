@@ -54,6 +54,10 @@ export interface ProjectModel {
   envVars?: string
   jarName?: string
   nodeIds?: string
+  healthCheckEnabled?: boolean
+  healthCheckPort?: number
+  healthCheckPath?: string
+  healthCheckKeyword?: string
   createTime?: string
   updateTime?: string
 }

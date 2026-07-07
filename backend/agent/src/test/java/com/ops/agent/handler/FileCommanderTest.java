@@ -20,7 +20,7 @@ class FileCommanderTest {
     void setUp() throws IOException {
         tempBaseDir = Files.createTempDirectory("filecmd-test").toString();
         // 创建测试文件
-        Path testFile = Files.createFile(Path.of(tempBaseDir, "test.txt"));
+        Path testFile = Files.createFile(java.nio.file.Paths.get(tempBaseDir, "test.txt"));
         Files.write(testFile, "Hello, World!".getBytes("UTF-8"));
 
         commander = new FileCommander(tempBaseDir);
@@ -50,8 +50,8 @@ class FileCommanderTest {
     @Test
     @DisplayName("readFile - 子目录文件")
     void readFile_subdirectory() throws IOException {
-        Path subDir = Files.createDirectory(Path.of(tempBaseDir, "subdir"));
-        Path subFile = Files.createFile(Path.of(subDir.toString(), "nested.txt"));
+        Path subDir = Files.createDirectory(java.nio.file.Paths.get(tempBaseDir, "subdir"));
+        Path subFile = Files.createFile(java.nio.file.Paths.get(subDir.toString(), "nested.txt"));
         Files.write(subFile, "nested content".getBytes("UTF-8"));
 
         Map<String, Object> result = commander.readFile("subdir/nested.txt");

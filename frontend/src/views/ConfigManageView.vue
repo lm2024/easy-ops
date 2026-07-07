@@ -222,7 +222,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, unref } from 'vue'
 import { message } from 'ant-design-vue'
 import type { ProjectModel, NodeModel, ProjectConfigFileModel, NodeConfigSnapshotModel, ConfigSnapshotResult } from '../types'
 import { getProjects } from '../api/project'
@@ -282,11 +282,15 @@ const resultColumns = [
 ]
 
 const projectNodes = computed(() => {
-  if (!projectId.value) return []
-  const proj = projects.value.find(p => Number(p.id) === projectId.value)
+  // 兼容 ref 与 setupState reactive 解包后的数组两种形态（避免 .value 在解包下取到 undefined）
+  const ao = unref(allNodes)
+  const pv = unref(projects)
+  const pid = unref(projectId)
+  if (!pid) return []
+  const proj = (pv || []).find(p => Number(p.id) === Number(pid))
   if (!proj?.nodeIds) return []
-  const ids = proj.nodeIds.split(',').map(s => Number(s.trim()))
-  return allNodes.value.filter(n => ids.includes(n.id))
+  const ids = String(proj.nodeIds).split(',').map(s => Number(s.trim()))
+  return (ao || []).filter(n => ids.includes(n.id))
 })
 
 const nodeOptions = computed(() =>

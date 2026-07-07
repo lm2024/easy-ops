@@ -38,13 +38,15 @@
         </where>
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO project_info (name, node_ids, start_script, stop_script, restart_script, jvm_opts, env_vars, jar_name, deploy_dir, status, create_time, update_time)
-        VALUES (#{name}, #{nodeIds}, #{startScript}, #{stopScript}, #{restartScript}, #{jvmOpts}, #{envVars}, #{jarName}, #{deployDir}, #{status}, #{createTime}, #{updateTime})
+        INSERT INTO project_info (name, node_ids, start_script, stop_script, restart_script, jvm_opts, env_vars, jar_name, deploy_dir, health_check_enabled, health_check_port, health_check_path, health_check_keyword, status, create_time, update_time)
+        VALUES (#{name}, #{nodeIds}, #{startScript}, #{stopScript}, #{restartScript}, #{jvmOpts}, #{envVars}, #{jarName}, #{deployDir}, #{healthCheckEnabled}, #{healthCheckPort}, #{healthCheckPath}, #{healthCheckKeyword}, #{status}, #{createTime}, #{updateTime})
     </insert>
     <update id="update">
         UPDATE project_info SET name = #{name}, node_ids = #{nodeIds}, start_script = #{startScript},
         stop_script = #{stopScript}, restart_script = #{restartScript}, jvm_opts = #{jvmOpts},
         env_vars = #{envVars}, jar_name = #{jarName}, deploy_dir = #{deployDir},
+        health_check_enabled = #{healthCheckEnabled}, health_check_port = #{healthCheckPort},
+        health_check_path = #{healthCheckPath}, health_check_keyword = #{healthCheckKeyword},
         status = #{status}, update_time = #{updateTime}
         WHERE id = #{id}
     </update>
