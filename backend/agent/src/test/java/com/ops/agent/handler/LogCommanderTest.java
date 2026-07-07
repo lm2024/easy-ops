@@ -26,7 +26,7 @@ class LogCommanderTest {
     @Test
     @DisplayName("getLog - 读取存在的日志文件")
     void getLog_existingLog_returnsSuccess() throws IOException {
-        Path logFile = Files.createFile(Path.of(tempLogDir, "app.log"));
+        Path logFile = Files.createFile(java.nio.file.Paths.get(tempLogDir, "app.log"));
         Files.write(logFile, (
             "2026-01-01 INFO Starting application\n" +
             "2026-01-01 INFO Listening on port 8080\n" +
@@ -50,7 +50,7 @@ class LogCommanderTest {
     @Test
     @DisplayName("getLog - 偏移量读取")
     void getLog_withOffset_returnsFromOffset() throws IOException {
-        Path logFile = Files.createFile(Path.of(tempLogDir, "app.log"));
+        Path logFile = Files.createFile(java.nio.file.Paths.get(tempLogDir, "app.log"));
         Files.write(logFile, (
             "line1\nline2\nline3\nline4\nline5\n"
         ).getBytes("UTF-8"));
@@ -67,7 +67,7 @@ class LogCommanderTest {
     @Test
     @DisplayName("getLog - 请求行数超过实际行数")
     void getLog_moreLinesThanAvailable() throws IOException {
-        Path logFile = Files.createFile(Path.of(tempLogDir, "app.log"));
+        Path logFile = Files.createFile(java.nio.file.Paths.get(tempLogDir, "app.log"));
         Files.write(logFile, "a\nb\n".getBytes("UTF-8"));
 
         Map<String, Object> result = commander.getLog("app.log", 0, 100);
@@ -90,7 +90,7 @@ class LogCommanderTest {
     @Test
     @DisplayName("getLog - 大偏移量返回空列表")
     void getLog_largeOffset_returnsEmpty() throws IOException {
-        Path logFile = Files.createFile(Path.of(tempLogDir, "app.log"));
+        Path logFile = Files.createFile(java.nio.file.Paths.get(tempLogDir, "app.log"));
         Files.write(logFile, "short\nlog\n".getBytes("UTF-8"));
 
         Map<String, Object> result = commander.getLog("app.log", 100, 10);

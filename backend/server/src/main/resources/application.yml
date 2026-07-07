@@ -69,8 +69,10 @@ logging:
       max-history: 30
 
 # ========== Task 9: CORS 配置 ==========
+# 放行所有来源（内网使用，任意 IP/域名均可跨域访问）。
+# 如需收紧，可改为实际前端地址清单，如 "http://10.0.0.5:3000,https://ops.example.com"
 cors:
-  allowed-origins: "http://localhost:3000,http://localhost:5173"
+  allowed-origins: "*"
 
 # ========== Task 10: AI 配置 (API Key 外部化) ==========
 ai:

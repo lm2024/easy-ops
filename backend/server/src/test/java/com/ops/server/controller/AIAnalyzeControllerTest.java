@@ -106,7 +106,7 @@ class AIAnalyzeControllerTest {
         lenient().when(sysConfigMapper.getValue("ai.enabled")).thenReturn("true");
         lenient().when(sysConfigMapper.getValue("ai.apiKey")).thenReturn("fallback-key");
         lenient().when(restTemplate.getForObject(anyString(), eq(Map.class))).thenReturn(
-            Map.of("data", "log content here")
+            java.util.Collections.singletonMap("data", "log content here")
         );
         lenient().when(restTemplate.postForObject(anyString(), any(), eq(String.class))).thenReturn(
             "{\"choices\":[{\"message\":{\"content\":\"AI分析结果\"}}]}"

@@ -40,7 +40,9 @@ public class WebConfig implements WebMvcConfigurer {
     @Autowired
     private ExternalApiGuardFilter externalApiGuardFilter;
 
-    @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173}")
+    // 默认允许 localhost 及任意 http/https 来源（内网运维平台，方便用 IP/域名访问）。
+    // 生产部署时请在 application.yml 用 cors.allowed-origins 覆盖为实际前端地址清单。
+    @Value("${cors.allowed-origins:http://localhost:3000,http://localhost:5173,http://*,https://*}")
     private String allowedOrigins;
 
     @Override
