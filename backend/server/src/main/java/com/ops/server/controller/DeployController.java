@@ -211,28 +211,44 @@ public class DeployController {
                 nodeLog.append("健康检查...\n");
                 boolean healthy = false;
                 String shellUrl = agentBase + "/api/shell/exec";
-                for (int i = 1; i <= 5; i++) {
-                    Thread.sleep(3000);
-                    try {
-                        Map<String, String> cmdReq = new HashMap<>();
-                        cmdReq.put("command", "curl -s --max-time 3 http://127.0.0.1:8080/hello");
-                        @SuppressWarnings("unchecked")
-                        Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                        String output = "";
-                        if (shellResp != null && shellResp.get("data") instanceof Map) {
+                // 健康检查可配置、可关闭（项目级开关）
+                boolean hcEnabled = project.getHealthCheckEnabled() == null || project.getHealthCheckEnabled();
+                if (!hcEnabled) {
+                    healthy = true;
+                    nodeLog.append("  ⏭️ 健康检查已关闭，跳过检查，直接判定成功\n");
+                } else {
+                    int hcPort = project.getHealthCheckPort() != null ? project.getHealthCheckPort() : 8080;
+                    String hcPath = (project.getHealthCheckPath() != null && !project.getHealthCheckPath().isEmpty()) ? project.getHealthCheckPath() : "/hello";
+                    String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "Hello,DEPLOYED";
+                    String healthCmd = "curl -s --max-time 3 http://127.0.0.1:" + hcPort + hcPath;
+                    String[] hcKeywords = hcKeywordRaw.split(",");
+                    for (int i = 1; i <= 5; i++) {
+                        Thread.sleep(3000);
+                        try {
+                            Map<String, String> cmdReq = new HashMap<>();
+                            cmdReq.put("command", healthCmd);
                             @SuppressWarnings("unchecked")
-                            Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
-                            output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                            Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
+                            String output = "";
+                            if (shellResp != null && shellResp.get("data") instanceof Map) {
+                                @SuppressWarnings("unchecked")
+                                Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
+                                output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                            }
+                            boolean matched = false;
+                            for (String kw : hcKeywords) {
+                                if (output.contains(kw.trim())) { matched = true; break; }
+                            }
+                            if (matched) {
+                                healthy = true;
+                                nodeLog.append("  ✅ 第 ").append(i).append(" 次检查通过 (").append(hcPort).append(hcPath).append(")\n");
+                                break;
+                            } else {
+                                nodeLog.append("  ⏳ 第 ").append(i).append(" 次检查 (").append(hcPort).append(hcPath).append(")\n");
+                            }
+                        } catch (Exception e) {
+                            nodeLog.append("  ⏳ 第 ").append(i).append(" 次检查: ").append(e.getMessage()).append("\n");
                         }
-                        if (output.contains("Hello") || output.contains("DEPLOYED")) {
-                            healthy = true;
-                            nodeLog.append("  ✅ 第 ").append(i).append(" 次检查通过\n");
-                            break;
-                        } else {
-                            nodeLog.append("  ⏳ 第 ").append(i).append(" 次检查\n");
-                        }
-                    } catch (Exception e) {
-                        nodeLog.append("  ⏳ 第 ").append(i).append(" 次检查: ").append(e.getMessage()).append("\n");
                     }
                 }
 
@@ -422,32 +438,46 @@ public class DeployController {
             // STEP 4: 健康检查
             Map<String, Object> step4 = new LinkedHashMap<>();
             step4.put("name", "🏥 健康检查");
-            int appPort = 8080;
             boolean healthy = false;
             String healthDetail = "";
             String shellUrl = agentBase + "/api/shell/exec";
-            for (int i = 1; i <= 5; i++) {
-                Thread.sleep(3000);
-                try {
-                    Map<String, String> cmdReq = new HashMap<>();
-                    cmdReq.put("command", "curl -s --max-time 3 http://127.0.0.1:" + appPort + "/hello");
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                    String output = "";
-                    if (shellResp != null && shellResp.get("data") instanceof Map) {
+            boolean hcEnabled = project.getHealthCheckEnabled() == null || project.getHealthCheckEnabled();
+            if (!hcEnabled) {
+                healthy = true;
+                healthDetail = "⏭️ 健康检查已关闭，跳过检查，直接判定成功";
+            } else {
+                int appPort = project.getHealthCheckPort() != null ? project.getHealthCheckPort() : 8080;
+                String hcPath = (project.getHealthCheckPath() != null && !project.getHealthCheckPath().isEmpty()) ? project.getHealthCheckPath() : "/hello";
+                String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "Hello,DEPLOYED";
+                String healthCmd = "curl -s --max-time 3 http://127.0.0.1:" + appPort + hcPath;
+                String[] hcKeywords = hcKeywordRaw.split(",");
+                for (int i = 1; i <= 5; i++) {
+                    Thread.sleep(3000);
+                    try {
+                        Map<String, String> cmdReq = new HashMap<>();
+                        cmdReq.put("command", healthCmd);
                         @SuppressWarnings("unchecked")
-                        Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
-                        output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                        Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
+                        String output = "";
+                        if (shellResp != null && shellResp.get("data") instanceof Map) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
+                            output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                        }
+                        boolean matched = false;
+                        for (String kw : hcKeywords) {
+                            if (output.contains(kw.trim())) { matched = true; break; }
+                        }
+                        if (matched) {
+                            healthy = true;
+                            healthDetail = "✅ 回滚应用已启动 (第 " + i + " 次检查)\n响应: " + output.substring(0, Math.min(200, output.length()));
+                            break;
+                        } else {
+                            healthDetail = "⏳ 第 " + i + " 次检查: " + (output.isEmpty() ? "(等待就绪)" : output.substring(0, Math.min(80, output.length())));
+                        }
+                    } catch (Exception e) {
+                        healthDetail = "⏳ 第 " + i + " 次检查: " + e.getMessage();
                     }
-                    if (output.contains("Hello") || output.contains("DEPLOYED")) {
-                        healthy = true;
-                        healthDetail = "✅ 回滚应用已启动 (第 " + i + " 次检查)\n响应: " + output.substring(0, Math.min(200, output.length()));
-                        break;
-                    } else {
-                        healthDetail = "⏳ 第 " + i + " 次检查: " + (output.isEmpty() ? "(等待就绪)" : output.substring(0, Math.min(80, output.length())));
-                    }
-                } catch (Exception e) {
-                    healthDetail = "⏳ 第 " + i + " 次检查: " + e.getMessage();
                 }
             }
             step4.put("success", healthy);

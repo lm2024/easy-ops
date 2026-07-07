@@ -51,11 +51,12 @@ public class ProcessController {
                 }
             }
 
-            // 用双重 nohup 完全脱离父进程
+            // 先确保 logs 目录存在（否则 start.sh 中 ">> logs/startup.log" 重定向失败，java 根本不会启动）
+            // 再用 setsid 让应用脱离 Agent 进程组，避免 Agent 处理完请求后应用被连带回收
             // 用双引号包裹目录路径，防止空格导致 shell 解析错误
             Runtime.getRuntime().exec(new String[]{
                 "/bin/sh", "-c",
-                "cd \"" + deployDir + "\" && nohup sh start.sh > /dev/null 2>&1 &"
+                "cd \"" + deployDir + "\" && mkdir -p logs && setsid sh start.sh > /dev/null 2>&1 < /dev/null &"
             });
 
             Map<String, Object> data = new HashMap<>();

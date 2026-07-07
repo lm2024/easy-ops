@@ -1,0 +1,213 @@
+{
+  "total": 34,
+  "passed": 17,
+  "failed": 17,
+  "consoleErrors": [],
+  "apiErrors": [],
+  "results": [
+    {
+      "name": "登录(admin)",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:节点管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:应用管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:版本管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:一键部署",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:控制台",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:配置文件管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:日志管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:仪表盘",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:应用监控",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:告警中心",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:告警配置",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:自愈策略",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:文档管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:AI 配置",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:用户管理",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "菜单冒烟:操作审计",
+      "status": "PASS",
+      "error": "",
+      "detail": ""
+    },
+    {
+      "name": "节点-新增并删除",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.ant-modal-footer button.ant-btn-primary, .ant-modal button:has-text(\"确定\")').first()\u001b[22m\n",
+      "detail": ""
+    },
+    {
+      "name": "节点-展开sys-info(agent代理)",
+      "status": "FAIL",
+      "error": "locator.click: Timeout 30000ms exceeded.\nCall log:\n\u001b[2m  - waiting for locator('.ant-table-tbody tr').first().locator('.ant-table-row-expand-icon').first()\u001b[22m\n",
+      "detail": ""
+    },
+    {
+      "name": "应用-新增项目(绑定agent-1)",
+      "status": "FAIL",
+      "error": "locator.click: Target page, context or browser has been closed\nCall log:\n\u001b[2m  - waiting for locator('.ant-modal-footer button.ant-btn-primary, .ant-modal button:has-text(\"确定\")').first()\u001b[22m\n",
+      "detail": ""
+    },
+    {
+      "name": "版本-上传jar并删除",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "用户-新增并删除",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "自愈-新增策略并删除",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "文档-新建文档并搜索",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "告警配置-保存并测试发送",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "部署-立即部署与定时取消",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "控制台-WebSocket连接并执行命令",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "仪表盘-统计卡片渲染",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "应用监控-概览与探针保存",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "告警中心-清空全部",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "AI配置-保存/测试/对话",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "操作审计-加载与筛选",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "配置管理-刷新快照",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    },
+    {
+      "name": "日志管理-保存采集配置",
+      "status": "FAIL",
+      "error": "page.evaluate: Target page, context or browser has been closed",
+      "detail": ""
+    }
+  ]
+}
