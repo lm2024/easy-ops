@@ -7,3 +7,7 @@ agent-rules/
 *logs/
 *data/
 backend/common/target/
+
+**/local-repo/
+easy-ops/frontend/nginx/
+easy-ops/backend/local-repo/
