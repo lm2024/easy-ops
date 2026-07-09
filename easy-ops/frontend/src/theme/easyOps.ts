@@ -4,7 +4,7 @@ import type { ThemeConfig } from 'ant-design-vue/es/config-provider/context'
 /**
  * EasyOps 全局主题 — 与登录页控制平面一致
  */
-export const easyOpsTheme: ThemeConfig = {
+export const easyOpsTheme = {
   algorithm: theme.darkAlgorithm,
   token: {
     colorPrimary: '#e8ff59',
@@ -64,4 +64,4 @@ export const easyOpsTheme: ThemeConfig = {
       colorTextLightSolid: '#0a0a0b'
     }
   }
-}
+} as ThemeConfig

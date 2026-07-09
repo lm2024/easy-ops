@@ -1,1 +1,0 @@
-import{s as a}from"./request-DkdqLV4w.js";function m(r,e="",n=1,s=20){return a.get("/alarms",{params:{projectId:r,type:e,page:n,pageSize:s}})}function o(){return a.get("/alarms/config")}function i(r){return a.put("/alarms/config",r)}function l(){return a.delete("/alarms")}export{o as a,l as c,m as g,i as s};

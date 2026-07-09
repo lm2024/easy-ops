@@ -11,3 +11,4 @@ backend/common/target/
 **/local-repo/
 easy-ops/frontend/nginx/
 easy-ops/backend/local-repo/
+easy-ops/frontend/dist/
