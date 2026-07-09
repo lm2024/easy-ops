@@ -16,6 +16,12 @@ export default defineConfig({
                 changeOrigin: true,
                 ws: true
             },
+            '/ws': {
+                target: 'ws://localhost:8081',
+                changeOrigin: true,
+                ws: true,
+                rewrite: function (path) { return path; }
+            },
         }
     },
     build: {

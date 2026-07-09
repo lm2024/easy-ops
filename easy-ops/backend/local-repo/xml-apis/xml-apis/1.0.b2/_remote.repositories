@@ -1,3 +1,4 @@
-#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
-#Tue Jul 07 13:54:28 CST 2026
+#NOTE: This is an Aether internal implementation file, its format can be changed without prior notice.
+#Thu Jul 09 07:44:05 CST 2026
 xml-apis-1.0.b2.pom>central=
+xml-apis-1.0.b2.jar>central=

@@ -1,3 +1,4 @@
-#NOTE: This is a Maven Resolver internal implementation file, its format can be changed without prior notice.
-#Tue Jul 07 13:55:36 CST 2026
+#NOTE: This is an Aether internal implementation file, its format can be changed without prior notice.
+#Thu Jul 09 07:45:10 CST 2026
 classworlds-1.1-alpha-2.pom>central=
+classworlds-1.1-alpha-2.jar>central=
