@@ -26,7 +26,9 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'dist',
+    // 直接输出到 nginx 部署包内，使 frontend/nginx 目录自包含（拷走即可运行）
+    outDir: 'nginx/dist',
+    emptyOutDir: true,
     sourcemap: false
   }
 })

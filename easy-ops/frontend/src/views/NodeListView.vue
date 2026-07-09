@@ -247,7 +247,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, nextTick } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { NodeModel } from '../types'
@@ -302,15 +302,6 @@ function fmtSizeSup(mb?: number | null): string {
   const n = Number(mb)
   if (n >= 1024) return (n / 1024).toFixed(1) + ' GB'
   return n + ' MB'
-}
-function fromNow(ts: string | number): string {
-  const now = Date.now()
-  const t = typeof ts === 'string' ? new Date(ts).getTime() : Number(ts)
-  const diff = now - t
-  if (diff < 60000) return '刚刚'
-  if (diff < 3600000) return Math.floor(diff / 60000) + '分钟前'
-  if (diff < 86400000) return Math.floor(diff / 3600000) + '小时前'
-  return new Date(t).toLocaleDateString()
 }
 function getTagList(tags?: string): string[] {
   if (!tags?.trim()) return []

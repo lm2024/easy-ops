@@ -95,33 +95,35 @@ function onProjectChange() {
 function initTerminal() {
   if (!terminalRef.value) return
 
+  const termTheme: any = {
+    background: '#1e1e1e',
+    foreground: '#d4d4d4',
+    cursor: '#d4d4d4',
+    selection: '#264f78',
+    black: '#000000',
+    red: '#f44747',
+    green: '#6a9955',
+    yellow: '#d7ba7d',
+    blue: '#569cd6',
+    magenta: '#c586c0',
+    cyan: '#4ec9b0',
+    white: '#d4d4d4',
+    brightBlack: '#808080',
+    brightRed: '#f44747',
+    brightGreen: '#6a9955',
+    brightYellow: '#d7ba7d',
+    brightBlue: '#569cd6',
+    brightMagenta: '#c586c0',
+    brightCyan: '#4ec9b0',
+    brightWhite: '#ffffff'
+  }
+
   terminal = new Terminal({
     cursorBlink: false,
     cursorStyle: 'block',
     fontSize: 14,
     fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
-    theme: {
-      background: '#1e1e1e',
-      foreground: '#d4d4d4',
-      cursor: '#d4d4d4',
-      selection: '#264f78',
-      black: '#000000',
-      red: '#f44747',
-      green: '#6a9955',
-      yellow: '#d7ba7d',
-      blue: '#569cd6',
-      magenta: '#c586c0',
-      cyan: '#4ec9b0',
-      white: '#d4d4d4',
-      brightBlack: '#808080',
-      brightRed: '#f44747',
-      brightGreen: '#6a9955',
-      brightYellow: '#d7ba7d',
-      brightBlue: '#569cd6',
-      brightMagenta: '#c586c0',
-      brightCyan: '#4ec9b0',
-      brightWhite: '#ffffff'
-    },
+    theme: termTheme,
     disableStdin: true,   // 输入由下方 input 栏处理
     convertEol: true
   })

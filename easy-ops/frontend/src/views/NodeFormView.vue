@@ -55,7 +55,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { NodeModel } from '../types'
 import { createNode, updateNode, getNode } from '../api/node'
-import type { FormInstance, Rule } from 'ant-design-vue'
+import type { FormInstance } from 'ant-design-vue'
+import type { Rule } from 'ant-design-vue/es/form'
 import {
   SaveOutlined,
   ClusterOutlined

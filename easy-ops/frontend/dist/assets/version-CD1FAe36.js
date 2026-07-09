@@ -1,1 +1,0 @@
-import{s as a}from"./request-DkdqLV4w.js";function s(r,t=1,e=20){return a.get("/versions",{params:{projectId:r,page:t,pageSize:e}})}function n(r,t){const e=new FormData;return e.append("file",t),a.post("/versions/upload",e,{params:{projectId:r},headers:{"Content-Type":"multipart/form-data"},timeout:6e4})}export{s as g,n as u};

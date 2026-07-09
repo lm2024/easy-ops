@@ -193,7 +193,7 @@ function formatMB(mb: number): string {
 }
 
 /** 根据环境和硬件信息计算 JVM 参数 */
-function generateJVMOpts(env: string, cpuCores: number, totalMemMB: number): string {
+function generateJVMOpts(env: string, _cpuCores: number, totalMemMB: number): string {
   // 各环境的内存分配比例
   const ratios: Record<string, { xmsRatio: number; xmxRatio: number; pause: number }> = {
     dev:  { xmsRatio: 0.25, xmxRatio: 0.50, pause: 200 },
@@ -355,10 +355,10 @@ onMounted(async () => {
     const project = await getProject(id)
     // nodeIds 是逗号分隔字符串，转成数字数组匹配下拉选项（后端是 Long）
     const data = project.data
-    if (typeof data.nodeIds === 'string') {
-      data.nodeIds = data.nodeIds.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !isNaN(n))
-    }
-    formState.value = data
+    const nodeIds = typeof data.nodeIds === 'string'
+      ? data.nodeIds.split(',').map((s: string) => Number(s.trim())).filter((n: number) => !isNaN(n))
+      : []
+    formState.value = { ...data, nodeIds }
   }
 })
 

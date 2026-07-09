@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import type { ProjectModel, NodeModel } from '../types'
+import type { ProjectModel } from '../types'
 import { getProjects, deleteProject } from '../api/project'
 import { getNodes } from '../api/node'
 import {

@@ -34,7 +34,7 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="deleteVersion(record.id)">
+              <a-button type="link" size="small" @click="removeVersion(record.id)">
                 <delete-outlined /> 删除
               </a-button>
             </a-space>
@@ -129,7 +129,7 @@ function beforeUpload(file: File) {
   return false
 }
 
-async function deleteVersion(id: string) {
+async function removeVersion(id: string) {
   await deleteVersion(id)
   fetchVersions()
 }

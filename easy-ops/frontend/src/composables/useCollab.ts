@@ -26,7 +26,7 @@ export function useCollab(documentIdRef: Ref<number | null>) {
     ytext.value = doc.getText('content')
 
     // 监听 Y.Text 变化（来自远程的更新）
-    ytext.value.observe((event: Y.YTextEvent) => {
+    ytext.value.observe(() => {
       if (isLocalUpdate) return // 忽略本地更新
       const content = ytext.value?.toString() || ''
       remoteContent.value = content
