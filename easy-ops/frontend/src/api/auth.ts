@@ -3,7 +3,7 @@ import type { UserModel, Result } from '../types'
 
 /** 用户登录 */
 export function login(username: string, password: string) {
-  return request.post<any, Result<{ token: string }>>('/auth/login', { username, password })
+  return request.post<any, Result<{ token: string; username: string; role: string }>>('/auth/login', { username, password })
 }
 
 /** 获取用户列表 */

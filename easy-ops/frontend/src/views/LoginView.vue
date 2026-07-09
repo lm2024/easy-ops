@@ -74,7 +74,7 @@
               :class="{ hub: n.hub }"
               :filter="n.hub ? 'url(#hubBlur)' : undefined"
             />
-            <text :x="n.tx" :y="n.ty" :text-anchor="n.anchor || 'start'" class="mono node-label">{{ n.label }}</text>
+            <text :x="n.tx" :y="n.ty" :text-anchor="'start'" class="mono node-label">{{ n.label }}</text>
           </g>
         </g>
       </svg>
@@ -203,7 +203,13 @@ async function handleLogin() {
     loading.value = true
     const res = await login(formState.username, formState.password)
     authStore.setToken(res.data.token)
-    authStore.setUser(res.data)
+    // 后端登录接口返回 { token, username, role }，据此构造用户信息存入 store
+    authStore.setUser({
+      id: 0,
+      username: res.data.username,
+      role: res.data.role === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
+      status: 1
+    })
     router.push('/')
   } catch { /* interceptor */ } finally { loading.value = false }
 }

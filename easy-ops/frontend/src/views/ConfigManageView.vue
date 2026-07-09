@@ -113,7 +113,7 @@
               已读取节点: {{ contentSource.nodeName || contentSource.nodeId }}
             </a-tag>
             <a-tag v-else-if="contentSource.type === 'manual'" color="orange">
-              手动编辑中 — 未从节点 {{ projectNodes.find(n => n.id === editNodeId)?.name || editNodeId }} 读取
+              手动编辑中 — 未从节点 {{ projectNodes.find(n => Number(n.id) === editNodeId)?.name || editNodeId }} 读取
             </a-tag>
           </a-space>
           <a-textarea
@@ -163,8 +163,8 @@
             <a-tag v-if="contentSource.type === 'read'" color="blue">已读取: {{ contentSource.nodeName }}</a-tag>
             <a-tag v-else-if="contentSource.type === 'manual'" color="orange">手动编辑</a-tag>
             <span v-else style="color: #999">无</span>
-            <a-tag v-if="editNodeId && projectNodes.find(n => n.id === editNodeId)?.name !== contentSource.nodeName" style="margin-left: 4px">
-              编辑节点: {{ projectNodes.find(n => n.id === editNodeId)?.name }}
+            <a-tag v-if="editNodeId && projectNodes.find(n => Number(n.id) === editNodeId)?.name !== contentSource.nodeName" style="margin-left: 4px">
+              编辑节点: {{ projectNodes.find(n => Number(n.id) === editNodeId)?.name }}
             </a-tag>
           </a-form-item>
           <a-form-item label="目标节点">
@@ -290,7 +290,7 @@ const projectNodes = computed(() => {
   const proj = (pv || []).find(p => Number(p.id) === Number(pid))
   if (!proj?.nodeIds) return []
   const ids = String(proj.nodeIds).split(',').map(s => Number(s.trim()))
-  return (ao || []).filter(n => ids.includes(n.id))
+  return (ao || []).filter(n => ids.includes(Number(n.id)))
 })
 
 const nodeOptions = computed(() =>
@@ -362,12 +362,12 @@ async function loadContent() {
   try {
     const res = await getConfigContent(projectId.value, editNodeId.value, selectedFileId.value)
     content.value = res.data || ''
-    const node = projectNodes.value.find(n => n.id === editNodeId.value)
+    const node = projectNodes.value.find(n => Number(n.id) === editNodeId.value)
     contentSource.value = { type: 'read', nodeId: editNodeId.value, nodeName: node?.name }
   } catch (e: any) {
     const msg = e?.response?.data?.message || e?.message || '读取失败'
     contentError.value = msg + '。你可以直接在下方编辑区手动输入配置内容后分发。'
-    const node = projectNodes.value.find(n => n.id === editNodeId.value)
+    const node = projectNodes.value.find(n => Number(n.id) === editNodeId.value)
     contentSource.value = { type: 'manual', nodeId: editNodeId.value, nodeName: node?.name }
   } finally {
     contentLoading.value = false

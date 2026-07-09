@@ -22,8 +22,8 @@
       </a-row>
       <a-form-item label="角色" name="role">
         <a-radio-group v-model:value="formState.role">
-          <a-radio-button value="admin">管理员</a-radio-button>
-          <a-radio-button value="operator">操作员</a-radio-button>
+          <a-radio-button value="ADMIN">管理员</a-radio-button>
+          <a-radio-button value="OPERATOR">操作员</a-radio-button>
         </a-radio-group>
       </a-form-item>
       <a-form-item>
@@ -43,7 +43,8 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { UserModel } from '../types'
 import { createUser, updateUser, getUserById } from '../api/auth'
-import type { FormInstance, Rule } from 'ant-design-vue'
+import type { FormInstance } from 'ant-design-vue'
+import type { Rule } from 'ant-design-vue/es/form'
 import {
   SaveOutlined,
   TeamOutlined
@@ -58,7 +59,7 @@ const isEdit = computed(() => !!route.params.id)
 const formState = ref<Partial<UserModel>>({
   username: '',
   password: '',
-  role: 'operator' as const
+  role: 'OPERATOR' as const
 })
 
 const rules: Record<string, Rule[]> = {
