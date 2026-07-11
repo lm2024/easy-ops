@@ -38,8 +38,8 @@ class ProjectControllerTest extends BaseControllerTest {
 
     @Test
     void listProjects() throws Exception {
-        when(projectMapper.findByFilters(null, null, 1, 20)).thenReturn(Arrays.asList(mockProject()));
-        when(projectMapper.countByFilters(null, null)).thenReturn(1L);
+        when(projectMapper.findByFilters(isNull(), isNull(), isNull(), eq(1), eq(20))).thenReturn(Arrays.asList(mockProject()));
+        when(projectMapper.countByFilters(isNull(), isNull(), isNull())).thenReturn(1L);
 
         mockMvc.perform(get("/projects"))
                 .andExpect(status().isOk())
@@ -48,8 +48,8 @@ class ProjectControllerTest extends BaseControllerTest {
 
     @Test
     void listProjects_empty() throws Exception {
-        when(projectMapper.findByFilters(null, null, 1, 20)).thenReturn(Collections.emptyList());
-        when(projectMapper.countByFilters(null, null)).thenReturn(0L);
+        when(projectMapper.findByFilters(isNull(), isNull(), isNull(), eq(1), eq(20))).thenReturn(Collections.emptyList());
+        when(projectMapper.countByFilters(isNull(), isNull(), isNull())).thenReturn(0L);
 
         mockMvc.perform(get("/projects"))
                 .andExpect(status().isOk())

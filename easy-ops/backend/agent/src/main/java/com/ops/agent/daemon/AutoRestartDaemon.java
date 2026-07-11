@@ -33,16 +33,11 @@ public class AutoRestartDaemon implements CommandLineRunner {
     private final Map<String, Long> monitoredProcesses = new ConcurrentHashMap<>();
     private volatile boolean autoRestartEnabled = false;
 
-    /**
-     * 启动时校验 Token 必须配置 (Task 2 新增)
-     */
     @Override
     public void run(String... args) {
         if (agentToken == null || agentToken.trim().isEmpty()) {
-            throw new IllegalStateException(
-                "SECURITY VIOLATION: AGENT_TOKEN is not configured in AutoRestartDaemon. " +
-                "Please set the AGENT_TOKEN environment variable."
-            );
+            System.out.println("[AutoRestartDaemon] 未配置 AGENT_TOKEN，自愈守护已禁用（内网简化模式）");
+            autoRestartEnabled = false;
         }
     }
 

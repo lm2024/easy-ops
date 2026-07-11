@@ -1,6 +1,7 @@
 package com.ops.agent.controller;
 
 import com.ops.common.response.Result;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.*;
@@ -15,6 +16,9 @@ import java.util.Map;
 @RestController
 @RequestMapping("/process")
 public class ProcessController {
+
+    @Value("${agent.data-path:/app/data}")
+    private String agentDataPath;
 
     /**
      * POST /api/process/{projectId}/start - 启动应用
@@ -31,7 +35,7 @@ public class ProcessController {
             return Result.paramError("startScript 不能为空");
         }
         if (deployDir == null || deployDir.isEmpty()) {
-            deployDir = "/app/data/versions/" + projectId;
+            deployDir = agentDataPath + "/versions/" + projectId;
         }
 
         try {
@@ -79,7 +83,7 @@ public class ProcessController {
         String stopScript = body.get("stopScript");
         String deployDir = body.get("deployDir");
         if (deployDir == null || deployDir.isEmpty()) {
-            deployDir = "/app/data/versions/" + projectId;
+            deployDir = agentDataPath + "/versions/" + projectId;
         }
 
         try {

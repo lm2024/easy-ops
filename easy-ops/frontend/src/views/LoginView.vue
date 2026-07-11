@@ -85,6 +85,7 @@
     <div class="auth-inner">
       <h2 class="auth-title">登录 EasyOps 控制台</h2>
       <p class="auth-sub">欢迎回来，请输入您的账号</p>
+      <p class="auth-hint mono">默认账号 admin · 密码 admin123（区分大小写）</p>
 
       <a-config-provider :theme="formTheme">
         <a-form :model="formState" @finish="handleLogin" layout="vertical" class="auth-form">
@@ -96,9 +97,17 @@
           </a-form-item>
           <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
             <label class="field-label">密码</label>
-            <a-input-password v-model:value="formState.password" placeholder="请输入密码" size="large" autocomplete="current-password" @keyup.enter="handleLogin">
+            <a-input-password v-model:value="formState.password" placeholder="请输入密码" size="large" autocomplete="current-password">
               <template #prefix><svg class="field-icon" viewBox="0 0 16 16" fill="none"><rect x="3.5" y="7" width="9" height="6.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></template>
             </a-input-password>
+          </a-form-item>
+          <a-form-item name="captchaCode" :rules="[{ required: true, message: '请输入验证码' }]">
+            <label class="field-label">验证码</label>
+            <div class="captcha-row">
+              <a-input v-model:value="formState.captchaCode" placeholder="请输入验证码" size="large" maxlength="6" />
+              <img v-if="captchaImage" :src="captchaImage" class="captcha-img" alt="验证码" title="点击刷新" @click="loadCaptcha" />
+              <a-button size="large" @click="loadCaptcha">刷新</a-button>
+            </div>
           </a-form-item>
           <a-form-item>
             <button ref="ctaRef" type="submit" class="cta" :disabled="loading">{{ loading ? '登录中…' : '登 录' }}</button>
@@ -115,7 +124,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { login } from '../api/auth'
+import { login, getCaptcha } from '../api/auth'
+import { message } from 'ant-design-vue'
 import type { ThemeConfig } from 'ant-design-vue/es/config-provider/context'
 
 const router = useRouter()
@@ -158,7 +168,18 @@ const edges = [
   { x1: 530, y1: 445, x2: 95, y2: 400 }
 ]
 
-const formState = reactive({ username: '', password: '' })
+const formState = reactive({ username: '', password: '', captchaCode: '' })
+const captchaId = ref('')
+const captchaImage = ref('')
+
+async function loadCaptcha() {
+  try {
+    const res = await getCaptcha()
+    captchaId.value = res.data.captchaId
+    captchaImage.value = res.data.imageBase64
+    formState.captchaCode = ''
+  } catch { /* interceptor */ }
+}
 
 const formTheme: ThemeConfig = {
   token: {
@@ -199,19 +220,25 @@ function onClick(e: MouseEvent) {
 }
 
 async function handleLogin() {
+  if (loading.value) return
   try {
     loading.value = true
-    const res = await login(formState.username, formState.password)
+    const res = await login(formState.username, formState.password, captchaId.value, formState.captchaCode)
     authStore.setToken(res.data.token)
-    // 后端登录接口返回 { token, username, role }，据此构造用户信息存入 store
     authStore.setUser({
       id: 0,
       username: res.data.username,
       role: res.data.role === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
       status: 1
     })
-    router.push('/')
-  } catch { /* interceptor */ } finally { loading.value = false }
+    await router.push('/')
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '登录失败'
+    message.error(msg)
+    loadCaptcha()
+  } finally {
+    loading.value = false
+  }
 }
 
 function alignSunWithButton() {
@@ -226,6 +253,8 @@ function alignSunWithButton() {
 }
 
 onMounted(() => {
+  authStore.logout()
+  loadCaptcha()
   nextTick(alignSunWithButton)
   window.addEventListener('resize', alignSunWithButton)
 })
@@ -253,7 +282,8 @@ onUnmounted(() => {
   color: var(--text);
   font-family: var(--sans);
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .mono { font-family: var(--mono); }
@@ -457,7 +487,13 @@ onUnmounted(() => {
 .auth-sub {
   font-size: 14px;
   color: var(--muted);
-  margin: 0 0 2.25rem;
+  margin: 0 0 8px;
+}
+
+.auth-hint {
+  font-size: 12px;
+  color: #a3a3a3;
+  margin: 0 0 2rem;
 }
 
 .field-label {
@@ -525,6 +561,21 @@ onUnmounted(() => {
 
 .cta:hover:not(:disabled) { opacity: 0.92; }
 .cta:disabled { opacity: 0.5; }
+
+.captcha-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.captcha-row :deep(.ant-input) {
+  flex: 1;
+}
+.captcha-img {
+  height: 48px;
+  border-radius: 6px;
+  cursor: pointer;
+  border: 1px solid #2a2a2a;
+}
 
 .copyright {
   position: absolute;

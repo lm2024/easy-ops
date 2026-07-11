@@ -1,0 +1,28 @@
+version: '3.8'
+
+# 裸机自升级模拟（开发机 Docker 内验证 shell 模式，非 restart 策略）
+services:
+  agent-baremetal-test:
+    image: eclipse-temurin:8-jre
+    container_name: ops-agent-baremetal-test
+    restart: "no"
+    volumes:
+      - ./agent/target/easy-ops-agent-1.0.0-SNAPSHOT.jar:/opt/agent/easy-ops-agent.jar
+      - ./agent/scripts:/opt/agent/scripts:ro
+      - agent-baremetal-data:/opt/agent/data
+    environment:
+      AGENT_RESTART_MODE: shell
+      AGENT_TOKEN: agent-token-baremetal-test
+      AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_NODE_NAME: agent-baremetal-test
+      AGENT_HOST_IP: 127.0.0.1
+      AGENT_HOST_PORT: 2130
+      JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
+    ports:
+      - "2130:2123"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["/bin/sh", "-c", "/opt/agent/scripts/start.sh || exit 1; while true; do sleep 3600; done"]
+
+volumes:
+  agent-baremetal-data:

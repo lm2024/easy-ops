@@ -33,6 +33,11 @@
           <a-button @click="handleExport"><download-outlined /> 导出CSV</a-button>
           <a-button @click="handleImportClick"><upload-outlined /> 导入CSV</a-button>
           <input ref="fileInputRef" type="file" accept=".csv" style="display:none" @change="handleImportFile" />
+          <a-button @click="agentPkgInputRef?.click()"><cloud-upload-outlined /> 上传Agent包</a-button>
+          <input ref="agentPkgInputRef" type="file" accept=".jar" style="display:none" @change="handleAgentPackageUpload" />
+          <a-button type="primary" ghost :loading="upgrading" @click="handleBatchUpgrade">
+            <rocket-outlined /> 批量升级Agent
+          </a-button>
           <a-tooltip title="新增一个 Agent 节点。如果 Agent 已启动并通过心跳注册，会自动显示在这里。">
             <a-button type="primary" @click="$router.push('/nodes/add')">
               <plus-outlined /> 新增节点
@@ -42,8 +47,8 @@
       </template>
 
       <a-table :columns="columns" :data-source="nodes" :loading="loading" :pagination="pagination"
-               row-key="id" @change="handleTableChange" :expanded-row-keys="expandRowKeys"
-               @expandedRowsChange="expandRowKeys = $event">
+               :row-key="rowKey" @change="handleTableChange" v-model:expanded-row-keys="expandRowKeys"
+               @expand="onRowExpand" :row-selection="rowSelection">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
             <a-space>
@@ -120,23 +125,23 @@
         <template #expandedRowRender="{ record }">
           <div style="padding: 8px 0">
             <!-- 加载状态 -->
-            <a-skeleton v-if="nodeDetailLoading[record.id]" active :paragraph="{ rows: 12 }" />
+            <a-skeleton v-if="nodeDetailLoading[rowKey(record)]" active :paragraph="{ rows: 12 }" />
             <!-- 错误状态 -->
-            <a-result v-else-if="nodeDetailError[record.id]" status="warning" :title="'无法获取节点详情'"
-                      :sub-title="nodeDetailError[record.id]">
+            <a-result v-else-if="nodeDetailError[rowKey(record)]" status="warning" :title="'无法获取节点详情'"
+                      :sub-title="nodeDetailError[rowKey(record)]">
               <template #extra>
-                <a-button size="small" @click="fetchNodeDetail(record.id)">🔄 重试</a-button>
+                <a-button size="small" @click="fetchNodeDetail(rowKey(record))">🔄 重试</a-button>
               </template>
             </a-result>
             <!-- 数据展示 -->
-            <template v-else-if="nodeDetailData[record.id]">
-              <a-card size="small" style="background:#1a1a1c;border-radius:6px">
+            <template v-else-if="nodeDetailData[rowKey(record)]">
+              <a-card size="small" class="node-detail-card">
                 <a-row :gutter="[24, 16]">
                   <!-- 第一行：基本 + 系统 -->
                   <a-col :span="12">
                     <a-descriptions title="📋 基本信息" size="small" :column="1" bordered>
                       <a-descriptions-item label="节点名称"><a-tooltip title="AGENT_NODE_NAME 配置值">{{ record.name }}</a-tooltip></a-descriptions-item>
-                      <a-descriptions-item label="主机名"><a-tooltip title="服务器主机名">{{ nodeDetailData[record.id].hostname || '-' }}</a-tooltip></a-descriptions-item>
+                      <a-descriptions-item label="主机名"><a-tooltip title="服务器主机名">{{ nodeDetailData[rowKey(record)].hostname || '-' }}</a-tooltip></a-descriptions-item>
                       <a-descriptions-item label="IP 地址"><a-tooltip title="Agent 网络地址">{{ record.ip }}</a-tooltip></a-descriptions-item>
                       <a-descriptions-item label="认证 Token"><code>{{ (record.token||'').substring(0,16) }}...</code></a-descriptions-item>
                       <a-descriptions-item label="自定义标签"><a-tooltip title="用逗号分隔多个标签，支持搜索">{{ record.tags || '(无)' }}</a-tooltip></a-descriptions-item>
@@ -144,14 +149,14 @@
                   </a-col>
                   <a-col :span="12">
                     <a-descriptions title="💻 系统环境" size="small" :column="1" bordered>
-                      <a-descriptions-item label="操作系统"><a-tooltip title="系统名称和版本">{{ nodeDetailData[record.id].osName }} {{ nodeDetailData[record.id].osVersion }}</a-tooltip></a-descriptions-item>
-                      <a-descriptions-item label="系统架构">{{ nodeDetailData[record.id].osArch || record.osArch || '-' }}</a-descriptions-item>
-                      <a-descriptions-item label="运行时长"><a-tooltip title="系统已持续运行时间">{{ nodeDetailData[record.id].uptime || '-' }}</a-tooltip></a-descriptions-item>
+                      <a-descriptions-item label="操作系统"><a-tooltip title="系统名称和版本">{{ nodeDetailData[rowKey(record)].osName }} {{ nodeDetailData[rowKey(record)].osVersion }}</a-tooltip></a-descriptions-item>
+                      <a-descriptions-item label="系统架构">{{ nodeDetailData[rowKey(record)].osArch || record.osArch || '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="运行时长"><a-tooltip title="系统已持续运行时间">{{ nodeDetailData[rowKey(record)].uptime || '-' }}</a-tooltip></a-descriptions-item>
                       <a-descriptions-item label="Java 版本"><code>{{ record.javaVersion || '-' }}</code></a-descriptions-item>
                       <a-descriptions-item label="JVM 堆内存">
                         <a-tooltip title="JVM 最大可用堆 / 已分配 / 空闲（影响 GC 频率）">
-                          <span>最大 {{ fmtSize(nodeDetailData[record.id].jvmMaxHeapMB) }}</span>
-                          <span v-if="nodeDetailData[record.id].jvmTotalMemoryMB"> | 已用 {{ fmtSize((nodeDetailData[record.id].jvmMaxHeapMB||0) - (nodeDetailData[record.id].jvmFreeMemoryMB||0)) }}</span>
+                          <span>最大 {{ fmtSize(nodeDetailData[rowKey(record)].jvmMaxHeapMB) }}</span>
+                          <span v-if="nodeDetailData[rowKey(record)].jvmTotalMemoryMB"> | 已用 {{ fmtSize((nodeDetailData[rowKey(record)].jvmMaxHeapMB||0) - (nodeDetailData[rowKey(record)].jvmFreeMemoryMB||0)) }}</span>
                         </a-tooltip>
                       </a-descriptions-item>
                       <a-descriptions-item label="心跳时间">{{ record.lastHeartbeat ? new Date(record.lastHeartbeat).toLocaleString() : '-' }}</a-descriptions-item>
@@ -163,36 +168,68 @@
                 <a-row :gutter="[24, 16]" style="margin-top:16px">
                   <a-col :span="12">
                     <a-descriptions title="🧠 CPU 信息" size="small" :column="1" bordered>
-                      <a-descriptions-item label="CPU 型号"><a-tooltip title="CPU 完整型号"># {{ (nodeDetailData[record.id].cpuModel||'-').trim() }}</a-tooltip></a-descriptions-item>
-                      <a-descriptions-item label="逻辑核数"><a-tag color="blue">{{ nodeDetailData[record.id].cpuCores || record.cpuCores || '?' }}</a-tag> 核</a-descriptions-item>
+                      <a-descriptions-item label="CPU 型号">
+                        <span style="word-break:break-all">{{ nodeDetailData[rowKey(record)].cpuModel || '未能识别' }}</span>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="物理 / 逻辑核数">
+                        <a-space>
+                          <a-tag color="purple">{{ nodeDetailData[rowKey(record)].cpuPhysicalCores || '?' }} 物理核</a-tag>
+                          <a-tag color="blue">{{ nodeDetailData[rowKey(record)].cpuLogicalCores || nodeDetailData[rowKey(record)].cpuCores || record.cpuCores || '?' }} 逻辑核</a-tag>
+                        </a-space>
+                        <div class="sys-hint">物理核=真实 CPU 核心；逻辑核=含超线程后的可调度核心数</div>
+                      </a-descriptions-item>
                       <a-descriptions-item label="当前使用率">
-                        <a-progress :percent="nodeDetailData[record.id].cpuUsagePercent || 0" size="small"
-                                    :status="(nodeDetailData[record.id].cpuUsagePercent||0) > 80 ? 'exception' : 'active'"
-                                    :format="() => (nodeDetailData[record.id].cpuUsagePercent||'?')+'%'" />
+                        <div class="cpu-usage-row">
+                          <span class="cpu-usage-value">{{ nodeDetailData[rowKey(record)].cpuUsagePercent ?? '?' }}%</span>
+                          <a-progress
+                            :percent="Number(nodeDetailData[rowKey(record)].cpuUsagePercent) || 0"
+                            :show-info="false"
+                            :status="(nodeDetailData[rowKey(record)].cpuUsagePercent||0) > 80 ? 'exception' : 'active'"
+                          />
+                        </div>
+                        <div class="sys-hint">{{ nodeDetailData[rowKey(record)].cpuUsageDescription || '反映 CPU 当前忙碌程度' }}</div>
                       </a-descriptions-item>
                       <a-descriptions-item label="系统负载">
-                        <a-tooltip title="1分钟 / 5分钟 / 15分钟平均负载（超过核数表示过载）">
-                          {{ nodeDetailData[record.id].loadAverage1m || '?' }} / {{ nodeDetailData[record.id].loadAverage5m || '?' }} / {{ nodeDetailData[record.id].loadAverage15m || '?' }}
-                        </a-tooltip>
+                        {{ nodeDetailData[rowKey(record)].loadAverage1m || '?' }} / {{ nodeDetailData[rowKey(record)].loadAverage5m || '?' }} / {{ nodeDetailData[rowKey(record)].loadAverage15m || '?' }}
+                        <div class="sys-hint">{{ nodeDetailData[rowKey(record)].loadDescription || '1/5/15 分钟平均等待 CPU 的任务数' }}</div>
                       </a-descriptions-item>
                     </a-descriptions>
                   </a-col>
                   <a-col :span="12">
                     <a-descriptions title="💾 内存信息" size="small" :column="1" bordered>
-                      <a-descriptions-item label="总内存"><a-tag color="blue">{{ fmtSizeSup(nodeDetailData[record.id].totalMemoryMB) }}</a-tag></a-descriptions-item>
-                      <a-descriptions-item label="已使用"><a-tag color="orange">{{ fmtSizeSup(nodeDetailData[record.id].usedMemoryMB) }}</a-tag>
-                        <a-tag v-if="nodeDetailData[record.id].memoryUsagePercent">{{ nodeDetailData[record.id].memoryUsagePercent }}%</a-tag>
-                        <a-progress :percent="nodeDetailData[record.id].memoryUsagePercent || 0" size="small"
-                                    :status="(nodeDetailData[record.id].memoryUsagePercent||0) > 85 ? 'exception' : 'active'"
-                                    :format="() => nodeDetailData[record.id].memoryUsagePercent+'%'" />
+                      <a-descriptions-item label="总内存">
+                        <a-tag color="blue">{{ fmtSizeSup(nodeDetailData[rowKey(record)].totalMemoryMB) }}</a-tag>
                       </a-descriptions-item>
-                      <a-descriptions-item label="空闲内存"><a-tag color="green">{{ fmtSizeSup(nodeDetailData[record.id].freeMemoryMB) }}</a-tag></a-descriptions-item>
-                      <a-descriptions-item label="可用内存">
-                        <a-tooltip title="应用程序实际可用的内存（含缓存和缓冲区）">
-                          <a-tag color="cyan">{{ fmtSizeSup(nodeDetailData[record.id].availableMemoryMB) }}</a-tag>
-                        </a-tooltip>
+                      <a-descriptions-item label="已使用（应用）">
+                        <a-space direction="vertical" style="width:100%">
+                          <a-space>
+                            <a-tag color="orange">{{ fmtSizeSup(nodeDetailData[rowKey(record)].usedMemoryMB) }}</a-tag>
+                            <span v-if="nodeDetailData[rowKey(record)].memoryUsagePercent != null">{{ nodeDetailData[rowKey(record)].memoryUsagePercent }}%</span>
+                          </a-space>
+                          <a-progress
+                            :percent="Number(nodeDetailData[rowKey(record)].memoryUsagePercent) || 0"
+                            :show-info="false"
+                            :status="(nodeDetailData[rowKey(record)].memoryUsagePercent||0) > 85 ? 'exception' : 'active'"
+                          />
+                          <div class="sys-hint">{{ nodeDetailData[rowKey(record)].memoryUsedDescription }}</div>
+                        </a-space>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="文件缓存/缓冲">
+                        <a-tag color="geekblue">{{ fmtSizeSup(nodeDetailData[rowKey(record)].buffersCachedMB) }}</a-tag>
+                        <div class="sys-hint">{{ nodeDetailData[rowKey(record)].memoryBuffersCachedDescription }}</div>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="仍可分配">
+                        <a-tag color="cyan">{{ fmtSizeSup(nodeDetailData[rowKey(record)].availableMemoryMB) }}</a-tag>
+                        <div class="sys-hint">{{ nodeDetailData[rowKey(record)].memoryAvailableDescription }}</div>
                       </a-descriptions-item>
                     </a-descriptions>
+                    <a-alert
+                      v-if="nodeDetailData[rowKey(record)].memorySummary"
+                      type="info"
+                      show-icon
+                      style="margin-top:12px;font-size:12px"
+                      :message="nodeDetailData[rowKey(record)].memorySummary"
+                    />
                   </a-col>
                 </a-row>
 
@@ -200,10 +237,10 @@
                 <a-row style="margin-top:16px">
                   <a-col :span="24">
                     <a-descriptions title="💽 磁盘信息" size="small" bordered :column="1">
-                      <template v-if="!nodeDetailData[record.id].disks || nodeDetailData[record.id].disks.length === 0">
+                      <template v-if="!nodeDetailData[rowKey(record)].disks || nodeDetailData[rowKey(record)].disks.length === 0">
                         <a-descriptions-item label="磁盘列表">暂未获取到磁盘信息</a-descriptions-item>
                       </template>
-                      <a-descriptions-item v-for="(disk, di) in nodeDetailData[record.id].disks" :key="di"
+                      <a-descriptions-item v-for="(disk, di) in nodeDetailData[rowKey(record)].disks" :key="di"
                         :label="'📂 ' + (disk.mountPoint||'未知')">
                         <a-space direction="vertical" style="width:100%">
                           <a-row :gutter="16">
@@ -234,7 +271,7 @@
                     <a-alert v-if="record.status === 0" type="warning" show-icon message="🔴 节点离线"
                              description="Agent 可能已停止运行、网络中断或服务器关机。请检查目标服务器上 Agent 进程是否正常运行，以及网络连通性。" />
                     <a-alert v-else type="success" show-icon message="🟢 节点在线 — Agent 运行正常"
-                             :description="`心跳间隔约 30 秒。CPU 使用率 ${nodeDetailData[record.id].cpuUsagePercent||'?'}% | 内存 ${nodeDetailData[record.id].memoryUsagePercent||'?'}% | 最后心跳 ${record.lastHeartbeat ? new Date(record.lastHeartbeat).toLocaleString() : '未知'}`" />
+                             :description="`Agent 心跳约 ${AGENT_HEARTBEAT_SEC} 秒上报一次；CPU/内存每 ${DETAIL_REFRESH_SEC} 秒自动刷新。当前 CPU ${nodeDetailData[rowKey(record)].cpuUsagePercent??'?'}% | 内存 ${nodeDetailData[rowKey(record)].memoryUsagePercent??'?'}% | 最后心跳 ${record.lastHeartbeat ? new Date(record.lastHeartbeat).toLocaleString() : '未知'}`" />
                   </a-col>
                 </a-row>
               </a-card>
@@ -247,16 +284,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { NodeModel } from '../types'
-import { getNodes, deleteNode, updateNodeTags, exportNodesCsv, importNodesCsv } from '../api/node'
+import { getNodes, deleteNode, updateNodeTags, exportNodesCsv, importNodesCsv, uploadAgentPackage, batchUpgradeAgents } from '../api/node'
 import { getNodeSysInfo } from '../api/agent'
 import {
   SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ClusterOutlined,
-  DownloadOutlined, UploadOutlined, EyeOutlined, InfoCircleOutlined, CloseOutlined
+  DownloadOutlined, UploadOutlined, EyeOutlined, InfoCircleOutlined, CloseOutlined,
+  CloudUploadOutlined, RocketOutlined
 } from '@ant-design/icons-vue'
+
+/** Agent 向 Server 上报心跳间隔（秒），与 backend agent.check-interval 一致 */
+const AGENT_HEARTBEAT_SEC = 30
+/** 节点详情 CPU/内存 等指标的前端自动刷新间隔（秒），仅影响展示，不增加 Agent 心跳频率 */
+const DETAIL_REFRESH_SEC = 10
+const DETAIL_REFRESH_MS = DETAIL_REFRESH_SEC * 1000
 
 function fmtDate(ts: any): string {
   if (!ts) return '-'
@@ -273,17 +317,32 @@ const keyword = ref('')
 const filterStatus = ref<string | undefined>(undefined)
 const pagination = ref({ current: 1, pageSize: 20, total: 0 })
 const fileInputRef = ref<HTMLInputElement>()
+const agentPkgInputRef = ref<HTMLInputElement>()
+const upgrading = ref(false)
+const selectedRowKeys = ref<string[]>([])
+const rowSelection = computed(() => ({
+  selectedRowKeys: selectedRowKeys.value,
+  onChange: (keys: (string | number)[]) => { selectedRowKeys.value = keys.map(String) }
+}))
 const editingTags = ref<string | null>(null)
 const editTagsArray = ref<string[]>([])
-const expandRowKeys = ref<string[]>([])
+type RowKey = string | number
+const expandRowKeys = ref<RowKey[]>([])
+
+/** 统一行主键，避免 number/string 混用导致展开失效 */
+function rowKey(record: NodeModel): string {
+  return String(record.id)
+}
 const nodeDetailData = reactive<Record<string, any>>({})
 const nodeDetailLoading = reactive<Record<string, boolean>>({})
 const nodeDetailError = reactive<Record<string, string>>({})
+let detailRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const columns = [
   { title: '节点名称', dataIndex: 'name', key: 'name', width: 200 },
   { title: '标签', dataIndex: 'tags', key: 'tags', width: 220 },
   { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130 },
+  { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 130 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
   { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 270 },
   { title: '最后心跳', dataIndex: 'lastHeartbeat', key: 'lastHeartbeat', width: 150 },
@@ -337,25 +396,66 @@ async function saveTags(r: NodeModel) {
   editTagsArray.value = []
 }
 
+async function onRowExpand(expanded: boolean, record: NodeModel) {
+  const key = rowKey(record)
+  if (expanded && !nodeDetailData[key]) {
+    await fetchNodeDetail(key)
+  }
+}
+
 async function toggleExpand(record: NodeModel) {
-  const key = record.id
-  const idx = expandRowKeys.value.indexOf(key)
-  if (idx >= 0) { expandRowKeys.value.splice(idx, 1); return }
-  expandRowKeys.value.push(key)
-  // 获取实时系统信息
+  const key = rowKey(record)
+  if (expandRowKeys.value.includes(key)) {
+    expandRowKeys.value = expandRowKeys.value.filter(k => k !== key)
+    return
+  }
+  expandRowKeys.value = [...expandRowKeys.value, key]
   if (!nodeDetailData[key]) await fetchNodeDetail(key)
 }
 
-async function fetchNodeDetail(nodeId: string) {
-  nodeDetailLoading[nodeId] = true
-  nodeDetailError[nodeId] = ''
+async function fetchNodeDetail(nodeId: string, silent = false) {
+  if (!silent) {
+    nodeDetailLoading[nodeId] = true
+    nodeDetailError[nodeId] = ''
+  }
   try {
     const res = await getNodeSysInfo(nodeId)
     nodeDetailData[nodeId] = res.data
+    if (silent) nodeDetailError[nodeId] = ''
   } catch (e: any) {
-    nodeDetailError[nodeId] = e?.message || '无法连接到 Agent，请检查节点是否在线'
+    if (!silent) {
+      nodeDetailError[nodeId] = e?.message || '无法连接到 Agent，请检查节点是否在线'
+    }
   } finally {
-    nodeDetailLoading[nodeId] = false
+    if (!silent) nodeDetailLoading[nodeId] = false
+  }
+}
+
+async function fetchNodesSilent() {
+  try {
+    const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value)
+    nodes.value = res.data.list
+    pagination.value.total = res.data.total
+  } catch {
+    // 后台刷新失败时静默忽略，避免打断用户操作
+  }
+}
+
+async function refreshExpandedDetails() {
+  if (expandRowKeys.value.length === 0) return
+  await Promise.all(expandRowKeys.value.map(key => fetchNodeDetail(String(key), true)))
+  await fetchNodesSilent()
+}
+
+function startDetailRefresh() {
+  if (detailRefreshTimer) return
+  detailRefreshTimer = setInterval(refreshExpandedDetails, DETAIL_REFRESH_MS)
+}
+
+function stopDetailRefresh() {
+  if (detailRefreshTimer) {
+    clearInterval(detailRefreshTimer)
+    detailRefreshTimer = null
   }
 }
 
@@ -378,5 +478,71 @@ async function handleImportFile(e: Event) {
   catch { message.error('导入失败，请检查CSV格式') } finally { t.value = '' }
 }
 
+async function handleAgentPackageUpload(e: Event) {
+  const t = e.target as HTMLInputElement
+  const f = t.files?.[0]
+  if (!f) return
+  try {
+    const r = await uploadAgentPackage(f)
+    const sizeMb = ((r.data.size || 0) / 1024 / 1024).toFixed(1)
+    message.success('Agent 升级包已上传 (' + sizeMb + ' MB)')
+  } catch {
+    message.error('Agent 升级包上传失败')
+  } finally {
+    t.value = ''
+  }
+}
+
+async function handleBatchUpgrade() {
+  try {
+    upgrading.value = true
+    const ids = selectedRowKeys.value.length > 0 ? selectedRowKeys.value : undefined
+    const r = await batchUpgradeAgents(ids)
+    message.success(`升级完成：成功 ${r.data.success}，失败 ${r.data.failed}`)
+    fetchNodes()
+  } catch (e: any) {
+    message.error(e?.message || '批量升级失败，请先上传 Agent 升级包')
+  } finally {
+    upgrading.value = false
+  }
+}
+
 onMounted(fetchNodes)
+
+watch(expandRowKeys, (keys) => {
+  if (keys.length > 0) startDetailRefresh()
+  else stopDetailRefresh()
+}, { deep: true })
+
+onUnmounted(stopDetailRefresh)
 </script>
+
+<style scoped>
+.node-detail-card {
+  background: var(--eo-bg-muted);
+  border-radius: 8px;
+}
+
+.sys-hint {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #8c8c8c;
+}
+.cpu-usage-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.cpu-usage-row :deep(.ant-progress) {
+  flex: 1;
+  min-width: 120px;
+}
+.cpu-usage-value {
+  min-width: 48px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #e8ff59;
+}
+</style>

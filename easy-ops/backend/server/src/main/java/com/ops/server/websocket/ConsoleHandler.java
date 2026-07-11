@@ -1,13 +1,12 @@
 package com.ops.server.websocket;
 
+import com.alibaba.fastjson2.JSON;
 import com.ops.common.model.NodeModel;
-import com.ops.server.mapper.NodeMapper;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -16,198 +15,308 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 import java.io.IOException;
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * 控制台 WebSocket：JSON 协议 + Agent 远程 Shell。
+ */
 @Component
 public class ConsoleHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ConsoleHandler.class);
 
-    // projectId -> (nodeId -> session)
     private final Map<String, Map<String, WebSocketSession>> sessionGroups = new ConcurrentHashMap<>();
+    private final Map<String, SessionState> sessionState = new ConcurrentHashMap<>();
 
     @Autowired
-    private NodeMapper nodeMapper;
-
-    @Autowired
-    private RestTemplate restTemplate;
+    private ConsoleAgentClient agentClient;
 
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
         URI uri = session.getUri();
         if (uri == null) {
-            log.warn("Console WebSocket connected without URI: {}", session.getId());
             return;
         }
 
-        String query = uri.getQuery();
         String projectId = null;
         String nodeId = null;
+        String query = uri.getQuery();
         if (query != null) {
             for (String param : query.split("&")) {
                 String[] pair = param.split("=", 2);
                 if (pair.length == 2) {
-                    if ("projectId".equals(pair[0])) projectId = pair[1];
-                    if ("nodeId".equals(pair[0])) nodeId = pair[1];
+                    if ("projectId".equals(pair[0])) {
+                        projectId = pair[1];
+                    }
+                    if ("nodeId".equals(pair[0])) {
+                        nodeId = pair[1];
+                    }
                 }
             }
         }
 
         if (projectId == null || nodeId == null) {
-            log.warn("Console WebSocket missing projectId/nodeId: {}", session.getId());
-            try {
-                session.close(CloseStatus.BAD_DATA);
-            } catch (IOException ignored) {}
+            closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
 
-        subscribe(projectId, nodeId, session);
-        log.info("Console WebSocket connected: {} for project={}, node={}", session.getId(), projectId, nodeId);
+        NodeModel node = agentClient.findNode(nodeId);
+        if (node == null) {
+            sendJson(session, event("error", "text", "节点不存在，请刷新页面后重试"));
+            closeQuietly(session, CloseStatus.BAD_DATA);
+            return;
+        }
+        String nodeName = node.getName();
+        String cwd;
+        try {
+            cwd = agentClient.resolveCwd(nodeId);
+        } catch (Exception e) {
+            log.warn("Console init failed node={}: {}", nodeId, e.getMessage());
+            String endpoint = (node.getIp() != null ? node.getIp() : "127.0.0.1") + ":"
+                    + (node.getPort() != null ? node.getPort() : 2123);
+            sendJson(session, event("error", "text",
+                    "无法连接 Agent (" + endpoint + ")，请确认 Docker/Agent 已启动且节点在线"));
+            closeQuietly(session, CloseStatus.SERVER_ERROR);
+            return;
+        }
 
-        // 发送欢迎消息
-        sendToSession(session, "[控制台已连接 - 项目:" + projectId + " 节点:" + nodeId + "]\n");
+        SessionState state = new SessionState(projectId, nodeId, nodeName, cwd);
+        sessionState.put(session.getId(), state);
+        subscribe(projectId, nodeId, session);
+
+        log.info("Console connected session={} project={} node={} cwd={}", session.getId(), projectId, nodeId, cwd);
+        sendJson(session, event("init",
+                "projectId", projectId,
+                "nodeId", nodeId,
+                "nodeName", nodeName,
+                "cwd", cwd));
     }
 
     @Override
     protected void handleTextMessage(@NotNull WebSocketSession session, @NotNull TextMessage message) {
-        String command = message.getPayload();
-        if (command == null || command.trim().isEmpty()) return;
-
-        log.info("Console command from {}: {}", session.getId(), command);
-
-        // 从 sessionGroups 中查找该 session 对应的 projectId 和 nodeId
-        String projectId = null;
-        String nodeId = null;
-        outer:
-        for (Map.Entry<String, Map<String, WebSocketSession>> pEntry : sessionGroups.entrySet()) {
-            for (Map.Entry<String, WebSocketSession> nEntry : pEntry.getValue().entrySet()) {
-                if (nEntry.getValue().equals(session)) {
-                    projectId = pEntry.getKey();
-                    nodeId = nEntry.getKey();
-                    break outer;
-                }
-            }
-        }
-
-        if (projectId == null || nodeId == null) {
-            sendToSession(session, "[错误] 未找到会话绑定，请重新连接\n");
+        String payload = message.getPayload();
+        if (payload == null || payload.trim().isEmpty()) {
             return;
         }
 
-        // 在终端回显命令
-        sendToSession(session, "$ " + command + "\n");
+        SessionState state = sessionState.get(session.getId());
+        if (state == null) {
+            sendJson(session, event("error", "text", "会话未初始化，请重新连接"));
+            return;
+        }
 
-        // 调用 Agent 的 Shell API 执行命令
-        executeCommand(session, projectId, nodeId, command);
+        if (payload.trim().startsWith("{")) {
+            handleJsonMessage(session, state, payload);
+            return;
+        }
+
+        // 兼容旧版纯文本命令
+        handleExec(session, state, payload.trim());
     }
 
     @Override
     public void afterConnectionClosed(@NotNull WebSocketSession session, @NotNull CloseStatus status) {
-        // BUG-FIX-001: 使用同步块避免 ConcurrentModificationException
+        sessionState.remove(session.getId());
         synchronized (sessionGroups) {
             for (Map.Entry<String, Map<String, WebSocketSession>> pEntry : sessionGroups.entrySet()) {
-                String projectId = pEntry.getKey();
                 Map<String, WebSocketSession> nodeMap = pEntry.getValue();
                 synchronized (nodeMap) {
                     nodeMap.values().removeIf(s -> s.equals(session));
                     if (nodeMap.isEmpty()) {
-                        sessionGroups.remove(projectId);
+                        sessionGroups.remove(pEntry.getKey());
                     }
                 }
             }
         }
-        log.info("Console WebSocket closed: {}, status: {}", session.getId(), status);
+        log.info("Console closed session={} status={}", session.getId(), status);
     }
 
     @Override
     public void handleTransportError(@NotNull WebSocketSession session, @NotNull Throwable exception) {
-        log.error("Console WebSocket transport error: {}", session.getId(), exception);
-        // 传输异常后确保清理会话
+        log.error("Console transport error session={}", session.getId(), exception);
+        afterConnectionClosed(session, CloseStatus.SERVER_ERROR);
+    }
+
+    private void handleJsonMessage(WebSocketSession session, SessionState state, String payload) {
         try {
-            afterConnectionClosed(session, CloseStatus.SERVER_ERROR);
+            Map<String, Object> json = JSON.parseObject(payload);
+            String type = String.valueOf(json.getOrDefault("type", ""));
+            if ("exec".equals(type)) {
+                handleExec(session, state, String.valueOf(json.getOrDefault("command", "")).trim());
+            } else if ("complete".equals(type)) {
+                handleComplete(session, state, json);
+            } else {
+                sendJson(session, event("error", "text", "未知消息类型: " + type));
+            }
         } catch (Exception e) {
-            log.error("Error cleaning up session after transport error", e);
+            sendJson(session, event("error", "text", "消息解析失败: " + e.getMessage()));
         }
     }
 
-    // ====== 内部方法 ======
+    private void handleExec(WebSocketSession session, SessionState state, String command) {
+        if (command.isEmpty()) {
+            return;
+        }
+        log.info("Console exec node={} cmd={}", state.nodeId, command);
+
+        String normalized = normalizeCommand(command);
+        if ("pwd".equals(normalized)) {
+            sendJson(session, event("output", "text", state.cwd + "\n"));
+            sendMeta(session, state, 0, 0L);
+            return;
+        }
+        if (normalized.startsWith("cd")) {
+            handleCd(session, state, normalized);
+            return;
+        }
+        if ("clear".equals(normalized) || "cls".equals(normalized)) {
+            sendJson(session, event("clear"));
+            sendMeta(session, state, 0, 0L);
+            return;
+        }
+
+        String wrapped = "cd " + shellQuote(state.cwd) + " && " + normalized;
+        try {
+            Map<String, Object> response = agentClient.exec(state.nodeId, wrapped);
+            writeExecResult(session, state, response);
+        } catch (Exception e) {
+            sendJson(session, event("error", "text", "命令执行失败: " + e.getMessage()));
+            sendMeta(session, state, 1, 0L);
+        }
+    }
+
+    private void handleCd(WebSocketSession session, SessionState state, String command) {
+        String target = command.length() > 2 ? command.substring(2).trim() : "";
+        String cdCmd;
+        if (target.isEmpty() || "~".equals(target)) {
+            cdCmd = "cd ~ && pwd";
+        } else if (target.startsWith("/")) {
+            cdCmd = "cd " + shellQuote(target) + " && pwd";
+        } else {
+            cdCmd = "cd " + shellQuote(state.cwd) + " && cd " + shellQuote(target) + " && pwd";
+        }
+        try {
+            Map<String, Object> response = agentClient.exec(state.nodeId, cdCmd);
+            String stdout = agentClient.extractStdout(response);
+            Integer exitCode = agentClient.extractExitCode(response);
+            if (stdout != null && !stdout.trim().isEmpty() && (exitCode == null || exitCode == 0)) {
+                state.cwd = stdout.trim().split("\n")[0].trim();
+                sendJson(session, event("output", "text", state.cwd + "\n"));
+                sendMeta(session, state, 0, agentClient.extractElapsed(response));
+            } else {
+                sendJson(session, event("error", "text", "目录不存在或无法进入: " + (target.isEmpty() ? "~" : target)));
+                sendMeta(session, state, exitCode != null ? exitCode : 1, agentClient.extractElapsed(response));
+            }
+        } catch (Exception e) {
+            sendJson(session, event("error", "text", "cd 失败: " + e.getMessage()));
+            sendMeta(session, state, 1, 0L);
+        }
+    }
+
+    private void handleComplete(WebSocketSession session, SessionState state, Map<String, Object> json) {
+        String line = String.valueOf(json.getOrDefault("line", ""));
+        int cursor = parseInt(json.get("cursor"), line.length());
+        try {
+            List<String> candidates = agentClient.complete(state.nodeId, state.cwd, line, cursor);
+            sendJson(session, event("complete", "candidates", candidates));
+        } catch (Exception e) {
+            sendJson(session, event("complete", "candidates", java.util.Collections.emptyList()));
+        }
+    }
+
+    private void writeExecResult(WebSocketSession session, SessionState state, Map<String, Object> response) {
+        String stdout = agentClient.extractStdout(response);
+        Integer exitCode = agentClient.extractExitCode(response);
+        Long elapsed = agentClient.extractElapsed(response);
+        if (stdout != null && !stdout.isEmpty()) {
+            sendJson(session, event("output", "text", stdout));
+        }
+        sendMeta(session, state, exitCode != null ? exitCode : 0, elapsed != null ? elapsed : 0L);
+    }
+
+    private void sendMeta(WebSocketSession session, SessionState state, int exitCode, Long elapsed) {
+        sendJson(session, event("meta",
+                "exitCode", exitCode,
+                "elapsed", elapsed,
+                "cwd", state.cwd));
+    }
+
+    private String normalizeCommand(String command) {
+        String trimmed = command.trim();
+        if ("ll".equals(trimmed)) {
+            return "ls -al";
+        }
+        if ("la".equals(trimmed)) {
+            return "ls -a";
+        }
+        return trimmed;
+    }
 
     private void subscribe(String projectId, String nodeId, WebSocketSession session) {
-        sessionGroups.computeIfAbsent(projectId, k -> new ConcurrentHashMap<>())
-                .put(nodeId, session);
+        sessionGroups.computeIfAbsent(projectId, k -> new ConcurrentHashMap<>()).put(nodeId, session);
     }
 
-    private void executeCommand(WebSocketSession session, String projectId, String nodeId, String command) {
+    private void sendJson(WebSocketSession session, Map<String, Object> body) {
+        if (session == null || !session.isOpen()) {
+            return;
+        }
         try {
-            // 从数据库查询节点信息
-            NodeModel node = nodeMapper.findById(Long.parseLong(nodeId));
-            if (node == null) {
-                sendToSession(session, "[错误] 节点不存在 (ID: " + nodeId + ")\n");
-                return;
-            }
-
-            String agentIp = node.getIp() != null ? node.getIp() : "127.0.0.1";
-            int agentPort = node.getPort() != null ? node.getPort() : 2123;
-            String agentUrl = "http://" + agentIp + ":" + agentPort + "/api/shell/exec";
-
-            Map<String, String> request = new HashMap<>();
-            request.put("command", command);
-
-            log.info("Calling agent shell API: {}", agentUrl);
-
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restTemplate.postForObject(agentUrl, request, Map.class);
-
-            if (response != null) {
-                // Agent 返回 Result 包装: {code, message, data: {stdout, exitCode, elapsed}}
-                Object dataObj = response.get("data");
-                Map<String, Object> data;
-                if (dataObj instanceof Map) {
-                    data = (Map<String, Object>) dataObj;
-                } else {
-                    data = response; // fallback: 直接解析根层次
-                }
-
-                Object stdout = data.get("stdout");
-                Object exitCode = data.get("exitCode");
-                Object elapsed = data.get("elapsed");
-
-                if (stdout != null && !stdout.toString().isEmpty()) {
-                    sendToSession(session, stdout.toString());
-                    if (!stdout.toString().endsWith("\n")) {
-                        sendToSession(session, "\n");
-                    }
-                }
-                sendToSession(session, "\n[进程退出码: " + (exitCode != null ? exitCode : "?") +
-                        " | 耗时: " + (elapsed != null ? elapsed : "?") + "ms]\n");
-            } else {
-                sendToSession(session, "[错误] Agent 无响应\n");
-            }
-        } catch (Exception e) {
-            log.error("Failed to execute command on agent", e);
-            sendToSession(session, "[错误] 命令执行失败: " + e.getMessage() + "\n");
+            session.sendMessage(new TextMessage(JSON.toJSONString(body)));
+        } catch (IOException e) {
+            log.error("Console send failed session={}", session.getId(), e);
         }
     }
 
-    private void sendToSession(WebSocketSession session, String message) {
-        if (session != null && session.isOpen()) {
+    private Map<String, Object> event(String type, Object... kv) {
+        Map<String, Object> map = new HashMap<>();
+        map.put("type", type);
+        for (int i = 0; i + 1 < kv.length; i += 2) {
+            map.put(String.valueOf(kv[i]), kv[i + 1]);
+        }
+        return map;
+    }
+
+    private String shellQuote(String path) {
+        return "\"" + path.replace("\"", "\\\"") + "\"";
+    }
+
+    private int parseInt(Object value, int defaultValue) {
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        if (value != null) {
             try {
-                session.sendMessage(new TextMessage(message));
-            } catch (IOException e) {
-                log.error("Failed to send message to session {}", session.getId(), e);
+                return Integer.parseInt(value.toString());
+            } catch (NumberFormatException ignored) {
             }
         }
+        return defaultValue;
     }
 
-    public void sendToGroup(String projectId, String nodeId, String message) {
-        Map<String, WebSocketSession> nodeMap = sessionGroups.get(projectId);
-        if (nodeMap == null) return;
-        WebSocketSession session = nodeMap.get(nodeId);
-        sendToSession(session, message);
+    private void closeQuietly(WebSocketSession session, CloseStatus status) {
+        try {
+            session.close(status);
+        } catch (IOException ignored) {
+        }
     }
 
     public Map<String, Map<String, WebSocketSession>> getSessionGroups() {
         return sessionGroups;
+    }
+
+    private static final class SessionState {
+        private final String projectId;
+        private final String nodeId;
+        private final String nodeName;
+        private String cwd;
+
+        private SessionState(String projectId, String nodeId, String nodeName, String cwd) {
+            this.projectId = projectId;
+            this.nodeId = nodeId;
+            this.nodeName = nodeName;
+            this.cwd = cwd;
+        }
     }
 }

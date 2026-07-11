@@ -2,8 +2,15 @@ import request from '../utils/request'
 import type { UserModel, Result } from '../types'
 
 /** 用户登录 */
-export function login(username: string, password: string) {
-  return request.post<any, Result<{ token: string; username: string; role: string }>>('/auth/login', { username, password })
+export function login(username: string, password: string, captchaId: string, captchaCode: string) {
+  return request.post<any, Result<{ token: string; username: string; role: string }>>('/auth/login', {
+    username, password, captchaId, captchaCode
+  })
+}
+
+/** 获取登录验证码 */
+export function getCaptcha() {
+  return request.get<any, Result<{ captchaId: string; imageBase64: string }>>('/auth/captcha')
 }
 
 /** 获取用户列表 */

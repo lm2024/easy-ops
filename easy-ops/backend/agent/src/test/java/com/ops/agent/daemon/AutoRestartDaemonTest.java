@@ -24,14 +24,14 @@ class AutoRestartDaemonTest {
     }
 
     @Test
-    @DisplayName("构造函数 - Token未配置时抛出异常")
-    void run_noToken_throwsException() {
+    @DisplayName("启动时 - Token未配置时不抛异常（自愈守护禁用）")
+    void run_noToken_doesNotThrow() {
         AutoRestartDaemon noTokenDaemon = new AutoRestartDaemon();
         ReflectionTestUtils.setField(noTokenDaemon, "serverUrl", "http://localhost:8081/api");
         ReflectionTestUtils.setField(noTokenDaemon, "agentToken", "");
         ReflectionTestUtils.setField(noTokenDaemon, "checkInterval", 30);
 
-        assertThrows(IllegalStateException.class, () -> noTokenDaemon.run());
+        assertDoesNotThrow(() -> noTokenDaemon.run());
     }
 
     @Test

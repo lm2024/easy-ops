@@ -1,10 +1,12 @@
 package com.ops.server.websocket;
 
+import com.ops.common.model.NodeModel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
 import java.net.URI;
@@ -21,6 +23,21 @@ class ConsoleHandlerTest {
     @BeforeEach
     void setUp() {
         handler = new ConsoleHandler();
+        ConsoleAgentClient agentClient = org.mockito.Mockito.mock(ConsoleAgentClient.class);
+        org.mockito.Mockito.when(agentClient.resolveCwd(org.mockito.ArgumentMatchers.anyString()))
+                .thenReturn("/root");
+        org.mockito.Mockito.when(agentClient.findNode(org.mockito.ArgumentMatchers.eq("1")))
+                .thenReturn(buildNode("1", "test-node"));
+        ReflectionTestUtils.setField(handler, "agentClient", agentClient);
+    }
+
+    private NodeModel buildNode(String id, String name) {
+        NodeModel node = new NodeModel();
+        node.setId(Long.parseLong(id));
+        node.setName(name);
+        node.setIp("127.0.0.1");
+        node.setPort(2123);
+        return node;
     }
 
     @Test
@@ -32,9 +49,17 @@ class ConsoleHandlerTest {
     }
 
     @Test
-    @DisplayName("sendToGroup - 空组不抛异常")
-    void sendToGroup_emptyGroups_noOp() {
-        assertDoesNotThrow(() -> handler.sendToGroup("proj-1", "node-1", "message"));
+    @DisplayName("afterConnectionClosed - 移除会话")
+    void afterConnectionClosed_removesSession() throws Exception {
+        WebSocketSession mockSession = mock(WebSocketSession.class);
+        when(mockSession.getUri()).thenReturn(URI.create("ws://localhost/ws/console?projectId=1&nodeId=1"));
+        when(mockSession.getId()).thenReturn("close-sess");
+
+        handler.afterConnectionEstablished(mockSession);
+        assertFalse(handler.getSessionGroups().isEmpty());
+
+        handler.afterConnectionClosed(mockSession, CloseStatus.NORMAL);
+        assertTrue(handler.getSessionGroups().isEmpty());
     }
 
     @Test

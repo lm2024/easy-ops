@@ -1,13 +1,14 @@
 package com.ops.server.controller;
 
 import com.ops.common.constant.ErrorCode;
-import com.ops.common.constant.SystemConstant;
 import com.ops.common.response.Result;
 import com.ops.common.model.UserModel;
 import com.ops.common.model.OperationLogModel;
+import com.ops.common.util.PasswordValidator;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.UserMapper;
+import com.ops.server.service.CaptchaService;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -31,6 +32,17 @@ public class SystemController {
     @Autowired
     private AuthInterceptor authInterceptor;
 
+    @Autowired
+    private CaptchaService captchaService;
+
+    /**
+     * GET /api/auth/captcha - 获取登录验证码
+     */
+    @GetMapping("/captcha")
+    public Result<?> captcha() {
+        return Result.success(captchaService.generate());
+    }
+
     /**
      * POST /api/auth/login - 用户登录
      */
@@ -38,9 +50,14 @@ public class SystemController {
     public Result<?> login(@RequestBody Map<String, String> request, HttpServletRequest httpRequest) {
         String username = request.get("username");
         String password = request.get("password");
+        String captchaId = request.get("captchaId");
+        String captchaCode = request.get("captchaCode");
 
         if (username == null || password == null) {
             return Result.paramError("用户名和密码不能为空");
+        }
+        if (!captchaService.verify(captchaId, captchaCode)) {
+            return Result.paramError("验证码错误或已过期");
         }
 
         UserModel user = userMapper.findByUsername(username);
@@ -144,7 +161,14 @@ public class SystemController {
         if (userMapper.findByUsername(user.getUsername()) != null) {
             return Result.paramError("用户名已存在");
         }
+        String pwdError = PasswordValidator.validate(user.getPassword());
+        if (pwdError != null) {
+            return Result.paramError(pwdError);
+        }
         user.setPassword(hashPassword(user.getPassword()));
+        if (user.getRole() == null || user.getRole().trim().isEmpty()) {
+            user.setRole("admin");
+        }
         user.setStatus(1);
         user.setCreateTime(System.currentTimeMillis());
         user.setUpdateTime(System.currentTimeMillis());
@@ -162,9 +186,24 @@ public class SystemController {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
         }
         user.setId(id);
-        user.setPassword(existing.getPassword());
-        if (user.getPassword() != null && !user.getPassword().isEmpty()) {
-            user.setPassword(hashPassword(user.getPassword()));
+        if (user.getUsername() == null || user.getUsername().isEmpty()) {
+            user.setUsername(existing.getUsername());
+        }
+        if (user.getRole() == null || user.getRole().isEmpty()) {
+            user.setRole(existing.getRole());
+        }
+        if (user.getStatus() == null) {
+            user.setStatus(existing.getStatus());
+        }
+        String newPassword = user.getPassword();
+        if (newPassword != null && !newPassword.trim().isEmpty()) {
+            String pwdError = PasswordValidator.validate(newPassword);
+            if (pwdError != null) {
+                return Result.paramError(pwdError);
+            }
+            user.setPassword(hashPassword(newPassword));
+        } else {
+            user.setPassword(existing.getPassword());
         }
         user.setUpdateTime(System.currentTimeMillis());
         userMapper.update(user);

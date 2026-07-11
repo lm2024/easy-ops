@@ -17,6 +17,8 @@ public class VersionModel implements Serializable {
     private Long fileSize;
     private String version;
     private String sha256;
+    /** 包类型：jar / frontend */
+    private String packageType;
     private String remark;
     private Long createTime;
 }

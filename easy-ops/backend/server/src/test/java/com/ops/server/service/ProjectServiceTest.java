@@ -79,9 +79,9 @@ class ProjectServiceTest {
             createProject(1L, 1),
             createProject(2L, 0)
         );
-        when(projectMapper.findByFilters("RUNNING", 1L, 0, 20)).thenReturn(expected);
+        when(projectMapper.findByFilters("RUNNING", 1L, null, 0, 20)).thenReturn(expected);
 
-        List<ProjectModel> result = projectService.findByFilters("RUNNING", 1L, 0, 20);
+        List<ProjectModel> result = projectService.findByFilters("RUNNING", 1L, null, 0, 20);
 
         assertNotNull(result);
         assertEquals(2, result.size());
@@ -91,18 +91,18 @@ class ProjectServiceTest {
     @Test
     @DisplayName("countByFilters - 返回项目计数")
     void countByFilters_returnsCount() {
-        when(projectMapper.countByFilters("RUNNING", 1L)).thenReturn(3L);
+        when(projectMapper.countByFilters("RUNNING", 1L, null)).thenReturn(3L);
 
-        Long count = projectService.countByFilters("RUNNING", 1L);
+        Long count = projectService.countByFilters("RUNNING", 1L, null);
         assertEquals(3L, count);
     }
 
     @Test
     @DisplayName("countByFilters - nodeId为null时也能工作")
     void countByFilters_nodeIdNull() {
-        when(projectMapper.countByFilters(null, null)).thenReturn(10L);
+        when(projectMapper.countByFilters(null, null, null)).thenReturn(10L);
 
-        Long count = projectService.countByFilters(null, null);
+        Long count = projectService.countByFilters(null, null, null);
         assertEquals(10L, count);
     }
 

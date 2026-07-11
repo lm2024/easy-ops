@@ -1,5 +1,5 @@
 <template>
-  <a-card :bordered="false" style="border-radius: 8px; max-width: 860px">
+  <a-card :bordered="false" style="border-radius: 8px; max-width: 960px">
     <template #title>
       <a-space>
         <folder-open-outlined style="color: #722ed1" />
@@ -8,17 +8,17 @@
     </template>
 
     <!-- 环境模板快速填入 JVM 参数（直接生成 start.sh） -->
-    <a-card size="small" style="margin-bottom: 16px; background: #1a1a1c" :bordered="true">
+    <a-card size="small" class="template-card" style="margin-bottom: 16px" :bordered="true">
       <template #title>
         <a-space>
           <thunderbolt-outlined style="color: #faad14" />
           <span style="font-weight: 500">一键填入 JVM 模板</span>
-          <a-tooltip title="根据节点硬件和运行环境，自动生成标准的 start.sh 和 stop.sh 脚本">
+          <a-tooltip title="根据节点硬件和运行环境，自动生成 G1 精简版 start.sh / stop.sh，并写入 JVM 参数字段（保存后进数据库，部署时同步到 Agent 部署目录）">
             <info-circle-outlined style="color: #999" />
           </a-tooltip>
         </a-space>
       </template>
-      <a-space wrap>
+      <a-space wrap style="margin-bottom: 12px">
         <a-select v-model:value="templateEnv" style="width: 140px" placeholder="选择环境">
           <a-select-option value="dev">🌱 开发环境</a-select-option>
           <a-select-option value="test">🧪 测试环境</a-select-option>
@@ -27,16 +27,78 @@
         <a-select v-model:value="templateNodeId" style="width: 200px" placeholder="选择参考节点">
           <a-select-option v-for="n in nodeOptions" :key="n.id" :value="n.id">{{ n.name }} ({{ n.ip }})</a-select-option>
         </a-select>
-        <a-tooltip title="选择一个典型节点作为参考，根据其 CPU/内存生成 JVM 参数和脚本，适用于所有部署节点。如节点硬件差异大，建议选配置最低的节点，生成后可手动微调。">
+        <a-tooltip title="选择典型节点作为硬件参考；多节点硬件差异大时选配置最低者，生成后按下方说明微调。">
           <info-circle-outlined style="color: #999; cursor: help" />
         </a-tooltip>
         <a-button type="primary" ghost @click="fillTemplate" :loading="templateLoading">
           <thunderbolt-outlined /> 一键填入
         </a-button>
         <span v-if="nodeSpecs" style="font-size: 12px; color: #888">
-          检测到 {{ nodeSpecs.cpuCores }} 核 / {{ formatMB(nodeSpecs.totalMemoryMB) }}
+          参考节点 {{ nodeSpecs.cpuCores }} 核 / {{ formatMB(nodeSpecs.totalMemoryMB) }}
         </span>
       </a-space>
+
+      <a-alert type="info" show-icon style="margin-bottom: 12px">
+        <template #message>
+          <span style="font-weight: 500">{{ currentEnvProfile.icon }} {{ currentEnvProfile.label }}</span>
+        </template>
+        <template #description>
+          <div class="env-desc">{{ currentEnvProfile.summary }}</div>
+          <ul class="env-list">
+            <li v-for="(g, i) in currentEnvProfile.goals" :key="'g' + i">{{ g }}</li>
+          </ul>
+          <div class="env-meta">
+            <div><strong>堆策略：</strong>{{ currentEnvProfile.heapStrategy }}</div>
+            <div><strong>GC 策略：</strong>{{ currentEnvProfile.gcStrategy }}</div>
+          </div>
+        </template>
+      </a-alert>
+
+      <template v-if="templatePlan">
+        <a-divider orientation="left" style="margin: 12px 0; font-size: 12px; color: #888">
+          本次生成 · {{ templatePlan.envProfile.label }} · {{ templatePlan.hardware.cpuCores }}核 / {{ formatMB(templatePlan.hardware.totalMemoryMB) }}
+        </a-divider>
+        <div class="guide-row">
+          <a-tag color="blue">内存</a-tag>
+          <span>{{ templatePlan.memoryGuide }}</span>
+        </div>
+        <div class="guide-row">
+          <a-tag color="green">CPU</a-tag>
+          <span>{{ templatePlan.cpuGuide }}</span>
+        </div>
+        <a-table
+          size="small"
+          :pagination="false"
+          :columns="paramColumns"
+          :data-source="templatePlan.params"
+          row-key="flag"
+          style="margin-top: 8px"
+        />
+        <div style="font-size: 12px; color: #888; margin-top: 8px">
+          保存应用后，<code>startScript</code> / <code>stopScript</code> / <code>jvmOpts</code> 写入数据库；部署时由 Server 下发至 Agent，在部署目录生成 <code>start.sh</code> / <code>stop.sh</code> 并执行。
+        </div>
+      </template>
+
+      <a-collapse v-else ghost style="margin-top: 4px">
+        <a-collapse-panel key="guide" header="参数说明（填入前可先阅读）">
+          <p class="guide-intro">以下为各环境通用说明；点击「一键填入」后将根据所选节点给出<strong>推荐值</strong>与<strong>可调范围</strong>。</p>
+          <a-table
+            size="small"
+            :pagination="false"
+            :columns="staticParamColumns"
+            :data-source="staticParamGuide"
+            row-key="flag"
+          />
+          <a-divider style="margin: 12px 0" />
+          <div v-for="profile in envProfiles" :key="profile.key" class="env-block">
+            <div class="env-block-title">{{ profile.icon }} {{ profile.label }}</div>
+            <p>{{ profile.summary }}</p>
+            <ul>
+              <li v-for="(item, idx) in profile.whenToTune" :key="idx">{{ item }}</li>
+            </ul>
+          </div>
+        </a-collapse-panel>
+      </a-collapse>
     </a-card>
 
     <a-form ref="formRef" :model="formState" :rules="rules" layout="vertical" @finish="handleSubmit">
@@ -53,8 +115,26 @@
         </a-col>
         <a-col :span="8">
           <a-form-item label="部署目录">
-            <a-input v-model:value="formState.deployDir" placeholder="/app/data/apps/order" />
-            <template #extra><span style="font-size:12px;color:#888">Agent 上存放 jar 和脚本的目录，start.sh/stop.sh 在此目录下执行</span></template>
+            <a-input v-model:value="formState.deployDir" :placeholder="defaultDeployDir || '/app/data/apps/应用名'" />
+            <template #extra><span style="font-size:12px;color:#888">全局根目录: {{ globalPaths?.deployBaseDir || '加载中...' }}，Jar 和脚本存放目录</span></template>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16">
+        <a-col :span="12">
+          <a-form-item label="前端部署目录（dist.zip 解压目标）">
+            <a-input v-model:value="formState.frontendDeployDir" :placeholder="defaultFrontendDir || '留空则使用 部署目录/frontend'" />
+            <template #extra><span style="font-size:12px;color:#888">上传 dist.zip 后解压到此目录，供 Nginx 等静态服务使用</span></template>
+          </a-form-item>
+        </a-col>
+      </a-row>
+
+      <a-row :gutter="16">
+        <a-col :span="24">
+          <a-form-item label="JVM 参数（G1，保存至数据库）">
+            <template #extra><span style="font-size:12px;color:#888">一键填入会自动生成；修改后请同步更新 start.sh 中的 java 参数行</span></template>
+            <a-textarea v-model:value="formState.jvmOpts" :rows="2" placeholder="-Xms512m -Xmx1024m -XX:+UseG1GC ..." style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
       </a-row>
@@ -122,6 +202,7 @@ import type { ProjectModel, NodeModel } from '../types'
 import { createProject, updateProject, getProject } from '../api/project'
 import { getNodes } from '../api/node'
 import { getNodeSysInfo } from '../api/agent'
+import { getGlobalPaths, type GlobalPaths } from '../api/system'
 import type { FormInstance } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import {
@@ -130,6 +211,12 @@ import {
   ThunderboltOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons-vue'
+import {
+  buildJvmTemplatePlan,
+  getEnvProfile,
+  type EnvType,
+  type JvmTemplatePlan
+} from '../utils/jvmTemplate'
 
 const route = useRoute()
 const router = useRouter()
@@ -139,15 +226,62 @@ const nodeOptions = ref<NodeModel[]>([])
 const isEdit = computed(() => !!route.params.id)
 
 // 模板相关
-const templateEnv = ref<string>('dev')
+const templateEnv = ref<EnvType>('dev')
 const templateNodeId = ref<string>('')
 const templateLoading = ref(false)
 const nodeSpecs = ref<{ cpuCores: number; totalMemoryMB: number } | null>(null)
+const templatePlan = ref<JvmTemplatePlan | null>(null)
+const globalPaths = ref<GlobalPaths | null>(null)
+
+const currentEnvProfile = computed(() => getEnvProfile(templateEnv.value))
+
+const envProfiles = computed(() => [
+  getEnvProfile('dev'),
+  getEnvProfile('test'),
+  getEnvProfile('prod')
+])
+
+const paramColumns = [
+  { title: '参数', dataIndex: 'flag', key: 'flag', width: 200 },
+  { title: '推荐值', dataIndex: 'recommended', key: 'recommended', width: 100 },
+  { title: '可调范围', dataIndex: 'range', key: 'range', width: 160 },
+  { title: '作用', dataIndex: 'purpose', key: 'purpose', width: 120 },
+  { title: '为何如此设置', dataIndex: 'reason', key: 'reason' }
+]
+
+const staticParamColumns = [
+  { title: '参数', dataIndex: 'flag', key: 'flag', width: 180 },
+  { title: '作用', dataIndex: 'purpose', key: 'purpose', width: 120 },
+  { title: '说明', dataIndex: 'reason', key: 'reason' }
+]
+
+const staticParamGuide = [
+  { flag: '-Xms / -Xmx', purpose: '堆内存', reason: 'dev 可 Xms<Xmx；test/prod 建议 Xms=Xmx。总堆不超过物理内存 70%，并为 OS、元空间、直接内存留余量。' },
+  { flag: '-XX:+UseG1GC', purpose: '垃圾回收器', reason: 'Java 8 服务端默认推荐 G1，停顿可控，运维成本低。' },
+  { flag: '-XX:MaxGCPauseMillis', purpose: '停顿目标', reason: 'prod 100ms、dev/test 200ms；是目标而非硬上限。' },
+  { flag: '-XX:+ExitOnOutOfMemoryError', purpose: 'OOM 退出', reason: '配合监控/编排自动拉起，避免僵死进程。' },
+  { flag: '-XX:+HeapDumpOnOutOfMemoryError', purpose: 'OOM 转储', reason: 'test/prod 开启；注意 dump 体积约等于堆大小。' },
+  { flag: '-Dfile.encoding=UTF-8', purpose: '字符集', reason: '避免 Linux 默认编码导致日志与接口乱码。' }
+]
+
+const defaultDeployDir = computed(() => {
+  if (!globalPaths.value) return ''
+  const name = formState.value.name || 'app'
+  const slug = name.toLowerCase().replace(/\s+/g, '-')
+  return `${globalPaths.value.deployBaseDir}/${slug}`
+})
+
+const defaultFrontendDir = computed(() => {
+  const base = formState.value.deployDir || defaultDeployDir.value
+  if (!base || !globalPaths.value) return ''
+  return `${base}/${globalPaths.value.frontendSubDir}`
+})
 
 const formState = ref<any>({
   name: '',
   jarName: '',
   deployDir: '',
+  frontendDeployDir: '',
   startScript: '',
   stopScript: '',
   jvmOpts: '',
@@ -192,82 +326,15 @@ function formatMB(mb: number): string {
   return mb + 'MB'
 }
 
-/** 根据环境和硬件信息计算 JVM 参数 */
-function generateJVMOpts(env: string, _cpuCores: number, totalMemMB: number): string {
-  // 各环境的内存分配比例
-  const ratios: Record<string, { xmsRatio: number; xmxRatio: number; pause: number }> = {
-    dev:  { xmsRatio: 0.25, xmxRatio: 0.50, pause: 200 },
-    test: { xmsRatio: 0.40, xmxRatio: 0.65, pause: 200 },
-    prod: { xmsRatio: 0.50, xmxRatio: 0.75, pause: 100 }
-  }
-  const cfg = ratios[env] || ratios.dev
-
-  // 计算堆大小（MB），设上限避免过度分配
-  let xms = Math.round(totalMemMB * cfg.xmsRatio)
-  let xmx = Math.round(totalMemMB * cfg.xmxRatio)
-  const maxHeap = Math.min(totalMemMB, env === 'prod' ? 32768 : 16384)
-  xms = Math.min(xms, maxHeap)
-  xmx = Math.min(xmx, maxHeap)
-  // 保底
-  xms = Math.max(xms, 256)
-  xmx = Math.max(xmx, 512)
-
-  const lines: string[] = []
-
-  // 核心：堆 + GC
-  lines.push(`-Xms${xms}m -Xmx${xmx}m`)
-  lines.push('-XX:+UseG1GC')
-  lines.push(`-XX:MaxGCPauseMillis=${cfg.pause}`)
-
-  // OOM 安全退出
-  lines.push('-XX:+ExitOnOutOfMemoryError')
-
-  // 非 dev 环境保留 HeapDump
-  if (env !== 'dev') {
-    lines.push('-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=./logs/dump.hprof')
-  }
-
-  // GC 日志（精简，只保留关键标志）
-  lines.push('-Xloggc:./logs/gc.log -XX:+PrintGCDateStamps')
-
-  // 编码
-  lines.push('-Dfile.encoding=UTF-8')
-
-  return lines.join(' ')
-}
-
-/** 生成启动脚本 start.sh（在部署目录下执行） */
-function generateStartScript(jarName: string, jvmOpts: string): string {
-  if (!jarName) jarName = 'app.jar'
-  return `#!/bin/bash
-# 自动生成的启动脚本 - 请在部署目录下执行
-JAR_NAME=${jarName}
-JVM_OPTS="${jvmOpts}"
-mkdir -p logs
-nohup java $JVM_OPTS -jar $JAR_NAME > logs/startup.log 2>&1 &
-PID=$!
-echo $PID > pid
-echo "Started PID=$PID"`
-}
-
-/** 生成停止脚本 stop.sh（在部署目录下执行） */
-function generateStopScript(): string {
-  return `#!/bin/bash
-# 自动生成的停止脚本 - 请在部署目录下执行
-PID_FILE=pid
-if [ -f "$PID_FILE" ]; then
-  PID=$(cat "$PID_FILE")
-  echo "Stopping PID=$PID"
-  kill $PID 2>/dev/null
-  sleep 3
-  # 强制杀死
-  kill -9 $PID 2>/dev/null
-  rm -f "$PID_FILE"
-  echo "Stopped"
-else
-  echo "PID file not found, trying pkill..."
-  pkill -f "$(basename $(pwd))/" 2>/dev/null || true
-fi`
+/** 应用一键填入结果到表单 */
+function applyTemplatePlan(plan: JvmTemplatePlan, jarName: string) {
+  templatePlan.value = plan
+  formState.value.jvmOpts = plan.jvmOpts
+  formState.value.startScript = plan.startScript
+  formState.value.stopScript = plan.stopScript
+  formState.value.deployDir = defaultDeployDir.value
+  formState.value.frontendDeployDir = defaultFrontendDir.value
+  formState.value.jarName = jarName
 }
 
 /** 一键填入模板 */
@@ -275,37 +342,23 @@ async function fillTemplate() {
   if (!templateEnv.value || !templateNodeId.value) return
   templateLoading.value = true
 
+  const jarName = formState.value.jarName || 'app.jar'
+  const fallbackHardware = { cpuCores: 2, totalMemoryMB: 4096 }
+
   try {
-    // 获取节点硬件信息
     const res = await getNodeSysInfo(templateNodeId.value)
     const specs = res.data
     nodeSpecs.value = { cpuCores: specs.cpuCores, totalMemoryMB: specs.totalMemoryMB }
-
-    const cpuCores = specs.cpuCores || 2
-    const totalMemMB = specs.totalMemoryMB || 4096
-    const jarName = formState.value.jarName || 'app.jar'
-
-    // JVM 参数直接嵌入到 start.sh
-    const jvmOpts = generateJVMOpts(templateEnv.value, cpuCores, totalMemMB)
-    const startScript = generateStartScript(jarName, jvmOpts)
-    const stopScript = generateStopScript()
-    const deployDir = '/app/data/apps/' + (formState.value.name || 'app').toLowerCase().replace(/\s+/g, '-')
-
-    formState.value.startScript = startScript
-    formState.value.stopScript = stopScript
-    formState.value.deployDir = deployDir
-    formState.value.jarName = jarName
+    const plan = buildJvmTemplatePlan(
+      templateEnv.value,
+      { cpuCores: specs.cpuCores || 2, totalMemoryMB: specs.totalMemoryMB || 4096 },
+      jarName
+    )
+    applyTemplatePlan(plan, jarName)
   } catch {
-    nodeSpecs.value = null
-    const jarName = formState.value.jarName || 'app.jar'
-    const jvmOpts = generateJVMOpts(templateEnv.value, 2, 4096)
-    const startScript = generateStartScript(jarName, jvmOpts)
-    const stopScript = generateStopScript()
-    const deployDir = '/app/data/apps/' + (formState.value.name || 'app').toLowerCase().replace(/\s+/g, '-')
-    formState.value.startScript = startScript
-    formState.value.stopScript = stopScript
-    formState.value.deployDir = deployDir
-    formState.value.jarName = jarName
+    nodeSpecs.value = fallbackHardware
+    const plan = buildJvmTemplatePlan(templateEnv.value, fallbackHardware, jarName)
+    applyTemplatePlan(plan, jarName)
   } finally {
     templateLoading.value = false
   }
@@ -347,6 +400,11 @@ async function handleSubmit() {
 }
 
 onMounted(async () => {
+  try {
+    const gp = await getGlobalPaths()
+    globalPaths.value = gp.data
+  } catch { /* ignore */ }
+
   const res = await getNodes()
   nodeOptions.value = res.data.list
 
@@ -363,3 +421,46 @@ onMounted(async () => {
 })
 
 </script>
+
+<style scoped>
+.template-card {
+  background: var(--eo-bg-muted);
+}
+.env-desc {
+  margin-bottom: 6px;
+}
+.env-list {
+  margin: 0 0 8px 18px;
+  padding: 0;
+  font-size: 13px;
+}
+.env-meta {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.6;
+}
+.guide-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.guide-intro {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 8px;
+}
+.env-block {
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.env-block-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.env-block ul {
+  margin: 4px 0 0 18px;
+  padding: 0;
+}
+</style>

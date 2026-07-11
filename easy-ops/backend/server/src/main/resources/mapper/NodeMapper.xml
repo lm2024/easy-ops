@@ -66,7 +66,7 @@
     <update id="updateHeartbeat">
         UPDATE node_info SET status = 1, ip = #{ip}, os_info = #{osInfo}, java_version = #{javaVersion},
         cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
-        total_disk_mb = #{totalDiskMb}, os_arch = #{osArch},
+        total_disk_mb = #{totalDiskMb}, os_arch = #{osArch}, agent_version = #{agentVersion},
         last_heartbeat = #{lastHeartbeat}, update_time = #{lastHeartbeat} WHERE id = #{id}
     </update>
     <update id="updatePort">

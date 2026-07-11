@@ -1,0 +1,227 @@
+/* ===== EasyOps 全局主题变量 ===== */
+:root,
+[data-theme='dark'] {
+  --eo-bg: #0a0a0b;
+  --eo-bg-elevated: #141414;
+  --eo-bg-muted: #1a1a1c;
+  --eo-sider-bg: #0a0a0b;
+  --eo-header-bg: #141414;
+  --eo-content-bg: #0a0a0b;
+  --eo-text: #f4f4f5;
+  --eo-text-secondary: #a1a1aa;
+  --eo-text-muted: #71717a;
+  --eo-border: #2a2a2a;
+  --eo-primary: #e8ff59;
+  --eo-primary-text: #0a0a0b;
+  --eo-shadow: rgba(0, 0, 0, 0.35);
+  --eo-code-bg: #1a1a1c;
+  --eo-code-text: #e4e4e7;
+  --eo-code-success-bg: rgba(82, 196, 26, 0.12);
+  --eo-code-success-text: #bbf7d0;
+  --eo-code-success-border: #52c41a;
+  --eo-code-danger-bg: rgba(255, 77, 79, 0.12);
+  --eo-code-danger-text: #fecaca;
+  --eo-code-danger-border: #ff4d4f;
+  --eo-code-warn-bg: rgba(250, 173, 20, 0.12);
+  --eo-code-warn-text: #fde68a;
+  --eo-code-warn-border: #faad14;
+  --eo-menu-selected: rgba(232, 255, 89, 0.12);
+  --eo-menu-hover: rgba(255, 255, 255, 0.08);
+  --eo-press-scale: 0.97;
+}
+
+[data-theme='light'] {
+  --eo-bg: #f5f5f7;
+  --eo-bg-elevated: #ffffff;
+  --eo-bg-muted: #f5f5f7;
+  --eo-sider-bg: #fbfbfc;
+  --eo-header-bg: #ffffff;
+  --eo-content-bg: #f5f5f7;
+  --eo-text: #1d1d1f;
+  --eo-text-secondary: #6e6e73;
+  --eo-text-muted: #86868b;
+  --eo-border: #d2d2d7;
+  --eo-primary: #65a30d;
+  --eo-primary-text: #ffffff;
+  --eo-shadow: rgba(0, 0, 0, 0.08);
+  --eo-code-bg: #f5f5f7;
+  --eo-code-text: #1d1d1f;
+  --eo-code-success-bg: #f0fdf4;
+  --eo-code-success-text: #166534;
+  --eo-code-success-border: #22c55e;
+  --eo-code-danger-bg: #fef2f2;
+  --eo-code-danger-text: #991b1b;
+  --eo-code-danger-border: #ef4444;
+  --eo-code-warn-bg: #fffbeb;
+  --eo-code-warn-text: #92400e;
+  --eo-code-warn-border: #f59e0b;
+  --eo-menu-selected: rgba(101, 163, 13, 0.1);
+  --eo-menu-hover: rgba(0, 0, 0, 0.04);
+  --eo-press-scale: 0.97;
+}
+
+/* ===== 基础排版 ===== */
+body {
+  margin: 0;
+  background: var(--eo-bg);
+  color: var(--eo-text);
+  font-family: 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.28s ease, color 0.28s ease;
+}
+
+/* ===== 代码块（全局修复暗色下白底看不见字） ===== */
+.eo-code,
+pre.eo-code {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  line-height: 1.6;
+  color: var(--eo-code-text);
+  background: var(--eo-code-bg);
+  border: 1px solid var(--eo-border);
+}
+
+.eo-code--success {
+  background: var(--eo-code-success-bg);
+  color: var(--eo-code-success-text);
+  border-left: 3px solid var(--eo-code-success-border);
+}
+
+.eo-code--danger {
+  background: var(--eo-code-danger-bg);
+  color: var(--eo-code-danger-text);
+  border-left: 3px solid var(--eo-code-danger-border);
+}
+
+.eo-code--warn {
+  background: var(--eo-code-warn-bg);
+  color: var(--eo-code-warn-text);
+  border-left: 3px solid var(--eo-code-warn-border);
+}
+
+.eo-text-muted {
+  color: var(--eo-text-muted);
+}
+
+/* ===== Ant Design 全局增强 ===== */
+.ant-card {
+  border-radius: 10px;
+  border: 1px solid var(--eo-border);
+  box-shadow: none;
+  transition: box-shadow 0.22s cubic-bezier(0.25, 0.1, 0.25, 1), transform 0.22s ease;
+}
+
+.ant-card:hover {
+  box-shadow: 0 8px 28px var(--eo-shadow);
+}
+
+.ant-table-wrapper {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.ant-table-thead > tr > th {
+  font-weight: 600;
+}
+
+.ant-btn,
+.ant-menu-item,
+.ant-menu-submenu-title,
+.ant-select-selector,
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-picker,
+.ant-switch,
+.ant-checkbox-wrapper,
+.ant-radio-wrapper,
+.ant-tabs-tab {
+  transition:
+    transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1),
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease !important;
+}
+
+.ant-btn:active:not(:disabled),
+.ant-menu-item:active,
+.ant-tabs-tab:active {
+  transform: scale(var(--eo-press-scale));
+}
+
+.ant-btn-primary:not(:disabled):hover {
+  filter: brightness(1.05);
+}
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-textarea textarea,
+.ant-select-selector,
+.ant-picker {
+  border-radius: 8px !important;
+}
+
+.ant-input-textarea textarea {
+  color: var(--eo-text) !important;
+  background: transparent !important;
+}
+
+.ant-descriptions-item-label {
+  font-weight: 500;
+  color: var(--eo-text-secondary) !important;
+}
+
+.ant-message-notice-content {
+  border-radius: 10px;
+  box-shadow: 0 8px 28px var(--eo-shadow);
+}
+
+/* 暗色侧栏：子菜单项文字（兜底，防止 ConfigProvider 覆盖成黑色） */
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-sub .ant-menu-item,
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-item,
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-submenu-title {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-sub .ant-menu-item .anticon,
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-item .anticon,
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-submenu-title .anticon {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-item-selected,
+[data-theme='dark'] .app-sider--dark .ant-menu-dark .ant-menu-item-selected .anticon {
+  color: #e8ff59 !important;
+}
+
+/* ===== 页面切换动效 ===== */
+.page-fade-enter-active,
+.page-fade-leave-active {
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+.page-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}

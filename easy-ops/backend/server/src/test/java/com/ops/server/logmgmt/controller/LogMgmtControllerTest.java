@@ -49,7 +49,7 @@ class LogMgmtControllerTest extends com.ops.server.controller.BaseControllerTest
     void viewLog() throws Exception {
         Map<String, Object> data = new HashMap<>();
         data.put("content", "log line");
-        when(logMgmtService.viewLog(1L, 10L, null, 0, 200)).thenReturn(data);
+        when(logMgmtService.viewLog(1L, 10L, null, 0, 200, null, "tail")).thenReturn(data);
 
         mockMvc.perform(get("/logs/view")
                         .param("projectId", "1")
@@ -62,7 +62,7 @@ class LogMgmtControllerTest extends com.ops.server.controller.BaseControllerTest
     void search() throws Exception {
         Map<String, Object> result = new HashMap<>();
         result.put("totalHits", 1);
-        when(logMgmtService.search(eq(1L), eq("ERROR"), anyString(), any(), anyInt(), anyInt()))
+        when(logMgmtService.search(eq(1L), eq("ERROR"), anyString(), any(), anyInt(), anyInt(), any(), any()))
                 .thenReturn(result);
 
         mockMvc.perform(post("/logs/search")

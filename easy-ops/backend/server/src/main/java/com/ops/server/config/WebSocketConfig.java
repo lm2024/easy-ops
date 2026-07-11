@@ -48,24 +48,38 @@ public class WebSocketConfig implements WebSocketConfigurer {
 
     @Override
     public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
+        String[] patterns = resolveOriginPatterns();
+
         registry.addHandler(consoleHandler, "/ws/console")
-                .setAllowedOrigins(allowedOrigins)
+                .setAllowedOriginPatterns(patterns)
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(deployHandler, "/ws/deploy")
-                .setAllowedOrigins(allowedOrigins)
+                .setAllowedOriginPatterns(patterns)
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(monitorHandler, "/ws/monitor")
-                .setAllowedOrigins(allowedOrigins)
+                .setAllowedOriginPatterns(patterns)
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(notificationHandler, "/ws/notification")
-                .setAllowedOrigins(allowedOrigins)
+                .setAllowedOriginPatterns(patterns)
                 .addInterceptors(webSocketAuthInterceptor);
 
         registry.addHandler(kbCollabHandler, "/ws/kb-collab", "/ws/kb-collab/**")
-                .setAllowedOrigins(allowedOrigins)
+                .setAllowedOriginPatterns(patterns)
                 .addInterceptors(webSocketAuthInterceptor);
+    }
+
+    private String[] resolveOriginPatterns() {
+        if (allowedOrigins == null || allowedOrigins.length == 0) {
+            return new String[]{"*"};
+        }
+        for (String origin : allowedOrigins) {
+            if ("*".equals(origin.trim())) {
+                return new String[]{"*"};
+            }
+        }
+        return allowedOrigins;
     }
 }
