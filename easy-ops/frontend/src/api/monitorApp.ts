@@ -1,8 +1,29 @@
 import request from '../utils/request'
 import type {
-  Result, AppMonitorOverview, AppMonitorNodeInfo,
-  MonitorSnapshotModel, ProjectHealthProbeModel, AIDiagnosisRecordModel
+  Result, AppMonitorOverview, AppMonitorDashboard, AppMonitorNodeInfo,
+  MonitorSnapshotModel, ProjectHealthProbeModel, AIDiagnosisRecordModel,
+  MonitorCollectConfig
 } from '../types'
+
+/** 获取监控采集配置 */
+export function getMonitorCollectConfig() {
+  return request.get<any, Result<MonitorCollectConfig>>('/monitor/app/config')
+}
+
+/** 保存监控采集配置 */
+export function saveMonitorCollectConfig(collectIntervalSec: number) {
+  return request.post<any, Result<MonitorCollectConfig>>('/monitor/app/config', { collectIntervalSec })
+}
+
+/** 全部应用监控总览（应用管理中的每个项目） */
+export function getAppDashboard() {
+  return request.get<any, Result<AppMonitorDashboard>>('/monitor/app/dashboard')
+}
+
+/** 立即采集全部应用监控数据 */
+export function collectAppMonitor() {
+  return request.post<any, Result<string>>('/monitor/app/collect')
+}
 
 /** 项目应用监控总览 */
 export function getAppOverview(projectId: number) {

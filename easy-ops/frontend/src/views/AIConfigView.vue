@@ -74,7 +74,7 @@
 
     <a-typography-title :level="5">📋 推荐内网部署方案</a-typography-title>
     <a-typography-paragraph>
-      <pre style="background: #f5f5f5; padding: 12px; border-radius: 6px; font-size: 12px">
+      <pre class="eo-code">
 # 方案一: Ollama（最简单）
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen2.5:7b

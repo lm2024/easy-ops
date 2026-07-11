@@ -1,6 +1,6 @@
 import request from '../utils/request'
 import type {
-  Result, ProjectLogProfileModel, LogFileInfo, LogViewResult,
+  Result, ProjectLogProfileModel, LogFileInfo, LogDiscoverResult, LogViewResult,
   LogAggregateResult, LogSearchResult
 } from '../types'
 
@@ -16,17 +16,30 @@ export function saveLogProfile(profile: ProjectLogProfileModel) {
   return request.post<any, Result<ProjectLogProfileModel>>('/logs/profile', profile)
 }
 
-/** 列出节点日志文件 */
-export function listLogFiles(projectId: number, nodeId: number) {
-  return request.get<any, Result<LogFileInfo[]>>('/logs/files', {
+/** 智能发现节点日志文件 */
+export function discoverLogFiles(projectId: number, nodeId: number) {
+  return request.get<any, Result<LogDiscoverResult>>('/logs/files', {
     params: { projectId, nodeId }
   })
 }
 
-/** 单节点分页查看日志 */
-export function viewLog(projectId: number, nodeId: number, fileName?: string, offset = 0, lines = 200) {
+/** @deprecated 使用 discoverLogFiles */
+export function listLogFiles(projectId: number, nodeId: number) {
+  return discoverLogFiles(projectId, nodeId)
+}
+
+/** 单节点分页查看日志（filePath 传完整路径或文件名） */
+export function viewLog(
+  projectId: number,
+  nodeId: number,
+  filePath?: string,
+  offset = 0,
+  lines = 200,
+  level?: string,
+  mode: 'tail' | 'page' = 'tail'
+) {
   return request.get<any, Result<LogViewResult>>('/logs/view', {
-    params: { projectId, nodeId, fileName, offset, lines }
+    params: { projectId, nodeId, fileName: filePath, offset, lines, level, mode }
   })
 }
 
@@ -36,10 +49,11 @@ export function aggregateLogs(
   nodeIds?: number[],
   page = 1,
   pageSize = 100,
-  since?: number
+  since?: number,
+  level?: string
 ) {
   return request.get<any, Result<LogAggregateResult>>('/logs/aggregate', {
-    params: { projectId, nodeIds, page, pageSize, since }
+    params: { projectId, nodeIds, page, pageSize, since, level }
   })
 }
 
@@ -51,6 +65,8 @@ export function searchLogs(params: {
   nodeIds?: number[]
   contextLines?: number
   maxResults?: number
+  level?: string
+  filePath?: string
 }) {
   return request.post<any, Result<LogSearchResult>>('/logs/search', params)
 }

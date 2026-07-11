@@ -7,6 +7,7 @@ import com.ops.common.model.ProjectModel;
 import com.ops.common.model.VersionModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.*;
+import com.ops.server.config.GlobalPathProperties;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
@@ -34,6 +35,9 @@ public class DeployController {
 
     @Autowired
     private VersionPackageMapper versionPackageMapper;
+
+    @Autowired
+    private GlobalPathProperties globalPathProperties;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -103,7 +107,7 @@ public class DeployController {
         }
 
         // Agent 上 jar 文件的实际存储路径（由 file/receive 决定）
-        String agentFileDir = "/app/data/versions/" + projectId + "/" + version.getVersion();
+        String agentFileDir = globalPathProperties.resolveAgentVersionDir(projectId, version.getVersion());
         // 项目的 deployDir（用户可自定义），默认与 jar 存放目录一致
         String deployDir = project.getDeployDir();
         if (deployDir == null || deployDir.isEmpty()) {
@@ -111,6 +115,9 @@ public class DeployController {
         }
         String jarName = version.getJarName() != null ? version.getJarName() : "app.jar";
         String agentFilePath = agentFileDir + "/" + jarName;
+        boolean isFrontendDeploy = "frontend".equalsIgnoreCase(version.getPackageType())
+                || jarName.toLowerCase().endsWith(".zip");
+        String frontendDir = globalPathProperties.resolveFrontendDir(deployDir, project.getFrontendDeployDir());
 
         // 获取项目的 startScript 和 stopScript
         // 自动修正 startScript 中 JAR_NAME=xxx 使其与项目的 jarName 一致（最后一道防线）
@@ -167,6 +174,41 @@ public class DeployController {
             StringBuilder nodeLog = new StringBuilder();
 
             try {
+                if (isFrontendDeploy) {
+                    nodeLog.append("[").append(node.getName()).append("] 前端静态资源部署...\n");
+                    String jarPath = findJarPath(projectId, version);
+                    java.io.File zipFile = new java.io.File(jarPath);
+                    if (!zipFile.exists()) throw new RuntimeException("前端包不存在: " + jarPath);
+                    nodeLog.append("  Zip: ").append(zipFile.getName()).append("\n");
+
+                    String uploadUrl = agentBase + "/api/file/receive";
+                    HttpHeaders fileHeaders = new HttpHeaders();
+                    fileHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+                    MultiValueMap<String, Object> fileBody = new LinkedMultiValueMap<>();
+                    fileBody.add("file", new FileSystemResource(zipFile));
+                    fileBody.add("projectId", String.valueOf(projectId));
+                    fileBody.add("versionName", version.getVersion());
+                    HttpEntity<MultiValueMap<String, Object>> fileEntity = new HttpEntity<>(fileBody, fileHeaders);
+                    restTemplate.postForEntity(uploadUrl, fileEntity, String.class);
+                    nodeLog.append("  已传输到 Agent\n");
+
+                    String agentZipPath = agentFileDir + "/" + jarName;
+                    String unzipUrl = agentBase + "/api/file/unzip";
+                    Map<String, String> unzipReq = new HashMap<>();
+                    unzipReq.put("zipPath", agentZipPath);
+                    unzipReq.put("targetDir", frontendDir);
+                    restTemplate.postForEntity(unzipUrl, unzipReq, String.class);
+                    nodeLog.append("  ✅ 已解压到 ").append(frontendDir).append("\n");
+
+                    deployRecordMapper.updateStatus(deploy.getId(), DeployStatus.SUCCESS.getCode(),
+                            nodeLog.toString(), System.currentTimeMillis());
+                    nodeResult.put("success", true);
+                    nodeResult.put("message", "前端部署成功");
+                    nodeResults.add(nodeResult);
+                    fullLog.append(nodeLog);
+                    continue;
+                }
+
                 // STEP 1: 停旧进程
                 nodeLog.append("[").append(node.getName()).append("] 停止旧进程...\n");
                 String stopUrl = agentBase + "/api/process/" + projectId + "/stop";

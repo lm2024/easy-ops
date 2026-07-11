@@ -65,8 +65,15 @@ onMounted(async () => {
 
 <style scoped>
 .log-pre {
-  margin: 0; white-space: pre-wrap; background: #f5f5f5;
-  padding: 8px; border-radius: 4px; font-size: 12px;
-  max-height: 300px; overflow: auto;
+  margin: 0;
+  white-space: pre-wrap;
+  background: var(--eo-code-bg);
+  color: var(--eo-code-text);
+  border: 1px solid var(--eo-border);
+  padding: 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  max-height: 300px;
+  overflow: auto;
 }
 </style>

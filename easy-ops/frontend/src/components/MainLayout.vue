@@ -5,8 +5,9 @@
       collapsible
       :width="220"
       :collapsed-width="64"
-      theme="dark"
+      :theme="siderTheme"
       class="app-sider"
+      :class="appStore.themeMode === 'dark' ? 'app-sider--dark' : 'app-sider--light'"
     >
       <div class="logo">
         <cloud-server-outlined class="logo-icon" />
@@ -18,7 +19,7 @@
         v-if="!appStore.sidebarCollapsed"
         v-model:selectedKeys="selectedKeys"
         v-model:openKeys="openKeys"
-        theme="dark"
+        :theme="siderTheme"
         mode="inline"
         @select="handleMenuSelect"
       >
@@ -83,7 +84,7 @@
       <a-menu
         v-else
         v-model:selectedKeys="selectedKeys"
-        theme="dark"
+        :theme="siderTheme"
         mode="inline"
         :inline-collapsed="true"
         @select="handleMenuSelect"
@@ -137,6 +138,17 @@
           </a-col>
           <a-col>
             <a-space :size="16">
+              <a-tooltip :title="appStore.themeMode === 'dark' ? '切换为白天模式' : '切换为夜间模式'">
+                <a-button
+                  type="text"
+                  class="theme-toggle"
+                  :aria-label="appStore.themeMode === 'dark' ? '切换为白天模式' : '切换为夜间模式'"
+                  @click="appStore.toggleTheme()"
+                >
+                  <bulb-outlined v-if="appStore.themeMode === 'dark'" />
+                  <skin-outlined v-else />
+                </a-button>
+              </a-tooltip>
               <NotificationBell @unacked-alerts="onUnackedAlerts" />
               <AlertModal :alerts="unackedAlerts" />
             <a-dropdown>
@@ -161,14 +173,18 @@
         </a-row>
       </a-layout-header>
       <a-layout-content class="app-content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <transition name="page-fade" mode="out-in">
+            <component :is="Component" />
+          </transition>
+        </router-view>
       </a-layout-content>
     </a-layout>
   </a-layout>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
@@ -182,13 +198,17 @@ import {
   CodeOutlined, FileTextOutlined, SettingOutlined,
   DashboardOutlined, AlertOutlined, NotificationOutlined,
   BulbOutlined, TeamOutlined, AuditOutlined,
-  FundOutlined, MedicineBoxOutlined, BookOutlined
+  FundOutlined, MedicineBoxOutlined, BookOutlined,
+  SkinOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
 const appStore = useAppStore()
 const authStore = useAuthStore()
+
+/** 侧栏菜单始终跟随明暗主题，暗色下强制 dark 菜单配色 */
+const siderTheme = computed(() => appStore.themeMode)
 
 // 有效菜单 key 集合（不含分组 key sub-core, sub-tools 等）
 const validMenuKeys = new Set([
@@ -315,61 +335,91 @@ function handleLogout() {
 
 <style scoped>
 .app-sider {
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 2px 0 12px var(--eo-shadow);
   z-index: 10;
+  background: var(--eo-sider-bg) !important;
 }
 
-.app-sider :deep(.ant-layout-sider-trigger) {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-.app-sider :deep(.ant-menu-dark) {
+/* ===== 暗色侧栏菜单：未选中项浅灰，选中项荧光黄 ===== */
+.app-sider--dark :deep(.ant-menu-dark) {
   background: transparent;
-  color: rgba(255, 255, 255, 0.75);
+  color: rgba(255, 255, 255, 0.78);
 }
 
-.app-sider :deep(.ant-menu-dark .ant-menu-item),
-.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title) {
-  color: rgba(255, 255, 255, 0.75) !important;
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item),
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-submenu-title) {
+  color: rgba(255, 255, 255, 0.78) !important;
 }
 
-.app-sider :deep(.ant-menu-dark .ant-menu-item .anticon),
-.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title .anticon) {
-  color: rgba(255, 255, 255, 0.75) !important;
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item .anticon),
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-submenu-title .anticon) {
+  color: rgba(255, 255, 255, 0.78) !important;
 }
 
-.app-sider :deep(.ant-menu-dark .ant-menu-submenu-arrow) {
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-submenu-arrow) {
   color: rgba(255, 255, 255, 0.45) !important;
 }
 
-.app-sider :deep(.ant-menu-dark .ant-menu-item:hover),
-.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title:hover) {
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item:hover),
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-submenu-title:hover) {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item:hover .anticon),
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-submenu-title:hover .anticon) {
   color: #ffffff !important;
 }
 
-.app-sider :deep(.ant-menu-dark .ant-menu-item:hover .anticon),
-.app-sider :deep(.ant-menu-dark .ant-menu-submenu-title:hover .anticon) {
-  color: #ffffff !important;
-}
-
-.app-sider :deep(.ant-menu-item) {
-  margin: 2px 8px;
-  border-radius: 8px;
-  height: 38px;
-  line-height: 38px;
-}
-
-.app-sider :deep(.ant-menu-item-selected) {
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item-selected) {
   background: rgba(232, 255, 89, 0.12) !important;
   color: #e8ff59 !important;
 }
 
-.app-sider :deep(.ant-menu-item-selected .anticon) {
+.app-sider--dark :deep(.ant-menu-dark .ant-menu-item-selected .anticon) {
   color: #e8ff59 !important;
 }
 
-.app-sider :deep(.ant-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.08) !important;
+/* ===== 亮色侧栏菜单 ===== */
+.app-sider--light :deep(.ant-menu-light .ant-menu-item),
+.app-sider--light :deep(.ant-menu-light .ant-menu-submenu-title) {
+  color: #3a3a3c !important;
+}
+
+.app-sider--light :deep(.ant-menu-light .ant-menu-item .anticon),
+.app-sider--light :deep(.ant-menu-light .ant-menu-submenu-title .anticon) {
+  color: #3a3a3c !important;
+}
+
+.app-sider--light :deep(.ant-menu-light .ant-menu-item-selected) {
+  color: #65a30d !important;
+  background: rgba(101, 163, 13, 0.1) !important;
+}
+
+.app-sider--light :deep(.ant-menu-light .ant-menu-item-selected .anticon) {
+  color: #65a30d !important;
+}
+
+.app-sider :deep(.ant-layout-sider-trigger) {
+  background: var(--eo-menu-hover);
+  color: var(--eo-text-secondary);
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.app-sider :deep(.ant-layout-sider-trigger:hover) {
+  color: var(--eo-primary);
+}
+
+.app-sider :deep(.ant-menu-item) {
+  margin: 2px 8px;
+  border-radius: 10px;
+  height: 38px;
+  line-height: 38px;
+}
+
+.app-sider :deep(.ant-menu-item:hover),
+.app-sider :deep(.ant-menu-submenu-title:hover) {
+  background: var(--eo-menu-hover) !important;
 }
 
 .app-sider :deep(.ant-menu-submenu-title) {
@@ -377,21 +427,14 @@ function handleLogout() {
   line-height: 36px;
   margin: 0;
   padding: 0 24px !important;
-}
-
-.app-sider :deep(.ant-menu-submenu-title:hover) {
-  background: rgba(255, 255, 255, 0.06) !important;
+  border-radius: 10px;
 }
 
 .app-sider :deep(.collapsed-menu-item) {
   margin: 2px 8px;
-  border-radius: 8px;
+  border-radius: 10px;
   height: 38px;
   line-height: 38px;
-}
-
-.app-sider :deep(.collapsed-menu-item:hover) {
-  background: rgba(255, 255, 255, 0.08) !important;
 }
 
 .app-sider :deep(.collapsed-menu-item .anticon) {
@@ -405,49 +448,61 @@ function handleLogout() {
   align-items: center;
   justify-content: center;
   padding: 0 16px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid var(--eo-border);
 }
 
 .logo-icon {
   font-size: 24px;
-  color: #e8ff59;
+  color: var(--eo-primary);
 }
 
 .logo-text {
-  color: #fafafa;
+  color: var(--eo-text);
   margin: 0 0 0 10px;
   font-size: 18px;
   font-weight: 600;
 }
 
 .app-header {
-  background: #141414;
+  background: var(--eo-header-bg);
   padding: 0 24px;
-  border-bottom: 1px solid #2a2a2a;
+  border-bottom: 1px solid var(--eo-border);
   z-index: 9;
   height: 64px;
   line-height: 64px;
+  transition: background 0.28s ease, border-color 0.28s ease;
 }
 
-.trigger {
+.trigger,
+.theme-toggle {
   font-size: 18px;
   cursor: pointer;
-  transition: color 0.3s;
+  transition: transform 0.15s cubic-bezier(0.25, 0.1, 0.25, 1), color 0.2s ease, background 0.2s ease;
   padding: 4px;
-  color: #a1a1aa;
+  color: var(--eo-text-secondary);
+  border-radius: 8px;
 }
 
-.trigger:hover { color: #e8ff59; }
+.trigger:hover,
+.theme-toggle:hover {
+  color: var(--eo-primary);
+  background: var(--eo-menu-hover);
+}
+
+.trigger:active,
+.theme-toggle:active {
+  transform: scale(0.95);
+}
 
 .user-avatar {
-  background-color: rgba(232, 255, 89, 0.2) !important;
-  color: #e8ff59 !important;
+  background-color: var(--eo-menu-selected) !important;
+  color: var(--eo-primary) !important;
   margin-right: 8px;
 }
 
 .user-caret {
   margin-left: 4px;
-  color: #71717a;
+  color: var(--eo-text-muted);
 }
 
 .user-info {
@@ -455,19 +510,31 @@ function handleLogout() {
   align-items: center;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: 6px;
-  transition: background 0.3s;
+  border-radius: 8px;
+  transition: background 0.2s ease, transform 0.15s ease;
 }
 
-.user-info:hover { background: rgba(255, 255, 255, 0.06); }
+.user-info:hover {
+  background: var(--eo-menu-hover);
+}
 
-.username { font-size: 14px; color: #f4f4f5; }
+.user-info:active {
+  transform: scale(0.98);
+}
+
+.username {
+  font-size: 14px;
+  color: var(--eo-text);
+}
 
 .app-content {
   margin: 16px;
   padding: 24px;
-  background: #0a0a0b;
+  background: var(--eo-content-bg);
   min-height: calc(100vh - 64px - 32px);
-  border-radius: 8px;
+  border-radius: 12px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: background 0.28s ease;
 }
 </style>

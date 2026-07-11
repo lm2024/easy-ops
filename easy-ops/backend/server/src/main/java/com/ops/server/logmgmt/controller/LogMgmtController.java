@@ -48,12 +48,12 @@ public class LogMgmtController {
     /**
      * GET /api/logs/files - 列出节点日志文件
      */
-    @GetMapping("/files")
+        @GetMapping("/files")
     public Result<?> listFiles(@RequestParam Long projectId, @RequestParam Long nodeId) {
         if (!securityContext.hasProjectPermission(projectId)) {
             return Result.error(403, "无权访问该项目");
         }
-        return Result.success(logMgmtService.listLogFiles(projectId, nodeId));
+        return Result.success(logMgmtService.discoverLogFiles(projectId, nodeId));
     }
 
     /**
@@ -64,11 +64,13 @@ public class LogMgmtController {
                              @RequestParam Long nodeId,
                              @RequestParam(required = false) String fileName,
                              @RequestParam(defaultValue = "0") Integer offset,
-                             @RequestParam(defaultValue = "200") Integer lines) {
+                             @RequestParam(defaultValue = "200") Integer lines,
+                             @RequestParam(required = false) String level,
+                             @RequestParam(defaultValue = "tail") String mode) {
         if (!securityContext.hasProjectPermission(projectId)) {
             return Result.error(403, "无权访问该项目");
         }
-        return Result.success(logMgmtService.viewLog(projectId, nodeId, fileName, offset, lines));
+        return Result.success(logMgmtService.viewLog(projectId, nodeId, fileName, offset, lines, level, mode));
     }
 
     /**
@@ -79,11 +81,12 @@ public class LogMgmtController {
                                @RequestParam(required = false) List<Long> nodeIds,
                                @RequestParam(defaultValue = "1") Integer page,
                                @RequestParam(defaultValue = "100") Integer pageSize,
-                               @RequestParam(required = false) Long since) {
+                               @RequestParam(required = false) Long since,
+                               @RequestParam(required = false) String level) {
         if (!securityContext.hasProjectPermission(projectId)) {
             return Result.error(403, "无权访问该项目");
         }
-        return Result.success(logMgmtService.aggregate(projectId, nodeIds, page, pageSize, since));
+        return Result.success(logMgmtService.aggregate(projectId, nodeIds, page, pageSize, since, level));
     }
 
     /**
@@ -102,8 +105,10 @@ public class LogMgmtController {
                 ? Integer.parseInt(body.get("contextLines").toString()) : 3;
         int maxResults = body.get("maxResults") != null
                 ? Integer.parseInt(body.get("maxResults").toString()) : 200;
+        String level = body.get("level") != null ? body.get("level").toString() : null;
+        String filePath = body.get("filePath") != null ? body.get("filePath").toString() : null;
         return Result.success(logMgmtService.search(projectId, keyword, scope,
-                nodeIds, contextLines, maxResults));
+                nodeIds, contextLines, maxResults, level, filePath));
     }
 
     private Long toLong(Object value) {

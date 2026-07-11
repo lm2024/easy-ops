@@ -28,10 +28,11 @@ public class ProjectController {
     public Result<?> listProjects(
             @RequestParam(required = false) String status,
             @RequestParam(required = false) Long nodeId,
+            @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<ProjectModel> projects = projectService.findByFilters(status, nodeId, page, pageSize);
-        Long total = projectService.countByFilters(status, nodeId);
+        List<ProjectModel> projects = projectService.findByFilters(status, nodeId, keyword, page, pageSize);
+        Long total = projectService.countByFilters(status, nodeId, keyword);
         Map<String, Object> data = new HashMap<>();
         data.put("list", projects);
         data.put("total", total);

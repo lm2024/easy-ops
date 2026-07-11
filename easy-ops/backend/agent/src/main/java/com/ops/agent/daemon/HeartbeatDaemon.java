@@ -11,6 +11,7 @@ import org.springframework.web.client.RestTemplate;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * 心跳保活 Daemon (Agent侧)
@@ -37,21 +38,26 @@ public class HeartbeatDaemon implements CommandLineRunner {
     @Value("${agent.host-port:0}")
     private int hostPort;
 
+    @Value("${agent.version:1.0.0-SNAPSHOT}")
+    private String agentVersion;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     /**
-     * 启动时校验 Token 必须配置 (Task 2 新增)
+     * 启动时：未配置 Token 则自动生成（内网简化部署），并打印到控制台供 Server 注册节点使用
      */
     @Override
     public void run(String... args) {
         if (agentToken == null || agentToken.trim().isEmpty()) {
-            throw new IllegalStateException(
-                "SECURITY VIOLATION: AGENT_TOKEN is not configured. " +
-                "Please set the AGENT_TOKEN environment variable. " +
-                "This prevents unauthorized agents from connecting to the server."
-            );
+            agentToken = "easyops-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+            System.out.println("============================================================");
+            System.out.println("[HeartbeatDaemon] 未配置 AGENT_TOKEN，已自动生成（内网模式）");
+            System.out.println("[HeartbeatDaemon] 请在 Server 节点管理中注册此 Token:");
+            System.out.println("[HeartbeatDaemon]   " + agentToken);
+            System.out.println("============================================================");
+        } else {
+            System.out.println("[HeartbeatDaemon] Agent token loaded. Node: " + nodeName);
         }
-        System.out.println("[HeartbeatDaemon] Agent token loaded from environment. Node: " + nodeName);
     }
 
     /**
@@ -90,6 +96,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
             headers.set("X-CPU-Info", String.valueOf(cpuCores));
             headers.set("X-Mem-Info", String.valueOf(totalMemMb));
             headers.set("X-OS-Arch", osArch);
+            headers.set("X-Agent-Version", agentVersion);
 
             System.out.println("[Agent Heartbeat] Sending headers: X-Node-Name=" + nodeName + ", X-Token=" + agentToken);
 

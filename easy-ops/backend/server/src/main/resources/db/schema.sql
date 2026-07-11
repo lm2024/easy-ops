@@ -24,6 +24,7 @@ ALTER TABLE node_info ADD COLUMN IF NOT EXISTS cpu_cores INT DEFAULT 0;
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS total_memory_mb INT DEFAULT 0;
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS total_disk_mb BIGINT DEFAULT 0;
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS os_arch VARCHAR(50) DEFAULT '';
+ALTER TABLE node_info ADD COLUMN IF NOT EXISTS agent_version VARCHAR(50) DEFAULT '';
 
 -- 项目管理表
 CREATE TABLE IF NOT EXISTS project_info (
@@ -42,6 +43,10 @@ CREATE TABLE IF NOT EXISTS project_info (
 CREATE INDEX IF NOT EXISTS idx_project_status ON project_info(status);
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS jar_name VARCHAR(200) DEFAULT '';
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS deploy_dir VARCHAR(500) DEFAULT '';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS frontend_deploy_dir VARCHAR(500) DEFAULT '';
+
+-- 版本包类型（jar / frontend）
+ALTER TABLE version_package ADD COLUMN IF NOT EXISTS package_type VARCHAR(20) DEFAULT 'jar';
 
 -- 版本包表
 CREATE TABLE IF NOT EXISTS version_package (

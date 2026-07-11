@@ -6,6 +6,7 @@ import com.ops.common.model.ProjectModel;
 import com.ops.common.model.SelfHealEventModel;
 import com.ops.common.model.SelfHealPolicyModel;
 import com.ops.server.client.AgentClient;
+import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectMapper;
 import com.ops.server.mapper.SelfHealEventMapper;
@@ -50,6 +51,9 @@ public class SelfHealService {
 
     @Autowired
     private AgentClient agentClient;
+
+    @Autowired
+    private GlobalPathProperties globalPathProperties;
 
     @Autowired
     private NotificationService notificationService;
@@ -112,7 +116,9 @@ public class SelfHealService {
             return;
         }
 
-        String deployDir = project.getDeployDir() != null ? project.getDeployDir() : "/app/data";
+        String deployDir = project.getDeployDir() != null && !project.getDeployDir().trim().isEmpty()
+                ? project.getDeployDir()
+                : globalPathProperties.resolveAgentVersionDir(project.getId(), null);
         String jarName = project.getJarName() != null ? project.getJarName() : "app.jar";
 
         Map<String, Object> status = agentClient.getProcessStatus(node, deployDir, jarName);

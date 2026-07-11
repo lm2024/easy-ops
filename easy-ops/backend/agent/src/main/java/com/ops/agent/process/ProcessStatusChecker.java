@@ -1,6 +1,8 @@
 package com.ops.agent.process;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.util.HashMap;
 import java.util.Map;
@@ -8,7 +10,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 进程存活检测：通过 ps + grep deployDir 与 jarName 匹配 Java 进程。
+ * 进程存活检测：优先 ps+grep，回退 jar 名匹配与 pid 文件。
  */
 public class ProcessStatusChecker {
 
@@ -43,9 +45,23 @@ public class ProcessStatusChecker {
 
     /**
      * 查找匹配进程的 PID，未找到返回 null。
+     * 策略：deployDir+jarName → jarName(java) → deployDir/pid 文件。
      */
     public Long findPid(String deployDir, String jarName) {
-        String cmd = buildPsGrepCommand(deployDir, jarName);
+        Long pid = findPidByPs(buildPsGrepCommand(deployDir, jarName));
+        if (pid != null) {
+            return pid;
+        }
+
+        pid = findPidByPs("ps aux | grep '[j]ava' | grep " + shellEscape(jarName));
+        if (pid != null) {
+            return pid;
+        }
+
+        return findPidFromFile(deployDir, jarName);
+    }
+
+    private Long findPidByPs(String cmd) {
         Process process = null;
         BufferedReader reader = null;
         try {
@@ -71,6 +87,31 @@ public class ProcessStatusChecker {
         return null;
     }
 
+    private Long findPidFromFile(String deployDir, String jarName) {
+        File pidFile = new File(deployDir, "pid");
+        if (!pidFile.isFile()) {
+            return null;
+        }
+        BufferedReader reader = null;
+        try {
+            reader = new BufferedReader(new FileReader(pidFile));
+            String line = reader.readLine();
+            if (line == null || line.trim().isEmpty()) {
+                return null;
+            }
+            long pid = Long.parseLong(line.trim());
+            if (pid <= 0) {
+                return null;
+            }
+            Long matched = findPidByPs("ps -p " + pid + " -o args= 2>/dev/null | grep " + shellEscape(jarName));
+            return matched != null ? pid : null;
+        } catch (Exception ignored) {
+            return null;
+        } finally {
+            closeQuietly(reader);
+        }
+    }
+
     private String buildPsGrepCommand(String deployDir, String jarName) {
         String safeDir = shellEscape(deployDir);
         String safeJar = shellEscape(jarName);
@@ -80,6 +121,15 @@ public class ProcessStatusChecker {
     private Long parsePid(String psLine) {
         if (psLine == null || psLine.trim().isEmpty()) {
             return null;
+        }
+        // ps aux 格式：USER PID %CPU ...，PID 在第 2 列
+        String[] parts = psLine.trim().split("\\s+");
+        if (parts.length >= 2) {
+            try {
+                return Long.valueOf(parts[1]);
+            } catch (NumberFormatException ignored) {
+                // fall through
+            }
         }
         Matcher matcher = PID_PATTERN.matcher(psLine);
         if (matcher.find()) {

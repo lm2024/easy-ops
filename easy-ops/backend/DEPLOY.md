@@ -1,92 +1,178 @@
-# EasyOps 后端「内网离线部署」说明
+# EasyOps 内网私有化部署指南
 
-目标环境：**JDK 8**（JRE 8 亦可运行，但重新打包需 JDK 8）。无需联网。
+目标：**JDK 8**、**无公网**、**Server / Agent / 前端各一台**（三台互不共享配置）。
 
-## 一、依赖如何「工程内私有化」
+> 运行只需 fat jar；改代码重打包需 `local-repo/`（~149MB）+ Maven。详见下文「离线构建」。
 
-Maven 没有前端那种扁平的 `node_modules` 文件夹，它的依赖库是「本地仓库」
-（按 `groupId/artifactId/version` 分层、带 POM 元数据）。本工程已把完整构建
-依赖导出到 **`backend/local-repo/`**（~149MB），等价于前端的 node_modules。
+---
 
-> 运行后端本身**不依赖 Maven、不依赖网络**——Spring Boot 的 fat jar 已把全部
-> 依赖打进 `BOOT-INF/lib`。`local-repo` 只在你「改代码后重新打包」时才需要。
+## 一、三机部署（推荐）
 
-## 二、拷贝到内网的内容
+每台机器：**jar + `scripts/` 目录**，只改本机 `scripts/easyops.env`，**不改 YAML**（路径由 `start.sh` 注入）。
 
-### 方案 A：只运行（最小拷贝）
-- `backend/server/target/ops-platform-server-1.0.0-SNAPSHOT.jar`（已构建好，Java 8 字节码）
-- `backend/server/data/`（**必须带**，H2 数据库，否则数据丢失/重新初始化）
-- `backend/start-prod.sh`
-- 内网需装 **JDK 8**
-
-启动：`cd backend && ./start-prod.sh`
-
-### 方案 B：运行 + 可改码重打包（完整拷贝）
-把整个 `backend/` 目录拷过去（含 `local-repo/`、`common/`、`server/`、`agent/`、源码、脚本）。
-- 内网需装 **JDK 8** 与 **Maven 3.9+**
-- 改完代码重新打包：`cd backend && ./build-offline.sh`（断网，`-o` 模式，只用 `local-repo`）
-- 再启动：`./start-prod.sh`
-
-## 三、已验证（本机，仅用 local-repo + `-o` 离线模式）
+### Server 机
 
 ```
-mvn -o -Dmaven.repo.local=backend/local-repo clean package -DskipTests
-→ Reactor SUCCESS: common / server / agent
-→ server jar 字节码 major version = 52 (Java 8) ✅
+/data/easy-ops-server/
+  ops-platform-server.jar          # 即 target 产物，可改名
+  scripts/
+    easyops.env   start.sh  stop.sh  restart.sh
+  data/                            # 自动创建（H2、版本包、日志）
 ```
 
-## 四、本次为适配 JDK 8 修复的测试代码 bug（不影响运行，但会阻塞 JDK 8 下整包构建）
-
-测试代码误用了 Java 9/11 API，在 JDK 8 下 `mvn package` 会编译失败：
-- `server/.../AIAnalyzeControllerTest.java`：`Map.of` → `Collections.singletonMap`
-- `server/.../FileControllerTest.java`：`Map.of(...)` → `new HashMap` + `put`
-- `agent/.../FileCommanderTest.java`、`LogCommanderTest.java`：`Path.of` → `Paths.get`
-
-> 注意：`start.sh`（原开发脚本）写死 `$HOME/.jdk8/Contents/Home`（macOS 路径），
-> 内网 Linux 请用 `start-prod.sh`（使用系统 `java`）。
-
-## 五、Agent 部署提示
-
-- Agent 在开发环境以 Docker 容器运行；内网若沿用 Docker，需把 agent 镜像导入。
-- 也可直接用 `agent/target/easy-ops-agent-1.0.0-SNAPSHOT.jar` 以 `java -jar` 方式在目标主机运行
-  （已构建为 Spring Boot fat jar，同样 Java 8 字节码）。
-
-## 六、部署健康检查开关（重要）
-
-部署完成后，Server 默认会对每个目标节点做一次「健康检查」判断应用是否真起来。
-此前该检查是**硬编码**的：必须应用监听 `8080` 端口、有 `/hello` 接口、且返回内容包含
-`Hello` 或 `DEPLOYED`，否则判为失败（5 次重试后仍失败 → 部署失败）。这意味着**你的工程
-若没有健康地址，部署会一直失败**。
-
-现已改为「**项目级可配置 + 可关闭**」：
-
-- 在「项目管理」表单里新增「部署后健康检查」开关（默认开启）。
-- 开启时可配置：端口 / 路径 / 关键字（逗号分隔，响应含任一关键字即视为健康）。默认值即
-  原来的 `8080` / `/hello` / `Hello,DEPLOYED`，对 `demo-test-app` 等原样兼容。
-- **关闭后：跳过健康检查，部署直接判定成功** —— 适用于你的工程当前没有健康地址的场景。
-
-字段存储在 `project_info` 表，迁移脚本 `schema.sql` 已用 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
-自动加列（`health_check_enabled` / `health_check_port` / `health_check_path` /
-`health_check_keyword`，带默认值），对已有数据零破坏，重启即生效。
-
-前端表单位置：`frontend/src/views/ProjectFormView.vue`（开关 + 端口/路径/关键字三个输入）。
-
-## 七、Agent 启动逻辑 bug 修复（与你之前「健康检查未通过」强相关）
-
-**根因**：Agent 执行部署时生成的 `start.sh` 含 `> logs/startup.log` 重定向，但部署目录下
-**没有 `logs/` 子目录**，导致重定向失败、`java` 进程根本没启动 → 8080 无响应 → 健康检查
-5 次全失败 → 部署失败（表面现象就是「启动应用 200 OK，但健康检查 ❌」）。
-
-**修复**：`backend/agent/.../ProcessController.start()` 在启动前先 `mkdir -p logs`，并用 `setsid`
-让应用彻底脱离 Agent 进程组、稳定运行：
+`easyops.env` 必改：`JWT_SECRET`、`AGENT_DATA_PATH`（= **Agent 机** `{INSTALL_DIR}/data`）
 
 ```bash
-cd "deployDir" && mkdir -p logs && setsid sh start.sh > /dev/null 2>&1 < /dev/null &
+cd /data/easy-ops-server/scripts && ./start.sh
 ```
 
-`backend/agent/target/easy-ops-agent-1.0.0-SNAPSHOT.jar` 已含此修复（JDK 8）。
-内网部署时**请务必使用含此修复的 agent jar / 镜像**，否则老版本仍有此 bug。
+### Agent 机
 
-> 验证：本机复现「先杀掉应用 → 关闭项目健康检查 → 立即部署」→ 部署日志显示
-> `⏭️ 健康检查已关闭，跳过检查，直接判定成功`，且 `start.sh` 能正常拉起应用。
+```
+/data/easy-ops-agent/
+  easy-ops-agent.jar
+  scripts/
+    easyops.env   start.sh  stop.sh  restart.sh
+  data/
+```
 
+`easyops.env` 必改：`AGENT_SERVER_URL=http://<ServerIP>:8081/api`、`AGENT_NODE_NAME`  
+`AGENT_TOKEN` 可留空（启动时自动生成，见日志）
+
+```bash
+cd /data/easy-ops-agent/scripts && ./start.sh
+```
+
+裸机自升级：`AGENT_RESTART_MODE=shell`（env 默认已设），重启走本机 `scripts/start.sh`。
+
+### 前端机
+
+```
+/data/easy-ops-frontend/
+  dist/                            # build.sh 产物
+  scripts/
+    easyops.env   start.sh  stop.sh  restart.sh  build.sh
+```
+
+1. **构建机**（有 Node）：`frontend/scripts/build.sh`  
+2. 拷 `dist/` + `scripts/` 到前端机  
+3. `easyops.env` 必改：`SERVER_API_URL=http://<ServerIP>:8081`、`SERVE_MODE=nginx`  
+4. 前端机只需 **Nginx + dist**，无需 Node、无需联网
+
+```bash
+cd /data/easy-ops-frontend/scripts && ./start.sh
+```
+
+### 路径对齐（最重要）
+
+| Server 配置 | 必须等于 |
+|-------------|----------|
+| `AGENT_DATA_PATH` | Agent 机 `data/` 绝对路径 |
+
+Agent 版本包目录：`{data}/versions/{projectId}/{version}/`
+
+启动后日志搜 **`启动路径`** 核对。
+
+---
+
+## 二、拷贝清单
+
+### 最小运行（单组件）
+
+| 组件 | 拷贝内容 | 依赖 |
+|------|----------|------|
+| Server | jar + `server/scripts/` + **已有 `data/`**（H2，必带） | JDK 8 |
+| Agent | jar + `agent/scripts/` | JDK 8 |
+| 前端 | `dist/` + `scripts/` | Nginx |
+
+### 可改码重打包
+
+整个 `backend/`（含 `local-repo/`、源码）→ 内网 `mvn -o -Dmaven.repo.local=local-repo package -DskipTests`  
+或：`./build-offline.sh`
+
+---
+
+## 三、开发环境
+
+```bash
+# 编译
+cd backend && mvn package -DskipTests
+
+# 各组件脚本（自动用 target 产物）
+backend/server/scripts/start.sh
+backend/agent/scripts/start.sh
+frontend/scripts/start.sh          # SERVE_MODE=dev
+
+# Docker 多 Agent（仅开发）
+cd backend && docker-compose up -d
+# 坑：容器内需 JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true
+```
+
+| 脚本 | 用途 |
+|------|------|
+| `backend/start.sh` | macOS 开发（写死 JDK 路径） |
+| `backend/start-prod.sh` | 旧版 Linux 启动，**推荐改用 `server/scripts/`** |
+| `*/scripts/start\|stop\|restart.sh` | 私有化标准入口 |
+
+---
+
+## 四、Agent 自升级（裸机）
+
+| 环境 | 拉起方式 |
+|------|----------|
+| Docker（开发） | 换 jar → `exit` → 容器 restart |
+| 裸机（生产） | 换 jar → 脚本等旧进程退出 → `setsid` 拉新进程 → 失败自动回滚 jar |
+
+**排障专用日志**：`{data}/logs/upgrade-restart.log`（与 agent.log 分离，记录每一步 FAIL 原因）
+
+生产务必：`AGENT_RESTART_MODE=shell`，且 `agent.restart-script` 指向本机 `scripts/start.sh`（`start.sh` 启动时已注入 `-Dagent.restart-script`）。
+
+流程：备份 jar → 替换 → 后台脚本 → 旧进程 2 秒后 exit 释放端口 → 脚本拉起新进程并验证 → 失败则用备份 jar 回滚。
+
+---
+
+## 五、部署与健康检查
+
+流程：停旧 → 传 Jar → 启动 → 健康检查 →（可回滚）
+
+**无健康端口的项目**：在项目管理关闭「部署后健康检查」，或改端口/路径/关键字。  
+默认：`8080` / `/hello` / 响应含 `Hello` 或 `DEPLOYED`。
+
+---
+
+## 六、已知坑
+
+| 问题 | 原因 / 处理 |
+|------|-------------|
+| H2 数据丢失 | 从不同 cwd 启动，`server.path` 相对路径不一致 → **必须用 `scripts/start.sh`** |
+| 部署路径错 | Server `AGENT_DATA_PATH` 与 Agent 机 `data/` 不一致 |
+| 部署成功但应用没起 | 部署目录无 `logs/`，`start.sh` 重定向失败 → 已修：`ProcessController` 先 `mkdir -p logs` + `setsid` |
+| 健康检查全失败 | 应用未监听 8080 / 无 `/hello` → 关健康检查或改配置 |
+| Agent 心跳离线（Docker） | IPv6 连 `host.docker.internal` → 加 `preferIPv4Stack` |
+| 裸机升级后 Agent 没起来 | 未用 `setsid` 脱离进程组 → 用 `scripts/start.sh` |
+| Token 冲突 | 两台 Agent 共用 Token → 心跳互相覆盖 |
+| JDK 8 编译失败 | 测试代码用了 `Map.of`/`Path.of` → 改用 Java 8 API |
+| `start.sh` 在 Linux 失败 | 写死 macOS JDK → 用 `server/scripts/start.sh` |
+
+---
+
+## 七、Jar 与端口
+
+| 组件 | Jar | 端口 |
+|------|-----|------|
+| Server | `ops-platform-server-1.0.0-SNAPSHOT.jar` | 8081 `/api` |
+| Agent | `easy-ops-agent-1.0.0-SNAPSHOT.jar` | 2123 `/api` |
+| 前端 | dist（Nginx） | 80/3000 |
+
+默认账号：`admin / admin123`
+
+---
+
+## 八、配置原则
+
+- **私有化**：只改各机 `scripts/easyops.env`
+- **端口**：改 env 或 `application.yml` 二选一
+- **路径**：由启动脚本 `-Dserver.path` / `-Dagent.data-path` 注入，**不要手改 YAML**
+- **敏感项**：`JWT_SECRET`、`AI_API_KEY`、`AGENT_TOKEN` 走环境变量
+
+更完整的 AI 开发提示见仓库根目录 `AGENTS.md`。

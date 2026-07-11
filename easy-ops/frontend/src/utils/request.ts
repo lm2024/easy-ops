@@ -11,9 +11,10 @@ const service: AxiosInstance = axios.create({
 // 请求拦截器
 service.interceptors.request.use(
   (config) => {
-    // 添加Token (用户认证)
+    const url = config.url || ''
+    const isAuthApi = url.includes('/auth/login') || url.includes('/auth/captcha')
     const token = localStorage.getItem('token')
-    if (token) {
+    if (token && !isAuthApi) {
       config.headers.Authorization = `Bearer ${token}`
     }
     return config
@@ -27,9 +28,15 @@ service.interceptors.request.use(
 service.interceptors.response.use(
   (response: AxiosResponse<Result>) => {
     const res = response.data
+    const requestUrl = response.config?.url || ''
+    const isLoginApi = requestUrl.includes('/auth/login')
     if (res.code !== 200) {
-      message.error(res.message || '请求失败')
-      if (res.code === 401) {
+      const isCaptchaMsg = (res.message || '').includes('验证码')
+      const skipGlobalToast = isLoginApi || isCaptchaMsg
+      if (!skipGlobalToast) {
+        message.error(res.message || '请求失败')
+      }
+      if (res.code === 401 && !window.location.pathname.startsWith('/login')) {
         localStorage.removeItem('token')
         window.location.href = '/login'
       }
@@ -42,6 +49,14 @@ service.interceptors.response.use(
       localStorage.removeItem('token')
       window.location.href = '/login'
       return Promise.reject(error)
+    }
+    // 后端未启动或代理失败时，Vite 常返回 500/502
+    if (error.response && (error.response.status === 500 || error.response.status === 502 || error.response.status === 503)) {
+      const isProxyDown = !error.response.data || typeof error.response.data !== 'object' || !('code' in (error.response.data || {}))
+      if (isProxyDown) {
+        message.error('后端服务未启动或不可用，请在 backend 目录执行 ./start.sh')
+        return Promise.reject(error)
+      }
     }
     // 400 是业务异常，由调用方自行处理提示（如 displayMessage: false 则静默）
     if (error.response && error.response.status === 400) {

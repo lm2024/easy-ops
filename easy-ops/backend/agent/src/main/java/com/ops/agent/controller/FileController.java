@@ -1,6 +1,7 @@
 package com.ops.agent.controller;
 
 import com.ops.agent.file.ConfigFileService;
+import com.ops.agent.file.LogDiscoveryService;
 import com.ops.agent.file.LogFileService;
 import com.ops.common.response.Result;
 import org.springframework.beans.factory.annotation.Value;
@@ -9,12 +10,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /**
  * Agent文件接收接口
@@ -29,6 +28,7 @@ public class FileController {
 
     private final ConfigFileService configFileService = new ConfigFileService();
     private final LogFileService logFileService = new LogFileService();
+    private final LogDiscoveryService logDiscoveryService = new LogDiscoveryService();
 
     /**
      * 接收Server下发的Jar包
@@ -87,21 +87,20 @@ public class FileController {
      * 获取日志文件内容
      */
     @GetMapping("/log")
-    public Result<String> getLog(@RequestParam String logPath,
-                                  @RequestParam(defaultValue = "0") int offset,
-                                  @RequestParam(defaultValue = "100") int lines) {
+    public Result<Map<String, Object>> getLog(@RequestParam String logPath,
+                                              @RequestParam(defaultValue = "0") int offset,
+                                              @RequestParam(defaultValue = "100") int lines,
+                                              @RequestParam(required = false) String level,
+                                              @RequestParam(defaultValue = "page") String mode) {
         try {
-            File logFile = new File(logPath);
-            if (!logFile.exists()) {
-                return Result.error(400, "日志文件不存在: " + logPath);
+            if ("tail".equalsIgnoreCase(mode)) {
+                return Result.success(logFileService.tail(logPath, lines, level));
             }
-
-            try (Stream<String> linesStream = Files.lines(logFile.toPath())) {
-                String content = linesStream.skip(offset).limit(lines)
-                        .reduce("", (a, b) -> a + b + "\n");
-                return Result.success(content.trim());
+            return Result.success(logFileService.readPage(logPath, offset, lines, level));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
             }
-        } catch (Exception e) {
             return Result.error(500, "读取日志失败: " + e.getMessage());
         }
     }
@@ -163,11 +162,25 @@ public class FileController {
      * 列出日志目录下的文件。
      */
     @GetMapping("/log/list")
-    public Result<List<Map<String, Object>>> listLogs(@RequestParam String logDir) {
+    public Result<List<Map<String, Object>>> listLogs(@RequestParam String logDir,
+                                                     @RequestParam(required = false) String pattern) {
         try {
-            return Result.success(logFileService.listLogs(logDir));
+            return Result.success(logFileService.listLogs(logDir, pattern));
         } catch (IOException e) {
             return Result.error(400, e.getMessage());
+        }
+    }
+
+    /**
+     * 智能发现节点上的日志文件（扫描部署目录及常见 logs 目录）。
+     */
+    @GetMapping("/log/discover")
+    public Result<Map<String, Object>> discoverLogs(@RequestParam(required = false) String deployDir,
+                                                     @RequestParam(required = false) String logDir) {
+        try {
+            return Result.success(logDiscoveryService.discover(deployDir, logDir, dataPath));
+        } catch (IOException e) {
+            return Result.error(400, "日志扫描失败: " + e.getMessage());
         }
     }
 
@@ -176,9 +189,10 @@ public class FileController {
      */
     @GetMapping("/log/tail")
     public Result<Map<String, Object>> tailLog(@RequestParam String logPath,
-                                               @RequestParam(defaultValue = "200") int lines) {
+                                               @RequestParam(defaultValue = "200") int lines,
+                                               @RequestParam(required = false) String level) {
         try {
-            return Result.success(logFileService.tail(logPath, lines));
+            return Result.success(logFileService.tail(logPath, lines, level));
         } catch (IOException e) {
             if (e.getMessage() != null && e.getMessage().contains("不存在")) {
                 return Result.error(400, e.getMessage());
@@ -201,12 +215,67 @@ public class FileController {
                 ? Integer.parseInt(body.get("maxResults").toString()) : 100;
         int contextLines = body.get("contextLines") != null
                 ? Integer.parseInt(body.get("contextLines").toString()) : 2;
+        String level = body.get("level") != null ? body.get("level").toString() : null;
         try {
             return Result.success(logFileService.search(
-                    logPathObj.toString(), keywordObj.toString(), maxResults, contextLines));
+                    logPathObj.toString(), keywordObj.toString(), maxResults, contextLines, level));
         } catch (IOException e) {
             return Result.error(500, "日志搜索失败: " + e.getMessage());
         }
+    }
+
+    /**
+     * 解压 zip 到目标目录（用于前端 dist 部署）
+     */
+    @PostMapping("/unzip")
+    public Result<Map<String, Object>> unzipDeploy(@RequestBody Map<String, String> body) {
+        String zipPath = body.get("zipPath");
+        String targetDir = body.get("targetDir");
+        if (zipPath == null || targetDir == null || zipPath.trim().isEmpty() || targetDir.trim().isEmpty()) {
+            return Result.paramError("zipPath 与 targetDir 不能为空");
+        }
+        try {
+            File zipFile = new File(zipPath);
+            if (!zipFile.exists()) {
+                return Result.error(400, "zip 文件不存在: " + zipPath);
+            }
+            File dest = new File(targetDir);
+            if (!dest.exists()) {
+                dest.mkdirs();
+            }
+            unzipFile(zipFile, dest);
+            Map<String, Object> data = new HashMap<>();
+            data.put("targetDir", dest.getAbsolutePath());
+            data.put("status", "UNZIPPED");
+            return Result.success(data);
+        } catch (Exception e) {
+            return Result.error(500, "解压失败: " + e.getMessage());
+        }
+    }
+
+    private void unzipFile(File zipFile, File destDir) throws IOException {
+        java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile));
+        java.util.zip.ZipEntry entry;
+        byte[] buffer = new byte[8192];
+        while ((entry = zis.getNextEntry()) != null) {
+            File outFile = new File(destDir, entry.getName());
+            if (entry.isDirectory()) {
+                outFile.mkdirs();
+            } else {
+                File parent = outFile.getParentFile();
+                if (parent != null && !parent.exists()) {
+                    parent.mkdirs();
+                }
+                java.io.FileOutputStream fos = new java.io.FileOutputStream(outFile);
+                int len;
+                while ((len = zis.read(buffer)) > 0) {
+                    fos.write(buffer, 0, len);
+                }
+                fos.close();
+            }
+            zis.closeEntry();
+        }
+        zis.close();
     }
 
     private String bytesToHex(byte[] bytes) {

@@ -1,8 +1,10 @@
 package com.ops.server.controller;
 
 import com.ops.common.model.VersionModel;
+import com.ops.common.model.ProjectModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.VersionPackageMapper;
+import com.ops.server.mapper.ProjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,9 @@ public class VersionController {
 
     @Autowired
     private VersionPackageMapper versionPackageMapper;
+
+    @Autowired
+    private ProjectMapper projectMapper;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -56,14 +61,37 @@ public class VersionController {
     public Result<?> uploadVersion(
             @RequestParam("file") MultipartFile file,
             @RequestParam Long projectId,
+            @RequestParam(required = false, defaultValue = "jar") String packageType,
             @RequestParam(required = false) String remark) throws Exception {
         if (file == null || file.isEmpty()) {
             return Result.paramError("请选择文件");
         }
 
         String originalFilename = file.getOriginalFilename();
-        if (originalFilename == null || !originalFilename.endsWith(".jar")) {
-            return Result.error(1006, "仅支持.jar文件");
+        if (originalFilename == null || originalFilename.isEmpty()) {
+            return Result.paramError("文件名无效");
+        }
+
+        ProjectModel project = projectMapper.findById(projectId);
+        if (project == null) {
+            return Result.error(1005, "项目不存在");
+        }
+
+        boolean isFrontend = "frontend".equalsIgnoreCase(packageType)
+                || originalFilename.toLowerCase().endsWith(".zip");
+        if (isFrontend) {
+            if (!originalFilename.toLowerCase().endsWith(".zip")) {
+                return Result.error(1006, "前端包仅支持 .zip 文件（如 dist.zip）");
+            }
+        } else {
+            if (!originalFilename.toLowerCase().endsWith(".jar")) {
+                return Result.error(1006, "仅支持 .jar 文件");
+            }
+            if (project.getJarName() != null && !project.getJarName().trim().isEmpty()
+                    && !originalFilename.equals(project.getJarName())) {
+                return Result.paramError("Jar 包名必须为 " + project.getJarName()
+                        + "，当前上传: " + originalFilename);
+            }
         }
 
         // Calculate SHA-256
@@ -99,6 +127,7 @@ public class VersionController {
         version.setVersion(versionName);
         version.setSha256(sha256Str);
         version.setRemark(remark);
+        version.setPackageType(isFrontend ? "frontend" : "jar");
         version.setCreateTime(System.currentTimeMillis());
         versionPackageMapper.insert(version);
 

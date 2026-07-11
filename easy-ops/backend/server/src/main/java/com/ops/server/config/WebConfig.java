@@ -51,6 +51,7 @@ public class WebConfig implements WebMvcConfigurer {
                 .addPathPatterns("/**")
                 .excludePathPatterns(
                         "/auth/login",
+                        "/auth/captcha",
                         "/nodes/heartbeat",
                         "/ws/**",
                         "/h2-console/**",
@@ -61,18 +62,14 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         String[] origins = allowedOrigins.split(",");
-        registry.addMapping("/api/**")
-                .allowedOriginPatterns(origins)
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                .allowedHeaders("Authorization", "Content-Type", "Accept", "X-CSRF-Token")
-                .exposedHeaders("Authorization")
-                .maxAge(3600)
-                .allowCredentials(true);
-
+        // context-path=/api 时 Servlet 路径不含 /api 前缀，统一映射 /**
         registry.addMapping("/**")
                 .allowedOriginPatterns(origins)
-                .allowedMethods("GET")
-                .maxAge(84400);
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD")
+                .allowedHeaders("Authorization", "Content-Type", "Accept", "X-CSRF-Token", "X-Token", "X-Requested-With")
+                .exposedHeaders("Authorization", "Content-Disposition")
+                .maxAge(3600)
+                .allowCredentials(true);
     }
 
     @Override
@@ -95,13 +92,13 @@ public class WebConfig implements WebMvcConfigurer {
 
         String[] origins = allowedOrigins.split(",");
         config.setAllowedOriginPatterns(Arrays.asList(origins));
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept", "X-CSRF-Token"));
-        config.setExposedHeaders(Arrays.asList("Authorization"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH", "HEAD"));
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept",
+                "X-CSRF-Token", "X-Token", "X-Requested-With"));
+        config.setExposedHeaders(Arrays.asList("Authorization", "Content-Disposition"));
         config.setMaxAge(3600L);
         config.setAllowCredentials(true);
 
-        source.registerCorsConfiguration("/api/**", config);
         source.registerCorsConfiguration("/**", config);
 
         return new CorsFilter(source);

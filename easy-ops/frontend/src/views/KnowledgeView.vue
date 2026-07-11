@@ -24,6 +24,19 @@
         <a-button size="small" @click="tagModalVisible = true">
           <tags-outlined /> 标签管理
         </a-button>
+        <a-button size="small" :loading="bulkExporting" @click="handleBulkExport">
+          <export-outlined /> 全量导出
+        </a-button>
+        <a-button size="small" :loading="bulkImporting" @click="triggerBulkImport">
+          <import-outlined /> 全量导入
+        </a-button>
+        <input
+          ref="importFileInput"
+          type="file"
+          accept=".zip"
+          style="display: none"
+          @change="handleBulkImport"
+        />
       </div>
     </div>
 
@@ -94,8 +107,10 @@ import NotebookTreePanel from '../components/knowledge/NotebookTreePanel.vue'
 import DocumentListPanel from '../components/knowledge/DocumentListPanel.vue'
 import DocumentEditorPanel from '../components/knowledge/DocumentEditorPanel.vue'
 import {
-  BookOutlined, PlusOutlined, FileTextOutlined, TagsOutlined
+  BookOutlined, PlusOutlined, FileTextOutlined, TagsOutlined,
+  ExportOutlined, ImportOutlined
 } from '@ant-design/icons-vue'
+import { exportAllDocuments, importAllDocuments } from '../api/knowledge'
 
 const store = useKnowledgeStore()
 
@@ -104,6 +119,9 @@ const selectedTemplateId = ref<number | null>(null)
 const templateLoading = ref(false)
 const tagModalVisible = ref(false)
 const newTagName = ref('')
+const bulkExporting = ref(false)
+const bulkImporting = ref(false)
+const importFileInput = ref<HTMLInputElement | null>(null)
 
 /** 全局搜索 */
 function handleGlobalSearch(value: string) {
@@ -143,6 +161,50 @@ async function handleCreateTag() {
   if (!newTagName.value) return
   await store.addTag({ name: newTagName.value })
   newTagName.value = ''
+}
+
+/** 全量导出 */
+async function handleBulkExport() {
+  bulkExporting.value = true
+  try {
+    await exportAllDocuments()
+    message.success('全量导出已开始下载')
+  } catch (e: any) {
+    message.error(e?.message || '全量导出失败')
+  } finally {
+    bulkExporting.value = false
+  }
+}
+
+/** 触发文件选择 */
+function triggerBulkImport() {
+  importFileInput.value?.click()
+}
+
+/** 全量导入 */
+async function handleBulkImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    message.warning('请上传 .zip 格式的导出包')
+    return
+  }
+  bulkImporting.value = true
+  try {
+    const res = await importAllDocuments(file)
+    const data = res.data as { created?: number; updated?: number; total?: number }
+    message.success(`导入完成：新增 ${data?.created ?? 0} 篇，覆盖 ${data?.updated ?? 0} 篇`)
+    await store.fetchCategories()
+    if (store.currentCategoryId) {
+      await store.fetchDocuments(store.currentCategoryId)
+    }
+  } catch (e: any) {
+    message.error(e?.message || '全量导入失败')
+  } finally {
+    bulkImporting.value = false
+  }
 }
 
 /** 打开模板弹窗时加载模板 */

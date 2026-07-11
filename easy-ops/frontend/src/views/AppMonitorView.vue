@@ -5,74 +5,100 @@
         <a-space>
           <dashboard-outlined style="color: #52c41a" />
           <span style="font-weight: 600">应用监控</span>
+          <a-tag color="blue">监控应用管理中的全部应用</a-tag>
+          <a-tag v-if="autoCollectEnabled" color="green">
+            自动采集中 · 每 {{ collectIntervalSec }} 秒
+          </a-tag>
         </a-space>
       </template>
       <template #extra>
         <a-space>
+          <span style="color: #8c8c8c; font-size: 13px">采集频率</span>
           <a-select
-            v-model:value="projectId"
-            style="width: 220px"
-            placeholder="选择项目"
-            @change="fetchOverview"
+            v-model:value="collectIntervalSec"
+            style="width: 120px"
+            @change="onIntervalChange"
           >
-            <a-select-option v-for="p in projects" :key="p.id" :value="Number(p.id)">
-              {{ p.name }}
+            <a-select-option :value="1">1 秒</a-select-option>
+            <a-select-option :value="3">3 秒</a-select-option>
+            <a-select-option :value="5">5 秒</a-select-option>
+            <a-select-option :value="60">1 分钟</a-select-option>
+          </a-select>
+          <a-button :loading="refreshing" @click="handleManualRefresh">
+            <reload-outlined /> 立即采集
+          </a-button>
+          <a-select
+            v-model:value="filterProjectId"
+            allow-clear
+            style="width: 200px"
+            placeholder="筛选应用"
+          >
+            <a-select-option v-for="p in dashboard?.projects || []" :key="p.projectId" :value="p.projectId">
+              {{ p.projectName }}
             </a-select-option>
           </a-select>
-          <a-button @click="probeModalVisible = true">
-            <setting-outlined /> 探针配置
-          </a-button>
-          <a-button :loading="diagnosing" @click="handleDiagnose">
-            <bulb-outlined /> AI 诊断
-          </a-button>
         </a-space>
       </template>
 
-      <a-row v-if="overview" :gutter="16" style="margin-bottom: 16px">
+      <a-row v-if="dashboard" :gutter="16" style="margin-bottom: 16px">
         <a-col :span="4">
-          <a-statistic title="节点总数" :value="overview.summary.totalNodes" />
+          <a-statistic title="应用数" :value="dashboard.summary.totalProjects" />
         </a-col>
         <a-col :span="4">
-          <a-statistic title="健康" :value="overview.summary.upCount" value-style="color: #52c41a" />
+          <a-statistic title="部署实例" :value="dashboard.summary.totalInstances" />
         </a-col>
         <a-col :span="4">
-          <a-statistic title="异常" :value="overview.summary.downCount" value-style="color: #ff4d4f" />
+          <a-statistic title="健康" :value="dashboard.summary.upCount" value-style="color: #52c41a" />
         </a-col>
         <a-col :span="4">
-          <a-statistic title="降级" :value="overview.summary.degradedCount" value-style="color: #faad14" />
+          <a-statistic title="异常" :value="dashboard.summary.downCount" value-style="color: #ff4d4f" />
         </a-col>
         <a-col :span="4">
-          <a-statistic title="平均响应(ms)" :value="overview.summary.avgResponseMs" />
+          <a-statistic title="降级" :value="dashboard.summary.degradedCount" value-style="color: #faad14" />
         </a-col>
         <a-col :span="4">
-          <a-statistic title="稳定性" :value="overview.summary.stabilityScore" suffix="/100" />
+          <a-statistic title="最后采集" :value="lastCollectLabel" />
         </a-col>
       </a-row>
 
-      <a-row :gutter="16">
-        <a-col v-for="node in overview?.nodes || []" :key="node.nodeId" :span="8" style="margin-bottom: 16px">
-          <a-card size="small" :class="['health-card', healthClass(node.healthStatus)]">
-            <template #title>
-              <a-space>
-                <a-badge :status="badgeStatus(node.healthStatus)" />
-                {{ node.nodeName || node.nodeId }}
-              </a-space>
-            </template>
-            <a-descriptions :column="2" size="small">
-              <a-descriptions-item label="进程">{{ node.processStatus || '-' }}</a-descriptions-item>
-              <a-descriptions-item label="响应">{{ node.responseMs ?? '-' }}ms</a-descriptions-item>
-              <a-descriptions-item label="CPU">{{ node.cpuPercent ?? '-' }}%</a-descriptions-item>
-              <a-descriptions-item label="内存">{{ node.memoryMb ?? '-' }}MB</a-descriptions-item>
-              <a-descriptions-item v-if="node.lastError" label="错误" :span="2">
-                <span class="error-text">{{ node.lastError }}</span>
-              </a-descriptions-item>
-            </a-descriptions>
-          </a-card>
-        </a-col>
-      </a-row>
+      <a-table
+        :columns="columns"
+        :data-source="tableRows"
+        :loading="loading"
+        row-key="rowKey"
+        :pagination="{ pageSize: 20 }"
+        size="middle"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'healthStatus'">
+            <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
+          </template>
+          <template v-if="column.key === 'processStatus'">
+            <a-tag :color="record.processStatus === 'RUNNING' ? 'green' : record.processStatus === 'STOPPED' ? 'red' : 'default'">
+              {{ processLabel(record.processStatus) }}
+            </a-tag>
+          </template>
+          <template v-if="column.key === 'cpuPercent'">
+            {{ formatCpu(record) }}
+          </template>
+          <template v-if="column.key === 'memoryMb'">
+            {{ formatMemory(record) }}
+          </template>
+          <template v-if="column.key === 'checkMethods'">
+            {{ formatCheckMethods(record) }}
+          </template>
+          <template v-if="column.key === 'healthDetail'">
+            <span :class="{ 'error-text': record.healthStatus === 'DOWN' }">
+              {{ record.healthDetail || record.lastError || '-' }}
+            </span>
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-button type="link" size="small" @click="openProbe(record.projectId)">探针配置</a-button>
+          </template>
+        </template>
+      </a-table>
     </a-card>
 
-    <!-- 探针配置 -->
     <a-modal v-model:open="probeModalVisible" title="HTTP 健康探针配置" @ok="saveProbe" :confirm-loading="probeSaving">
       <a-form layout="vertical">
         <a-form-item label="启用">
@@ -88,116 +114,223 @@
           <a-input v-model:value="probe.url" placeholder="http://127.0.0.1:8080/health" />
         </a-form-item>
         <a-form-item label="期望状态码">
-          <a-input-number v-model:value="probe.expectedStatus" :min="100" :max="599" />
+          <a-input-number v-model:value="probe.expectedStatus" :min="100" :max="599" style="width: 100%" />
         </a-form-item>
         <a-form-item label="响应包含">
           <a-input v-model:value="probe.bodyContains" placeholder="可选" />
         </a-form-item>
         <a-form-item label="超时(ms)">
-          <a-input-number v-model:value="probe.timeoutMs" :min="500" :max="30000" />
+          <a-input-number v-model:value="probe.timeoutMs" :min="500" :max="30000" style="width: 100%" />
         </a-form-item>
       </a-form>
-    </a-modal>
-
-    <!-- AI 诊断结果 -->
-    <a-modal v-model:open="diagVisible" title="AI 诊断报告" :footer="null" width="640px">
-      <a-spin :spinning="diagLoading">
-        <pre v-if="diagReport" class="diag-report">{{ diagReport }}</pre>
-      </a-spin>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
-import type { ProjectModel, AppMonitorOverview, ProjectHealthProbeModel } from '../types'
-import { getProjects } from '../api/project'
+import type { AppMonitorDashboard, AppMonitorNodeInfo, ProjectHealthProbeModel } from '../types'
 import {
-  getAppOverview, getHealthProbe, saveHealthProbe, triggerDiagnose, getDiagnosis
+  getAppDashboard, collectAppMonitor, getHealthProbe, saveHealthProbe,
+  getMonitorCollectConfig, saveMonitorCollectConfig
 } from '../api/monitorApp'
-import {
-  DashboardOutlined, SettingOutlined, BulbOutlined
-} from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import dayjs from 'dayjs'
 
-const projects = ref<ProjectModel[]>([])
-const projectId = ref<number>()
-const overview = ref<AppMonitorOverview | null>(null)
+interface MonitorTableRow extends AppMonitorNodeInfo {
+  rowKey: string
+  projectId: number
+  projectName: string
+  jarName?: string
+}
+
+const dashboard = ref<AppMonitorDashboard | null>(null)
+const loading = ref(false)
+const refreshing = ref(false)
+const filterProjectId = ref<number>()
+const lastCollectTime = ref<number>()
+const collectIntervalSec = ref(60)
+const autoCollectEnabled = ref(true)
 const probeModalVisible = ref(false)
 const probeSaving = ref(false)
-const diagnosing = ref(false)
-const diagVisible = ref(false)
-const diagLoading = ref(false)
-const diagReport = ref('')
+const probeProjectId = ref<number>()
+let autoTimer: ReturnType<typeof setInterval> | null = null
+let collecting = false
+
 const probe = reactive<ProjectHealthProbeModel>({
   projectId: 0, enabled: 0, method: 'GET', url: '', expectedStatus: 200, timeoutMs: 5000
 })
 
-function healthClass(status: string) {
-  return { UP: 'card-up', DOWN: 'card-down', DEGRADED: 'card-degraded' }[status] || ''
+const columns = [
+  { title: '应用', dataIndex: 'projectName', key: 'projectName', width: 140 },
+  { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 120 },
+  { title: 'Jar包', dataIndex: 'jarName', key: 'jarName', width: 160, ellipsis: true },
+  { title: '进程', key: 'processStatus', width: 90 },
+  { title: '健康', key: 'healthStatus', width: 90 },
+  { title: '检测方式', key: 'checkMethods', width: 130 },
+  { title: '健康说明', key: 'healthDetail', ellipsis: true },
+  { title: 'CPU', key: 'cpuPercent', width: 80 },
+  { title: '内存', key: 'memoryMb', width: 90 },
+  { title: '响应', dataIndex: 'responseMs', key: 'responseMs', width: 70, customRender: ({ text }: { text?: number }) => text != null ? text + 'ms' : '-' },
+  { title: '采集时间', dataIndex: 'collectTime', key: 'collectTime', width: 150, customRender: ({ text }: { text?: number }) => text ? dayjs(text).format('YYYY-MM-DD HH:mm:ss') : '-' },
+  { title: '操作', key: 'action', width: 100 },
+]
+
+const tableRows = computed(() => {
+  const rows: MonitorTableRow[] = []
+  for (const project of dashboard.value?.projects || []) {
+    if (filterProjectId.value && project.projectId !== filterProjectId.value) continue
+    for (const node of project.nodes || []) {
+      rows.push({
+        ...node,
+        rowKey: project.projectId + '-' + node.nodeId,
+        projectId: project.projectId,
+        projectName: project.projectName,
+        jarName: project.jarName,
+      })
+    }
+  }
+  return rows
+})
+
+const lastCollectLabel = computed(() => {
+  if (!lastCollectTime.value) return '-'
+  return dayjs(lastCollectTime.value).format('HH:mm:ss')
+})
+
+function formatCpu(record: AppMonitorNodeInfo) {
+  if (record.cpuPercent != null) return Number(record.cpuPercent).toFixed(1) + '%'
+  return '-'
 }
+
+function formatMemory(record: AppMonitorNodeInfo) {
+  if (record.memoryMb != null) return record.memoryMb + 'MB'
+  return '-'
+}
+
 function badgeStatus(status: string): 'success' | 'error' | 'warning' | 'default' {
   return ({ UP: 'success', DOWN: 'error', DEGRADED: 'warning' } as Record<string, 'success' | 'error' | 'warning'>)[status] || 'default'
 }
 
-async function fetchOverview() {
-  if (!projectId.value) return
-  const res = await getAppOverview(projectId.value)
-  overview.value = res.data
-  const probeRes = await getHealthProbe(projectId.value)
-  if (probeRes.data) Object.assign(probe, probeRes.data)
-  probe.projectId = projectId.value
+function healthLabel(status: string) {
+  return ({ UP: '健康', DOWN: '异常', DEGRADED: '降级', UNKNOWN: '未采集' } as Record<string, string>)[status] || status
+}
+
+function processLabel(status?: string) {
+  return ({ RUNNING: '运行中', STOPPED: '已停止', UNKNOWN: '未知' } as Record<string, string>)[status || ''] || '-'
+}
+
+function formatCheckMethods(node: { extraJson?: string }) {
+  if (!node.extraJson) return 'Shell(ps)'
+  try {
+    const extra = JSON.parse(node.extraJson)
+    const methods = extra.checkMethods as string[] | undefined
+    if (!methods?.length) return 'Shell(ps)'
+    return methods.map(m => m === 'PS_GREP' ? 'Shell(ps)' : 'HTTP探针').join(' + ')
+  } catch {
+    return 'Shell(ps)'
+  }
+}
+
+async function fetchDashboard() {
+  loading.value = true
+  try {
+    const res = await getAppDashboard()
+    dashboard.value = res.data
+    if (res.data?.collectIntervalSec) {
+      collectIntervalSec.value = res.data.collectIntervalSec
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+async function runCollectCycle(showToast = false) {
+  if (collecting) return
+  collecting = true
+  refreshing.value = true
+  try {
+    await collectAppMonitor()
+    lastCollectTime.value = Date.now()
+    await fetchDashboard()
+    if (showToast) message.success('监控数据已更新')
+  } finally {
+    collecting = false
+    refreshing.value = false
+  }
+}
+
+async function handleManualRefresh() {
+  await runCollectCycle(true)
+}
+
+function stopAutoCollect() {
+  if (autoTimer) {
+    clearInterval(autoTimer)
+    autoTimer = null
+  }
+}
+
+function startAutoCollect() {
+  stopAutoCollect()
+  const ms = collectIntervalSec.value * 1000
+  autoTimer = setInterval(() => {
+    runCollectCycle(false)
+  }, ms)
+  autoCollectEnabled.value = true
+}
+
+async function onIntervalChange(sec: number) {
+  try {
+    const res = await saveMonitorCollectConfig(sec)
+    collectIntervalSec.value = res.data?.collectIntervalSec ?? sec
+    startAutoCollect()
+    message.success(`已切换为每 ${collectIntervalSec.value} 秒自动采集`)
+  } catch {
+    message.error('保存采集频率失败')
+  }
+}
+
+async function openProbe(projectId: number) {
+  probeProjectId.value = projectId
+  const res = await getHealthProbe(projectId)
+  if (res.data) Object.assign(probe, res.data)
+  probe.projectId = projectId
+  probeModalVisible.value = true
 }
 
 async function saveProbe() {
   probeSaving.value = true
   try {
-    probe.projectId = projectId.value!
+    probe.projectId = probeProjectId.value!
     await saveHealthProbe(probe)
     probeModalVisible.value = false
     message.success('探针配置已保存')
+    await runCollectCycle(false)
   } finally {
     probeSaving.value = false
   }
 }
 
-async function handleDiagnose() {
-  if (!projectId.value) return
-  diagnosing.value = true
-  try {
-    const res = await triggerDiagnose({ projectId: projectId.value, triggerType: 'MANUAL' })
-    const diagId = res.data?.diagnosisId
-    if (diagId) {
-      diagVisible.value = true
-      diagLoading.value = true
-      const report = await getDiagnosis(diagId)
-      diagReport.value = report.data?.diagnosis || report.data?.logSnippet || '诊断中...'
-      diagLoading.value = false
-    }
-  } finally {
-    diagnosing.value = false
-  }
-}
-
 onMounted(async () => {
-  const res = await getProjects(1, 100)
-  projects.value = res.data.list || []
+  try {
+    const cfg = await getMonitorCollectConfig()
+    if (cfg.data?.collectIntervalSec) {
+      collectIntervalSec.value = cfg.data.collectIntervalSec
+    }
+  } catch {
+    // 使用默认 60 秒
+  }
+  await runCollectCycle(false)
+  startAutoCollect()
+})
+
+onUnmounted(() => {
+  stopAutoCollect()
 })
 </script>
 
 <style scoped>
-.health-card { border-radius: 8px; }
-.card-up { border-left: 3px solid #52c41a; }
-.card-down { border-left: 3px solid #ff4d4f; }
-.card-degraded { border-left: 3px solid #faad14; }
 .error-text { color: #ff4d4f; font-size: 12px; }
-.diag-report {
-  background: #141414;
-  padding: 12px;
-  border-radius: 6px;
-  font-size: 13px;
-  white-space: pre-wrap;
-  max-height: 400px;
-  overflow: auto;
-}
 </style>

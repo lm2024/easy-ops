@@ -1,5 +1,6 @@
 package com.ops.server.logmgmt.service;
 
+import com.ops.common.util.LogLevelUtil;
 import com.ops.common.model.NodeModel;
 import com.ops.common.model.ProjectLogProfileModel;
 import com.ops.common.model.ProjectModel;
@@ -25,14 +26,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 多节点日志聚合服务
+ * 多节点日志聚合服务：扫描各节点发现的全部日志文件并合并。
  */
 @Service
 public class LogAggregateService {
 
     private static final int MAX_NODES = 20;
-    private static final int TAIL_LINES = 200;
-    private static final int FETCH_TIMEOUT_SEC = 15;
+    private static final int TAIL_LINES_PER_FILE = 100;
+    private static final int FETCH_TIMEOUT_SEC = 30;
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(10);
 
     @Autowired
@@ -44,27 +45,36 @@ public class LogAggregateService {
     @Autowired
     private ProjectMapper projectMapper;
 
+    @Autowired
+    private LogDiscoverSupport logDiscoverSupport;
+
     /**
-     * 聚合多节点日志，按时间倒序
+     * 聚合多节点日志，按时间倒序。
      */
     public Map<String, Object> aggregate(Long projectId, List<Long> nodeIds,
                                          ProjectLogProfileModel profile,
-                                         int page, int pageSize, Long since) {
+                                         int page, int pageSize, Long since, String level) {
         List<Long> targets = resolveNodeIds(projectId, nodeIds);
         if (targets.size() > MAX_NODES) {
             targets = targets.subList(0, MAX_NODES);
         }
 
         List<Map<String, Object>> allLines = new ArrayList<>();
-        List<Future<List<Map<String, Object>>>> futures = new ArrayList<>();
+        List<Map<String, Object>> nodeScopes = new ArrayList<>();
+        List<Future<NodeTailResult>> futures = new ArrayList<>();
         for (Long nodeId : targets) {
-            futures.add(EXECUTOR.submit(new TailFetchTask(nodeId, profile, since)));
+            futures.add(EXECUTOR.submit(new TailFetchTask(nodeId, profile, since, level)));
         }
-        for (Future<List<Map<String, Object>>> future : futures) {
+        for (Future<NodeTailResult> future : futures) {
             try {
-                List<Map<String, Object>> lines = future.get(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
-                if (lines != null) {
-                    allLines.addAll(lines);
+                NodeTailResult result = future.get(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
+                if (result != null) {
+                    if (result.scope != null) {
+                        nodeScopes.add(result.scope);
+                    }
+                    if (result.lines != null) {
+                        allLines.addAll(result.lines);
+                    }
                 }
             } catch (Exception ignored) {
                 // 单节点失败跳过
@@ -85,11 +95,36 @@ public class LogAggregateService {
         data.put("page", page);
         data.put("pageSize", pageSize);
         data.put("lines", pageLines);
+        data.put("nodeScopes", nodeScopes);
+        data.put("aggregateDescription", buildAggregateDescription(nodeScopes));
         return data;
     }
 
+    private String buildAggregateDescription(List<Map<String, Object>> nodeScopes) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("聚合扫描 ").append(nodeScopes.size()).append(" 个节点，每节点最多 ")
+                .append(LogDiscoverSupport.MAX_FILES_PER_NODE)
+                .append(" 个日志文件各取尾部 ").append(TAIL_LINES_PER_FILE).append(" 行：");
+        for (Map<String, Object> scope : nodeScopes) {
+            sb.append(" [").append(scope.get("nodeName")).append(": ");
+            Object files = scope.get("files");
+            if (files instanceof List) {
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> fileList = (List<Map<String, Object>>) files;
+                for (int i = 0; i < fileList.size(); i++) {
+                    if (i > 0) {
+                        sb.append(", ");
+                    }
+                    sb.append(fileList.get(i).get("path"));
+                }
+            }
+            sb.append("]");
+        }
+        return sb.toString();
+    }
+
     /**
-     * 解析日志行时间戳
+     * 解析日志行时间戳。
      */
     public long parseTimestamp(String line, ProjectLogProfileModel profile) {
         if (line == null || profile == null) {
@@ -110,9 +145,16 @@ public class LogAggregateService {
     }
 
     String resolveLogPath(ProjectModel project, ProjectLogProfileModel profile, String fileName) {
+        if (fileName != null && fileName.trim().startsWith("/")) {
+            return fileName.trim();
+        }
         String logDir = profile.getLogDir();
-        String file = fileName != null ? fileName : profile.getMainLogFile();
-        // absolute path in container → use as-is; relative → prepend deployDir
+        String file = fileName != null && !fileName.trim().isEmpty()
+                ? fileName.trim()
+                : (profile.getMainLogFile() != null ? profile.getMainLogFile().trim() : "");
+        if (file.isEmpty()) {
+            return null;
+        }
         String dir;
         if (logDir.startsWith("/")) {
             dir = logDir;
@@ -161,39 +203,70 @@ public class LogAggregateService {
         return Long.parseLong(value.toString());
     }
 
-    private class TailFetchTask implements Callable<List<Map<String, Object>>> {
+    private static class NodeTailResult {
+        private final List<Map<String, Object>> lines;
+        private final Map<String, Object> scope;
+
+        NodeTailResult(List<Map<String, Object>> lines, Map<String, Object> scope) {
+            this.lines = lines;
+            this.scope = scope;
+        }
+    }
+
+    private class TailFetchTask implements Callable<NodeTailResult> {
         private final Long nodeId;
         private final ProjectLogProfileModel profile;
         private final Long since;
+        private final String level;
 
-        TailFetchTask(Long nodeId, ProjectLogProfileModel profile, Long since) {
+        TailFetchTask(Long nodeId, ProjectLogProfileModel profile, Long since, String level) {
             this.nodeId = nodeId;
             this.profile = profile;
             this.since = since;
+            this.level = level;
         }
 
         @Override
-        public List<Map<String, Object>> call() {
+        public NodeTailResult call() {
             NodeModel node = nodeMapper.findById(nodeId);
             if (node == null || node.getStatus() == null || node.getStatus() != 1) {
-                return Collections.emptyList();
+                return new NodeTailResult(Collections.emptyList(), null);
             }
             ProjectModel project = projectMapper.findById(profile.getProjectId());
-            String logPath = resolveLogPath(project, profile, null);
+            Map<String, Object> nodeScope = logDiscoverSupport.buildNodeScope(node, project, profile);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> files = (List<Map<String, Object>>) nodeScope.get("files");
+            if (files == null || files.isEmpty()) {
+                return new NodeTailResult(Collections.emptyList(), nodeScope);
+            }
+
+            List<Map<String, Object>> lines = new ArrayList<>();
+            for (Map<String, Object> file : files) {
+                String logPath = file.get("path") != null ? file.get("path").toString() : null;
+                if (logPath == null || logPath.isEmpty()) {
+                    continue;
+                }
+                lines.addAll(tailOneFile(node, logPath, file));
+            }
+            return new NodeTailResult(lines, nodeScope);
+        }
+
+        private List<Map<String, Object>> tailOneFile(NodeModel node, String logPath,
+                                                       Map<String, Object> fileMeta) {
             Map<String, String> params = new HashMap<>();
             params.put("logPath", logPath);
-            params.put("lines", String.valueOf(TAIL_LINES));
-            String content;
+            params.put("lines", String.valueOf(TAIL_LINES_PER_FILE));
+            if (level != null && !level.trim().isEmpty() && !"ALL".equalsIgnoreCase(level.trim())) {
+                params.put("level", level.trim());
+            }
+            String content = "";
             try {
-                content = agentClient.extractDataString(
-                        agentClient.getForMap(node, "/file/log/tail", params));
-            } catch (Exception e) {
-                Map<String, String> fallback = new HashMap<>();
-                fallback.put("logPath", logPath);
-                fallback.put("offset", "0");
-                fallback.put("lines", String.valueOf(TAIL_LINES));
-                content = agentClient.extractDataString(
-                        agentClient.getForMap(node, "/file/log", fallback));
+                Map<String, Object> agentResp = agentClient.getForMap(node, "/file/log/tail", params);
+                agentClient.ensureAgentSuccess(agentResp);
+                content = agentClient.extractDataString(agentResp);
+            } catch (Exception ignored) {
+                return Collections.emptyList();
             }
 
             List<Map<String, Object>> lines = new ArrayList<>();
@@ -202,8 +275,14 @@ public class LogAggregateService {
             }
             String[] parts = content.split("\n");
             int maxLen = profile.getMaxLineLength() != null ? profile.getMaxLineLength() : 4096;
+            String fileName = fileMeta.get("name") != null ? fileMeta.get("name").toString()
+                    : logPath.substring(logPath.lastIndexOf('/') + 1);
+            String sourceDir = fileMeta.get("sourceDir") != null ? fileMeta.get("sourceDir").toString() : "";
             for (int i = 0; i < parts.length; i++) {
                 String line = truncate(parts[i], maxLen);
+                if (!LogLevelUtil.matches(line, level)) {
+                    continue;
+                }
                 long ts = parseTimestamp(line, profile);
                 if (since != null && since > 0 && ts > 0 && ts < since) {
                     continue;
@@ -214,7 +293,9 @@ public class LogAggregateService {
                 item.put("timestamp", ts);
                 item.put("lineNo", i + 1);
                 item.put("content", maskSensitive(line));
-                item.put("sourceFile", profile.getMainLogFile());
+                item.put("sourceFile", fileName);
+                item.put("sourcePath", logPath);
+                item.put("sourceDir", sourceDir);
                 lines.add(item);
             }
             return lines;

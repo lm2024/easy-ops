@@ -16,10 +16,12 @@ public class ProjectService {
 
     public ProjectModel findById(Long id) { return projectMapper.findById(id); }
     public ProjectModel findByName(String name) { return projectMapper.findByName(name); }
-    public List<ProjectModel> findByFilters(String status, Long nodeId, Integer page, Integer pageSize) {
-        return projectMapper.findByFilters(status, nodeId, page, pageSize);
+    public List<ProjectModel> findByFilters(String status, Long nodeId, String keyword, Integer page, Integer pageSize) {
+        return projectMapper.findByFilters(status, nodeId, keyword, page, pageSize);
     }
-    public Long countByFilters(String status, Long nodeId) { return projectMapper.countByFilters(status, nodeId); }
+    public Long countByFilters(String status, Long nodeId, String keyword) {
+        return projectMapper.countByFilters(status, nodeId, keyword);
+    }
     public int insert(ProjectModel project) { return projectMapper.insert(project); }
     public int update(ProjectModel project) { return projectMapper.update(project); }
     public int deleteById(Long id) { return projectMapper.deleteById(id); }

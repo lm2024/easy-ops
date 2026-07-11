@@ -25,9 +25,10 @@ public class NodeService {
     public int deleteById(Long id) { return nodeMapper.deleteById(id); }
     public int countByNodeId(Long nodeId) { return nodeMapper.countByNodeId(nodeId); }
     public void updateHeartbeat(Long id, Long lastHeartbeat, String ip, String osInfo, String javaVersion,
-                                Integer cpuCores, Integer totalMemoryMb, Long totalDiskMb, String osArch) {
+                                Integer cpuCores, Integer totalMemoryMb, Long totalDiskMb, String osArch,
+                                String agentVersion) {
         nodeMapper.updateHeartbeat(id, lastHeartbeat, ip, osInfo, javaVersion,
-                cpuCores, totalMemoryMb, totalDiskMb, osArch);
+                cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion);
     }
     public void updateTags(Long id, String tags) {
         nodeMapper.updateTags(id, tags, System.currentTimeMillis());

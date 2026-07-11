@@ -59,3 +59,29 @@ export function importNodesCsv(file: File) {
     headers: { 'Content-Type': 'multipart/form-data' }
   }) as Promise<Result<{ imported: number }>>
 }
+
+/** 上传 Agent 升级包到 Server */
+export function uploadAgentPackage(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post('/nodes/agent/package', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  }) as Promise<Result<{ exists: boolean; path: string; size?: number; sha256?: string }>>
+}
+
+/** 获取 Server 端 Agent 升级包信息 */
+export function getAgentPackageInfo() {
+  return request.get('/nodes/agent/package') as Promise<Result<{ exists: boolean; path: string; size?: number }>>
+}
+
+/** 升级单个节点 Agent */
+export function upgradeNodeAgent(nodeId: string) {
+  return request.post(`/nodes/${nodeId}/agent/upgrade`) as Promise<Result<Record<string, unknown>>>
+}
+
+/** 批量升级 Agent（nodeIds 为空则升级全部在线节点） */
+export function batchUpgradeAgents(nodeIds?: string[]) {
+  return request.post('/nodes/agent/upgrade/batch', nodeIds ? { nodeIds } : {}) as Promise<
+    Result<{ success: number; failed: number; total: number; results: Array<Record<string, unknown>> }>
+  >
+}

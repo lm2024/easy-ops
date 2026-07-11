@@ -25,6 +25,8 @@
     "@tiptap/vue-3": "^3.27.1",
     "@tiptap/y-tiptap": "^3.0.5",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-search": "^0.15.0",
+    "@xterm/addon-web-links": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "ant-design-vue": "4.2.6",
     "axios": "^1.6.0",

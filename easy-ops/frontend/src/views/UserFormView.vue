@@ -17,15 +17,12 @@
         <a-col :span="12">
           <a-form-item label="密码" name="password">
             <a-input-password v-model:value="formState.password" :placeholder="isEdit ? '留空则不修改' : '请输入密码'" />
+            <template #extra>
+              <span style="font-size:12px;color:#888">至少8位，含大小写字母、数字、特殊字符</span>
+            </template>
           </a-form-item>
         </a-col>
       </a-row>
-      <a-form-item label="角色" name="role">
-        <a-radio-group v-model:value="formState.role">
-          <a-radio-button value="ADMIN">管理员</a-radio-button>
-          <a-radio-button value="OPERATOR">操作员</a-radio-button>
-        </a-radio-group>
-      </a-form-item>
       <a-form-item>
         <a-space>
           <a-button type="primary" html-type="submit" :loading="loading">
@@ -45,10 +42,9 @@ import type { UserModel } from '../types'
 import { createUser, updateUser, getUserById } from '../api/auth'
 import type { FormInstance } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
-import {
-  SaveOutlined,
-  TeamOutlined
-} from '@ant-design/icons-vue'
+import { SaveOutlined, TeamOutlined } from '@ant-design/icons-vue'
+
+const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\]{}|;':",./<>?`~]).{8,}$/
 
 const route = useRoute()
 const router = useRouter()
@@ -58,23 +54,32 @@ const isEdit = computed(() => !!route.params.id)
 
 const formState = ref<Partial<UserModel>>({
   username: '',
-  password: '',
-  role: 'OPERATOR' as const
+  password: ''
 })
+
+const passwordRule: Rule = {
+  validator: async (_rule, value) => {
+    if (isEdit.value && (!value || !String(value).trim())) return
+    if (!value || !PASSWORD_PATTERN.test(String(value))) {
+      throw new Error('密码至少8位，需含大小写字母、数字和特殊字符')
+    }
+  }
+}
 
 const rules: Record<string, Rule[]> = {
   username: [{ required: true, message: '请输入用户名' }],
-  password: isEdit.value ? [] : [{ required: true, message: '请输入密码' }]
+  password: isEdit.value ? [passwordRule] : [{ required: true, message: '请输入密码' }, passwordRule]
 }
 
 async function handleSubmit() {
   try {
     loading.value = true
     const id = route.params.id as string
+    const payload = { ...formState.value, role: 'ADMIN' as const } as UserModel
     if (id) {
-      await updateUser(Number(id), formState.value as UserModel)
+      await updateUser(Number(id), payload)
     } else {
-      await createUser(formState.value as UserModel)
+      await createUser(payload)
     }
     router.push('/users')
   } finally {
@@ -86,7 +91,7 @@ onMounted(async () => {
   const id = route.params.id as string
   if (id) {
     const res = await getUserById(Number(id))
-    formState.value = res.data
+    formState.value = { username: res.data.username, password: '' }
   }
 })
 </script>

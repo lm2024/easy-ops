@@ -127,7 +127,15 @@
     </a-card>
 
     <!-- 新增配置文件 -->
-    <a-modal v-model:open="addFileVisible" title="新增配置文件" @ok="handleAddFile">
+    <a-modal v-model:open="addFileVisible" title="新增配置文件" @ok="handleAddFile" width="560px">
+      <a-alert type="info" show-icon style="margin-bottom:12px"
+               message="快速模板：选择环境后一键填入文件名和路径" />
+      <a-space wrap style="margin-bottom: 16px">
+        <a-button size="small" @click="applyConfigPreset('dev')">🌱 dev</a-button>
+        <a-button size="small" @click="applyConfigPreset('test')">🧪 test</a-button>
+        <a-button size="small" @click="applyConfigPreset('prod')">🚀 prod</a-button>
+        <a-button size="small" type="primary" ghost @click="applyConfigPreset('default')">默认 application.yml</a-button>
+      </a-space>
       <a-form layout="vertical">
         <a-form-item label="文件名" required>
           <a-input v-model:value="newFile.fileName" placeholder="application.yml" />
@@ -227,6 +235,7 @@ import { message } from 'ant-design-vue'
 import type { ProjectModel, NodeModel, ProjectConfigFileModel, NodeConfigSnapshotModel, ConfigSnapshotResult } from '../types'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
+import { getGlobalPaths, type GlobalPaths } from '../api/system'
 import {
   listConfigFiles, createConfigFile, deleteConfigFile,
   getConfigSnapshot, getConfigContent, compareConfig,
@@ -261,6 +270,24 @@ const distributeNodeIds = ref<number[]>([])
 const restartAfter = ref(false)
 const distributeResult = ref<{ status: number; results: Array<{ nodeId: number; success: boolean; error?: string }> } | null>(null)
 const newFile = ref({ fileName: '', relativePath: '', remark: '' })
+const globalPaths = ref<GlobalPaths | null>(null)
+
+const CONFIG_PRESETS: Record<string, { fileName: string; relativePath: string; remark: string }> = {
+  default: { fileName: 'application.yml', relativePath: 'config/application.yml', remark: '主配置' },
+  dev: { fileName: 'application-dev.yml', relativePath: 'config/application-dev.yml', remark: '开发环境' },
+  test: { fileName: 'application-test.yml', relativePath: 'config/application-test.yml', remark: '测试环境' },
+  prod: { fileName: 'application-prod.yml', relativePath: 'config/application-prod.yml', remark: '生产环境' }
+}
+
+function applyConfigPreset(env: string) {
+  const preset = CONFIG_PRESETS[env] || CONFIG_PRESETS.default
+  const configDir = globalPaths.value?.configSubDir || 'config'
+  newFile.value = {
+    fileName: preset.fileName,
+    relativePath: `${configDir}/${preset.fileName}`,
+    remark: preset.remark
+  }
+}
 
 const fileColumns = [
   { title: '文件名', dataIndex: 'fileName', key: 'fileName', ellipsis: true },
@@ -375,7 +402,7 @@ async function loadContent() {
 }
 
 function showAddFile() {
-  newFile.value = { fileName: '', relativePath: '', remark: '' }
+  applyConfigPreset('default')
   addFileVisible.value = true
 }
 
@@ -495,7 +522,13 @@ watch(content, (newVal, oldVal) => {
   }
 })
 
-onMounted(fetchProjects)
+onMounted(async () => {
+  try {
+    const gp = await getGlobalPaths()
+    globalPaths.value = gp.data
+  } catch { /* ignore */ }
+  fetchProjects()
+})
 </script>
 
 <style scoped>

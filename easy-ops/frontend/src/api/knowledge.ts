@@ -132,6 +132,45 @@ export async function exportDocument(id: number, format: 'md' | 'zip' = 'md') {
   const disposition = response.headers.get('Content-Disposition') || ''
   const match = disposition.match(/filename="(.+)"/)
   const fileName = match ? match[1] : `document.${format}`
+  downloadBlob(blob, fileName)
+}
+
+/** 全量导出所有文档（ZIP） */
+export async function exportAllDocuments(projectId?: number) {
+  const token = localStorage.getItem('token')
+  const query = projectId != null ? `?projectId=${projectId}` : ''
+  const response = await fetch(`/api/kb/export${query}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  })
+  if (!response.ok) throw new Error('全量导出失败')
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const match = disposition.match(/filename="(.+)"/)
+  const fileName = match ? match[1] : `kb-export-${Date.now()}.zip`
+  downloadBlob(blob, fileName)
+}
+
+/** 全量导入文档（ZIP，同分类同标题覆盖） */
+export async function importAllDocuments(file: File, projectId?: number) {
+  const token = localStorage.getItem('token')
+  const formData = new FormData()
+  formData.append('file', file)
+  if (projectId != null) {
+    formData.append('projectId', String(projectId))
+  }
+  const response = await fetch('/api/kb/import', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData
+  })
+  const result = await response.json()
+  if (!response.ok || result.code !== 200) {
+    throw new Error(result.message || '全量导入失败')
+  }
+  return result
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url

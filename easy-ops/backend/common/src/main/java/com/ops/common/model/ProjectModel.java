@@ -22,6 +22,8 @@ public class ProjectModel implements Serializable {
     private String envVars;
     private String jarName;
     private String deployDir;
+    /** 前端 dist.zip 解压目标目录（可在应用管理中配置） */
+    private String frontendDeployDir;
     /** 部署后是否执行健康检查，默认 true；置 false 可跳过健康检查直接判定部署成功 */
     private Boolean healthCheckEnabled;
     /** 健康检查端口，默认 8080 */

@@ -9,6 +9,7 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.service.AlarmService;
+import com.ops.server.service.AgentUpgradeService;
 import com.ops.server.util.SecurityContext;
 import com.ops.server.service.NodeService;
 import org.slf4j.Logger;
@@ -49,6 +50,12 @@ public class NodeController {
 
     @Autowired
     private SecurityContext securityContext;
+
+    @Autowired
+    private AgentUpgradeService agentUpgradeService;
+
+    @Autowired
+    private com.ops.server.client.AgentClient agentClient;
 
     /**
      * GET /api/nodes - 节点列表 (支持分页和状态筛选)
@@ -122,6 +129,77 @@ public class NodeController {
             return Result.success(result);
         } catch (Exception e) {
             return Result.error(500, "导入失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/nodes/agent/package - 查看 Server 端 Agent 升级包
+     */
+    @GetMapping("/agent/package")
+    public Result<?> agentPackageInfo() {
+        return Result.success(agentUpgradeService.packageInfo());
+    }
+
+    /**
+     * POST /api/nodes/agent/package - 上传 Agent 升级包到 Server
+     */
+    @PostMapping("/agent/package")
+    public Result<?> uploadAgentPackage(@RequestParam("file") MultipartFile file) {
+        try {
+            return Result.success(agentUpgradeService.savePackage(file));
+        } catch (Exception e) {
+            return Result.error(500, "上传失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/nodes/agent/upgrade/batch - 批量升级 Agent（body: { nodeIds: [1,2] }，空则升级全部在线节点）
+     */
+    @PostMapping("/agent/upgrade/batch")
+    public Result<?> batchUpgradeAgent(@RequestBody(required = false) Map<String, Object> body) {
+        try {
+            List<Long> nodeIds = null;
+            if (body != null && body.get("nodeIds") instanceof List) {
+                nodeIds = new java.util.ArrayList<>();
+                for (Object id : (List<?>) body.get("nodeIds")) {
+                    if (id instanceof Number) {
+                        nodeIds.add(((Number) id).longValue());
+                    }
+                }
+            }
+            return Result.success(agentUpgradeService.upgradeBatch(nodeIds));
+        } catch (Exception e) {
+            return Result.error(500, "批量升级失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /api/nodes/{id}/agent/version - 查询节点 Agent 版本
+     */
+    @GetMapping("/{id}/agent/version")
+    public Result<?> getAgentVersion(@PathVariable Long id) {
+        NodeModel node = nodeService.findById(id);
+        if (node == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        try {
+            return Result.success(agentClient.getAgentVersion(node));
+        } catch (Exception e) {
+            return Result.error(500, "查询失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/nodes/{id}/agent/upgrade - 升级单个节点 Agent
+     */
+    @PostMapping("/{id}/agent/upgrade")
+    public Result<?> upgradeAgent(@PathVariable Long id) {
+        try {
+            return Result.success(agentUpgradeService.upgradeNode(id));
+        } catch (IllegalArgumentException e) {
+            return Result.error(1002, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "升级失败: " + e.getMessage());
         }
     }
 
@@ -236,6 +314,7 @@ public class NodeController {
         String memInfo = request.getHeader("X-Mem-Info");
         String diskInfo = request.getHeader("X-Disk-Info");
         String osArch = request.getHeader("X-OS-Arch");
+        String agentVersion = request.getHeader("X-Agent-Version");
 
         // 解析硬件信息
         Integer cpuCores = null;
@@ -248,7 +327,7 @@ public class NodeController {
         } catch (NumberFormatException ignored) {}
 
         nodeMapper.updateHeartbeat(Long.parseLong(nodeId), System.currentTimeMillis(),
-                ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch);
+                ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion);
 
         // 如果 Agent 上报了外部可访问的端口，更新节点端口
         if (nodePort != null && nodePort > 0) {

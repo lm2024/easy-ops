@@ -1,18 +1,24 @@
 package com.ops.server.client;
 
+import com.ops.common.constant.ErrorCode;
+import com.ops.common.exception.BusinessException;
 import com.ops.common.model.NodeModel;
 import com.ops.server.mapper.NodeMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.File;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.util.Collections;
@@ -41,8 +47,8 @@ public class AgentClient {
         if (node == null) {
             return Collections.emptyMap();
         }
-        Map<String, Object> result = getForMap(node, path, params);
-        return result != null ? result : Collections.emptyMap();
+        Map<String, Object> data = extractDataMap(getForMap(node, path, params));
+        return data != null ? data : Collections.emptyMap();
     }
 
     /**
@@ -98,8 +104,34 @@ public class AgentClient {
     }
 
     /**
-     * 检测进程存活状态
+     * POST multipart 文件到 Agent（用于 Jar 升级等）。
      */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> postMultipart(NodeModel node, String path, File file, String sha256) {
+        String url = buildUrl(node, path);
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new FileSystemResource(file));
+            if (sha256 != null && !sha256.isEmpty()) {
+                body.add("sha256", sha256);
+            }
+            HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
+            return restTemplate.exchange(url, HttpMethod.POST, entity, Map.class).getBody();
+        } catch (Exception e) {
+            log.warn("Agent multipart POST failed: {} - {}", url, e.getMessage());
+            throw new RuntimeException("Agent 文件上传失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * GET 请求 Agent 版本信息。
+     */
+    public Map<String, Object> getAgentVersion(NodeModel node) {
+        return extractDataMap(getForMap(node, "/system/version", null));
+    }
+
     public Map<String, Object> getProcessStatus(NodeModel node, String deployDir, String jarName) {
         Map<String, String> params = new HashMap<>();
         params.put("deployDir", deployDir);
@@ -146,6 +178,23 @@ public class AgentClient {
      */
     public String buildUrl(NodeModel node, String path) {
         return getAgentBase(node) + normalizePath(path);
+    }
+
+    /**
+     * 校验 Agent 返回的 Result 包装（HTTP 200 但 code!=200 的情况）。
+     */
+    public void ensureAgentSuccess(Map<String, Object> response) {
+        if (response == null) {
+            throw new BusinessException(ErrorCode.SERVER_ERROR, "Agent 无响应");
+        }
+        Object codeObj = response.get("code");
+        if (codeObj instanceof Number) {
+            int code = ((Number) codeObj).intValue();
+            if (code != 200) {
+                Object message = response.get("message");
+                throw new BusinessException(code, message != null ? message.toString() : "Agent 请求失败");
+            }
+        }
     }
 
     /**

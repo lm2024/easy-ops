@@ -11,6 +11,9 @@ import java.util.Map;
 public interface KbCategoryMapper {
     List<KbCategoryModel> findAll(@Param("projectId") Long projectId);
     KbCategoryModel findById(@Param("id") Long id);
+    KbCategoryModel findByParentAndName(@Param("parentId") Long parentId,
+                                        @Param("name") String name,
+                                        @Param("projectId") Long projectId);
     int insert(KbCategoryModel category);
     int update(KbCategoryModel category);
     int deleteById(@Param("id") Long id);

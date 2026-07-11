@@ -4,6 +4,9 @@
     <select id="findById" resultType="com.ops.common.model.KbDocumentModel">
         SELECT * FROM kb_document WHERE id = #{id}
     </select>
+    <select id="findByCategoryAndTitle" resultType="com.ops.common.model.KbDocumentModel">
+        SELECT * FROM kb_document WHERE category_id = #{categoryId} AND title = #{title} LIMIT 1
+    </select>
     <select id="findByCategory" resultType="com.ops.common.model.KbDocumentModel">
         SELECT * FROM kb_document WHERE category_id = #{categoryId}
         ORDER BY update_time DESC

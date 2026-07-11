@@ -41,6 +41,8 @@ export interface NodeModel {
   totalDiskMb?: number
   /** 系统架构 */
   osArch?: string
+  /** Agent 版本号（心跳上报） */
+  agentVersion?: string
 }
 
 /** 项目类型 */
@@ -53,6 +55,8 @@ export interface ProjectModel {
   jvmOpts?: string
   envVars?: string
   jarName?: string
+  deployDir?: string
+  frontendDeployDir?: string
   nodeIds?: string
   healthCheckEnabled?: boolean
   healthCheckPort?: number
@@ -69,6 +73,7 @@ export interface VersionModel {
   versionId?: string
   version: string
   jarName: string
+  packageType?: 'jar' | 'frontend'
   filePath: string
   fileSize?: number
   sha256?: string
@@ -212,8 +217,22 @@ export interface ProjectLogProfileModel {
 /** 日志文件信息 */
 export interface LogFileInfo {
   name: string
+  path: string
   size?: number
   lastModified?: number
+  sourceDir?: string
+  category?: 'app' | 'agent' | string
+}
+
+/** 日志发现结果 */
+export interface LogDiscoverResult {
+  files: LogFileInfo[]
+  hint?: string
+  scannedDirs?: string[]
+  suggestedMain?: string
+  agentLogDir?: string
+  deployDir?: string
+  total?: number
 }
 
 /** 日志查看结果 */
@@ -226,14 +245,27 @@ export interface LogViewResult {
   fileName?: string
 }
 
+/** 节点日志扫描范围 */
+export interface LogNodeScope {
+  nodeId: number
+  nodeName?: string
+  deployDir?: string
+  agentLogDir?: string
+  scannedDirs?: string[]
+  files?: LogFileInfo[]
+  fileCount?: number
+}
+
 /** 日志聚合条目 */
 export interface LogAggregateEntry {
   nodeId: number
   nodeName?: string
-  timestamp?: string
+  timestamp?: number | string
   content: string
   lineNo?: number
   sourceFile?: string
+  sourcePath?: string
+  sourceDir?: string
 }
 
 export interface LogAggregateResult {
@@ -241,6 +273,8 @@ export interface LogAggregateResult {
   total: number
   pageSize: number
   page: number
+  nodeScopes?: LogNodeScope[]
+  aggregateDescription?: string
 }
 
 /** 日志搜索结果（后端返回 { hits: [...], totalHits, keyword }） */
@@ -248,6 +282,9 @@ export interface LogSearchResult {
   hits: LogSearchHit[]
   totalHits: number
   keyword?: string
+  scope?: string
+  nodeScopes?: LogNodeScope[]
+  searchDescription?: string
 }
 
 /** 单条搜索命中 */
@@ -255,8 +292,10 @@ export interface LogSearchHit {
   nodeId: number
   nodeName?: string
   file?: string
+  fileName?: string
   lineNo?: number
   matchedLine?: string
+  content?: string
   timestamp?: number
   context?: string[]
 }
@@ -266,7 +305,9 @@ export interface AppMonitorNodeInfo {
   nodeId: number
   nodeName?: string
   healthStatus: 'UP' | 'DOWN' | 'DEGRADED' | string
+  healthDetail?: string
   processStatus?: string
+  processPid?: number
   cpuPercent?: number
   memoryMb?: number
   heapUsedMb?: number
@@ -277,12 +318,14 @@ export interface AppMonitorNodeInfo {
   responseMs?: number
   collectTime?: number
   lastError?: string
+  extraJson?: string
 }
 
 /** 应用监控总览 */
 export interface AppMonitorOverview {
   projectId: number
   projectName: string
+  jarName?: string
   summary: {
     totalNodes: number
     upCount: number
@@ -292,6 +335,26 @@ export interface AppMonitorOverview {
     stabilityScore: number
   }
   nodes: AppMonitorNodeInfo[]
+}
+
+/** 全部应用监控仪表盘 */
+export interface AppMonitorDashboard {
+  summary: {
+    totalProjects: number
+    totalInstances: number
+    upCount: number
+    downCount: number
+    degradedCount: number
+  }
+  projects: AppMonitorOverview[]
+  collectIntervalSec?: number
+}
+
+/** 监控采集配置 */
+export interface MonitorCollectConfig {
+  collectIntervalSec: number
+  minIntervalSec?: number
+  maxIntervalSec?: number
 }
 
 /** 监控快照历史 */
