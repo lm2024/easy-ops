@@ -161,12 +161,12 @@ class NodeServiceTest {
     void updateHeartbeat_callsMapper() {
         nodeService.updateHeartbeat(
             1L, System.currentTimeMillis(), "192.168.1.1", "Linux 5.4",
-            "1.8.0_292", 8, 16384, 512000L, "amd64"
+            "1.8.0_292", 8, 16384, 512000L, "amd64", "1.0.0-SNAPSHOT"
         );
 
         verify(nodeMapper).updateHeartbeat(
             eq(1L), anyLong(), eq("192.168.1.1"), eq("Linux 5.4"),
-            eq("1.8.0_292"), eq(8), eq(16384), eq(512000L), eq("amd64")
+            eq("1.8.0_292"), eq(8), eq(16384), eq(512000L), eq("amd64"), eq("1.0.0-SNAPSHOT")
         );
     }
 

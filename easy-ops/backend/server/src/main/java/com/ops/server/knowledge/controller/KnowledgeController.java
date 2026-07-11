@@ -9,6 +9,7 @@ import com.ops.common.model.KbImageModel;
 import com.ops.common.response.Result;
 import com.ops.server.knowledge.service.KbFavoriteService;
 import com.ops.server.knowledge.service.KbRecentAccessService;
+import com.ops.server.knowledge.service.KnowledgeBulkService;
 import com.ops.server.knowledge.service.KnowledgeCategoryService;
 import com.ops.server.knowledge.service.KnowledgeCommentService;
 import com.ops.server.knowledge.service.KnowledgeDocumentService;
@@ -40,6 +41,8 @@ public class KnowledgeController {
     private KnowledgeCategoryService categoryService;
     @Autowired
     private KnowledgeDocumentService documentService;
+    @Autowired
+    private KnowledgeBulkService bulkService;
     @Autowired
     private KnowledgeCommentService commentService;
     @Autowired
@@ -217,6 +220,34 @@ public class KnowledgeController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + ".md\"")
                 .contentType(MediaType.TEXT_PLAIN)
                 .body(documentService.exportMd(id));
+    }
+
+    /**
+     * GET /api/kb/export - 全量导出所有文档（ZIP）
+     */
+    @GetMapping("/export")
+    public ResponseEntity<StreamingResponseBody> exportAll(
+            @RequestParam(required = false) Long projectId) throws IOException {
+        String fileName = "kb-export-" + System.currentTimeMillis() + ".zip";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileName + "\"")
+                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .body(bulkService.exportAll(projectId));
+    }
+
+    /**
+     * POST /api/kb/import - 全量导入文档（同分类同标题覆盖，否则新增）
+     */
+    @PostMapping("/import")
+    public Result<?> importAll(@RequestParam("file") MultipartFile file,
+                               @RequestParam(required = false) Long projectId) {
+        try {
+            return Result.success(bulkService.importAll(file, projectId));
+        } catch (BusinessException e) {
+            return Result.error(e.getCode(), e.getMessage());
+        } catch (IOException e) {
+            return Result.error(500, "导入失败: " + e.getMessage());
+        }
     }
 
     // ====== 新增：收藏接口 ======

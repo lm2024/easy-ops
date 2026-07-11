@@ -55,6 +55,33 @@ public class KnowledgeDocumentService {
         return documentMapper.findById(id);
     }
 
+    public KbDocumentModel findByCategoryAndTitle(Long categoryId, String title) {
+        return documentMapper.findByCategoryAndTitle(categoryId, title);
+    }
+
+    /**
+     * 全量导入时覆盖已有文档（跳过编辑锁校验）。
+     */
+    public KbDocumentModel importOverwrite(Long id, String title, String content, Integer status) {
+        KbDocumentModel existing = documentMapper.findById(id);
+        if (existing == null) {
+            throw new BusinessException(1004, "文档不存在");
+        }
+        Long userId = securityContext.getCurrentUserId();
+        existing.setTitle(title != null ? title : existing.getTitle());
+        existing.setContent(content != null ? content : "");
+        existing.setContentSize(existing.getContent().length());
+        existing.setSummary(buildSummary(existing.getContent()));
+        existing.setStatus(status != null ? status : 1);
+        existing.setLastEditorId(userId);
+        existing.setVersionNo(existing.getVersionNo() != null ? existing.getVersionNo() + 1 : 1);
+        existing.setUpdateTime(System.currentTimeMillis());
+        documentMapper.update(existing);
+        saveVersion(existing, userId, "全量导入覆盖");
+        versionMapper.deleteOldestBeyond(id, MAX_VERSIONS);
+        return documentMapper.findById(id);
+    }
+
     public Map<String, Object> listByCategory(Long categoryId, Integer page, Integer pageSize) {
         List<KbDocumentModel> list = documentMapper.findByCategory(categoryId, page, pageSize);
         Long total = documentMapper.countByCategory(categoryId);

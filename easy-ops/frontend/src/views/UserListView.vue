@@ -21,11 +21,6 @@
         row-key="id"
       >
         <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'role'">
-            <a-tag :color="record.role === 'admin' ? 'red' : 'blue'">
-              {{ record.role === 'admin' ? '管理员' : '操作员' }}
-            </a-tag>
-          </template>
           <template v-if="column.key === 'status'">
             <a-badge :status="record.status === 1 ? 'success' : 'default'"
                      :text="record.status === 1 ? '启用' : '禁用'" />
@@ -67,7 +62,6 @@ const loading = ref(false)
 const columns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
   { title: '用户名', dataIndex: 'username', key: 'username' },
-  { title: '角色', dataIndex: 'role', key: 'role', width: 100 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
   { title: '操作', key: 'action', width: 160, fixed: 'right' as const }
 ]

@@ -46,7 +46,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         String method = request.getMethod();
 
         // Skip heartbeat and login endpoints (already excluded in WebConfig)
-        if (uri.contains("/heartbeat") || uri.contains("/auth/login")) {
+        if (uri.contains("/heartbeat") || uri.contains("/auth/login") || uri.contains("/auth/captcha")) {
             return true;
         }
 

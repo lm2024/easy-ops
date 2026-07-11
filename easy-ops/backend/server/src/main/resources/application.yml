@@ -1,12 +1,28 @@
+# =============================================================================
+# EasyOps Server 配置
+# -----------------------------------------------------------------------------
+# 【私有化部署怎么改】
+#   推荐方式：只改本机 scripts/easyops.env + 用 scripts/start.sh 启动。
+#   启动脚本会自动注入路径（-Dserver.path 等），本文件里的路径默认值可不动。
+#
+#   若不用脚本、直接 java -jar 启动，则需手动设置：
+#     -Dserver.path=/你的数据目录
+#     -Dspring.datasource.url=jdbc:h2:file:/你的数据目录/ops;MODE=MySQL
+#
+#   端口：改 server.port 即可，或在 easyops.env 里改 SERVER_PORT。
+# =============================================================================
+
 server:
-  port: 8081
+  # HTTP 监听端口（私有化可改为内网端口）
+  port: ${SERVER_PORT:8081}
   servlet:
+    # API 统一前缀，前端代理 /api 到此
     context-path: /api
     encoding:
       enabled: true
       charset: UTF-8
       force: true
-  # SEC-010: 响应大小限制
+  # 请求/响应大小限制（SEC-010）
   max-http-request-size: 10MB
   max-http-response-size: 10MB
   tomcat:
@@ -14,8 +30,12 @@ server:
     accesslog:
       enabled: true
       pattern: '%h %l %u %t "%r" %s %b'
-  path: ./data
+  # Server 本地数据根目录：H2 库、版本包、日志、Agent 升级包等
+  # 启动脚本通过 -Dserver.path 覆盖；直接 java -jar 时默认 ./data（相对启动目录）
+  path: ${EASYOPS_SERVER_DATA:./data}
+  # 心跳检测：每 N 秒扫描一次节点心跳
   heart-second: 5
+  # 超过 N 秒未心跳则标记离线
   offline-second: 90
 
 spring:
@@ -25,11 +45,13 @@ spring:
     active: dev
   datasource:
     driver-class-name: org.h2.Driver
-    url: jdbc:h2:./data/ops;MODE=MySQL
+    # H2 嵌入式库路径（与 server.path 下的 ops 文件对应）
+    url: jdbc:h2:file:${EASYOPS_SERVER_DATA:./data}/ops;MODE=MySQL;AUTO_SERVER=TRUE
     username: sa
     password:
   h2:
     console:
+      # 生产环境保持 false
       enabled: ${H2_CONSOLE_ENABLED:false}
       path: /h2-console
   sql:
@@ -38,6 +60,7 @@ spring:
       schema-locations: classpath:db/schema.sql
   servlet:
     multipart:
+      # 版本包/Jar 上传大小上限
       max-file-size: 500MB
       max-request-size: 500MB
   jackson:
@@ -45,7 +68,7 @@ spring:
     time-zone: Asia/Shanghai
     default-property-inclusion: non_null
 
-# ========== 安全配置 (Task 1 新增) ==========
+# JWT 登录鉴权（生产务必通过环境变量 JWT_SECRET 注入强密钥）
 jwt:
   secret: ${JWT_SECRET:}
   expire-ms: 86400000
@@ -62,28 +85,33 @@ logging:
     com.ops.server: DEBUG
     com.ops.server.mapper: DEBUG
   file:
-    name: ${server.path:./data}/logs/server.log
+    # 日志文件路径（启动脚本可通过 -Dlogging.file.name 覆盖）
+    name: ${EASYOPS_SERVER_DATA:./data}/logs/server.log
   logback:
     rollingpolicy:
       max-file-size: 100MB
       max-history: 30
 
-# ========== Task 9: CORS 配置 ==========
-# 放行所有来源（内网使用，任意 IP/域名均可跨域访问）。
-# 如需收紧，可改为实际前端地址清单，如 "http://10.0.0.5:3000,https://ops.example.com"
+# CORS：内网默认放行所有来源；生产可按需收紧为具体前端地址
 cors:
   allowed-origins: "*"
 
-# ========== Task 10: AI 配置 (API Key 外部化) ==========
+# AI 分析（可选，通过环境变量 AI_API_KEY 注入）
 ai:
   apiKey: ${AI_API_KEY:}
 
-  # SEC-010: 响应大小限制
-  max-http-request-size: 10MB
-  max-http-response-size: 10MB
-  tomcat:
-    max-swallow-size: 10MB
-
-# WebSocket 安全配置
+# WebSocket 最大连接数
 websocket:
   max-connections: 1000
+
+# 全局运维路径（Server 计算 Agent 侧路径、应用部署目录时使用）
+ops:
+  global:
+    # Agent 端数据根目录（与 agent.data-path 保持一致）
+    # 启动脚本通过 -Dops.global.agent-data-path 注入
+    agent-data-path: ${AGENT_DATA_PATH:/app/data}
+    # 应用默认部署根目录（项目未自定义 deployDir 时使用）
+    deploy-base-dir: ${OPS_DEPLOY_BASE_DIR:/app/data/apps}
+    log-sub-dir: logs
+    config-sub-dir: config
+    frontend-sub-dir: frontend

@@ -14,10 +14,11 @@
             placeholder="搜索项目名称..."
             style="width: 280px"
             allow-clear
-            @search="fetchProjects"
+            @press-enter="handleSearch"
           >
             <template #prefix><search-outlined /></template>
           </a-input>
+          <a-button @click="handleSearch"><search-outlined /> 搜索</a-button>
           <a-button type="primary" @click="$router.push('/projects/add')">
             <plus-outlined />
             新增项目
@@ -65,7 +66,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { ProjectModel } from '../types'
 import { getProjects, deleteProject } from '../api/project'
@@ -93,6 +94,17 @@ const columns = [
   { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 200, ellipsis: true },
   { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
 ]
+
+function handleSearch() {
+  pagination.value.current = 1
+  fetchProjects()
+}
+
+watch(keyword, (val, prev) => {
+  if (val === '' && prev) {
+    handleSearch()
+  }
+})
 
 async function fetchProjects() {
   try {

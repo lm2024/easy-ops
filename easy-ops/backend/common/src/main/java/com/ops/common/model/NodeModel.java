@@ -37,4 +37,7 @@ public class NodeModel implements Serializable {
 
     /** 系统架构 */
     private String osArch;
+
+    /** Agent 版本号（心跳上报） */
+    private String agentVersion;
 }

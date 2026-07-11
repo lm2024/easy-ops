@@ -9,6 +9,8 @@ import java.util.List;
 @Mapper
 public interface KbDocumentMapper {
     KbDocumentModel findById(@Param("id") Long id);
+    KbDocumentModel findByCategoryAndTitle(@Param("categoryId") Long categoryId,
+                                           @Param("title") String title);
     List<KbDocumentModel> findByCategory(@Param("categoryId") Long categoryId,
                                          @Param("page") Integer page,
                                          @Param("pageSize") Integer pageSize);

@@ -30,10 +30,14 @@ public class CsrfFilter implements Filter {
 
     private static final Logger log = LoggerFactory.getLogger(CsrfFilter.class);
 
-    // 不需要 CSRF 检查的路径
+    // 不需要 CSRF 检查的路径（含 context-path /api）
     private static final Set<String> EXCLUDED_PATHS = new HashSet<>(Arrays.asList(
             "/auth/login",
+            "/auth/captcha",
+            "/api/auth/login",
+            "/api/auth/captcha",
             "/nodes/heartbeat",
+            "/api/nodes/heartbeat",
             "/ws/**",
             "/h2-console/**"
     ));
@@ -60,11 +64,11 @@ public class CsrfFilter implements Filter {
         for (String pattern : EXCLUDED_PATHS) {
             if (pattern.endsWith("/**")) {
                 String prefix = pattern.substring(0, pattern.length() - 3);
-                if (uri.startsWith(prefix)) {
+                if (uri.startsWith(prefix) || uri.contains(prefix)) {
                     chain.doFilter(request, response);
                     return;
                 }
-            } else if (uri.equals(pattern)) {
+            } else if (uri.equals(pattern) || uri.endsWith(pattern)) {
                 chain.doFilter(request, response);
                 return;
             }

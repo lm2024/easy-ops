@@ -76,7 +76,7 @@ class NodeMapperTest {
         long now = System.currentTimeMillis();
 
         nodeMapper.updateHeartbeat(node.getId(), now, "10.0.0.1", "Linux 5.4",
-                "1.8.0_292", 4, 8192, 256000L, "amd64");
+                "1.8.0_292", 4, 8192, 256000L, "amd64", "1.0.0-SNAPSHOT");
 
         NodeModel found = nodeMapper.findById(node.getId());
         assertNotNull(found.getLastHeartbeat());

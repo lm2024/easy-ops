@@ -24,15 +24,18 @@ class HeartbeatDaemonTest {
     }
 
     @Test
-    @DisplayName("构造函数 - Token未配置时抛出异常")
-    void run_noToken_throwsException() {
+    @DisplayName("启动时 - Token未配置时自动生成（内网简化模式）")
+    void run_noToken_autoGenerates() {
         HeartbeatDaemon noTokenDaemon = new HeartbeatDaemon();
         ReflectionTestUtils.setField(noTokenDaemon, "serverUrl", "http://localhost:8081/api");
         ReflectionTestUtils.setField(noTokenDaemon, "agentToken", "");
         ReflectionTestUtils.setField(noTokenDaemon, "nodeName", "default-node");
         ReflectionTestUtils.setField(noTokenDaemon, "checkInterval", 30);
 
-        assertThrows(IllegalStateException.class, () -> noTokenDaemon.run());
+        assertDoesNotThrow(() -> noTokenDaemon.run());
+        String token = (String) ReflectionTestUtils.getField(noTokenDaemon, "agentToken");
+        assertNotNull(token);
+        assertTrue(token.startsWith("easyops-"));
     }
 
     @Test

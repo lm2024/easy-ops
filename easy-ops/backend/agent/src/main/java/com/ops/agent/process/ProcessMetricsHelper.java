@@ -79,7 +79,7 @@ public class ProcessMetricsHelper {
         Process process = null;
         BufferedReader reader = null;
         try {
-            String cmd = "ps -p " + pid + " -o %cpu=,%mem=,rss= 2>/dev/null";
+            String cmd = "ps -p " + pid + " -o %cpu= -o %mem= -o rss= 2>/dev/null";
             process = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmd});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line = reader.readLine();
@@ -87,7 +87,7 @@ public class ProcessMetricsHelper {
             if (line == null || line.trim().isEmpty()) {
                 return;
             }
-            String[] parts = line.trim().split("\\s*,\\s*");
+            String[] parts = line.trim().split("\\s+");
             if (parts.length >= 1) {
                 result.put("cpuPercent", parseDouble(parts[0]));
             }
@@ -95,7 +95,11 @@ public class ProcessMetricsHelper {
                 result.put("memPercent", parseDouble(parts[1]));
             }
             if (parts.length >= 3) {
-                result.put("rssKb", parseLong(parts[2]));
+                Long rssKb = parseLong(parts[2]);
+                result.put("rssKb", rssKb);
+                if (rssKb != null) {
+                    result.put("memoryMb", Math.round(rssKb / 1024.0));
+                }
             }
         } catch (Exception ignored) {
             // ps 不可用时跳过

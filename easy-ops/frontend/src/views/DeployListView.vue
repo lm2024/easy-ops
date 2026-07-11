@@ -351,16 +351,31 @@ onUnmounted(() => {
 
 <style scoped>
 .step-detail {
-  background: #f6f8fa; padding: 10px; border-radius: 4px;
-  font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  line-height: 1.5; white-space: pre-wrap; margin: 6px 0 0;
-  max-height: 180px; overflow: auto;
+  background: var(--eo-code-bg);
+  color: var(--eo-code-text);
+  border: 1px solid var(--eo-border);
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin: 6px 0 0;
+  max-height: 180px;
+  overflow: auto;
 }
 .log-pre {
-  background: #1e1e1e; color: #d4d4d4;
-  padding: 14px; border-radius: 6px;
-  font-size: 12px; font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  line-height: 1.6; max-height: 400px; overflow: auto; white-space: pre-wrap;
+  background: var(--eo-code-bg);
+  color: var(--eo-code-text);
+  border: 1px solid var(--eo-border);
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  line-height: 1.6;
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
   margin: 0;
 }
 .result-card-success { border-left: 4px solid #52c41a; }

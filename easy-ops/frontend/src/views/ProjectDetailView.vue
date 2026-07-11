@@ -23,14 +23,14 @@
           </a-space>
         </a-descriptions-item>
         <a-descriptions-item label="环境变量" :span="3">
-          <code style="background: #f5f5f5; padding: 2px 8px; border-radius: 4px; font-size: 12px">{{ project.envVars || '-' }}</code>
+          <code class="eo-code">{{ project.envVars || '-' }}</code>
         </a-descriptions-item>
       </a-descriptions>
 
       <!-- JVM 参数 -->
       <a-descriptions title="⚙️ JVM 参数" bordered size="small" :column="1" style="margin-bottom: 16px">
         <a-descriptions-item label="JVM 参数（G1GC）">
-          <pre v-if="project.jvmOpts" style="margin:0; white-space:pre-wrap; background:#f5f5f5; padding:10px; border-radius:4px; font-size:12px; font-family:'JetBrains Mono',monospace; line-height:1.6">{{ project.jvmOpts }}</pre>
+          <pre v-if="project.jvmOpts" class="eo-code">{{ project.jvmOpts }}</pre>
           <span v-else>-</span>
         </a-descriptions-item>
       </a-descriptions>
@@ -38,16 +38,16 @@
       <!-- 脚本 -->
       <a-descriptions title="📜 部署脚本" bordered size="small" :column="3" style="margin-bottom: 16px">
         <a-descriptions-item label="启动脚本" :span="3">
-          <pre v-if="project.startScript" style="margin:0; white-space:pre-wrap; background:#f6ffed; padding:10px; border-radius:4px; font-size:12px; font-family:'JetBrains Mono',monospace; line-height:1.5; border-left:3px solid #52c41a">{{ project.startScript }}</pre>
-          <span v-else style="color:#bbb">未配置</span>
+          <pre v-if="project.startScript" class="eo-code eo-code--success">{{ project.startScript }}</pre>
+          <span v-else class="eo-text-muted">未配置</span>
         </a-descriptions-item>
         <a-descriptions-item label="停止脚本" :span="3">
-          <pre v-if="project.stopScript" style="margin:0; white-space:pre-wrap; background:#fff2f0; padding:10px; border-radius:4px; font-size:12px; font-family:'JetBrains Mono',monospace; line-height:1.5; border-left:3px solid #ff4d4f">{{ project.stopScript }}</pre>
-          <span v-else style="color:#bbb">未配置</span>
+          <pre v-if="project.stopScript" class="eo-code eo-code--danger">{{ project.stopScript }}</pre>
+          <span v-else class="eo-text-muted">未配置</span>
         </a-descriptions-item>
         <a-descriptions-item label="重启脚本" :span="3">
-          <pre v-if="project.restartScript" style="margin:0; white-space:pre-wrap; background:#fffbe6; padding:10px; border-radius:4px; font-size:12px; font-family:'JetBrains Mono',monospace; line-height:1.5; border-left:3px solid #faad14">{{ project.restartScript }}</pre>
-          <span v-else style="color:#bbb">未配置</span>
+          <pre v-if="project.restartScript" class="eo-code eo-code--warn">{{ project.restartScript }}</pre>
+          <span v-else class="eo-text-muted">未配置</span>
         </a-descriptions-item>
       </a-descriptions>
 
@@ -92,7 +92,6 @@ onMounted(async () => {
   const res = await getProject(id)
   project.value = res.data
 
-  // 解析节点名
   const ids = resolveNodeNames(res.data.nodeIds)
   if (ids.length > 0) {
     try {
