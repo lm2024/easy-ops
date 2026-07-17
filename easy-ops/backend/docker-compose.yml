@@ -9,7 +9,8 @@ services:
     restart: unless-stopped
     ports:
       - "2123:2123"
-      - "8080:8080"
+    volumes:
+      - agent1-data:/app/data
     environment:
       AGENT_TOKEN: agent-token-1
       AGENT_NODE_NAME: agent-1
@@ -28,7 +29,8 @@ services:
     restart: unless-stopped
     ports:
       - "2124:2123"
-      - "18090:8080"
+    volumes:
+      - agent2-data:/app/data
     environment:
       AGENT_TOKEN: agent-token-2
       AGENT_NODE_NAME: agent-2
@@ -47,7 +49,8 @@ services:
     restart: unless-stopped
     ports:
       - "2125:2123"
-      - "18080:8080"
+    volumes:
+      - agent3-data:/app/data
     environment:
       AGENT_TOKEN: agent-token-3
       AGENT_NODE_NAME: agent-3
@@ -57,3 +60,8 @@ services:
       JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+volumes:
+  agent1-data:
+  agent2-data:
+  agent3-data:

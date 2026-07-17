@@ -102,38 +102,53 @@
     </a-card>
 
     <a-form ref="formRef" :model="formState" :rules="rules" layout="vertical" @finish="handleSubmit">
+      <!-- ====== 基本信息 ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">📋 基本信息</a-divider>
       <a-row :gutter="16">
         <a-col :span="8">
           <a-form-item label="应用名称" name="name">
             <a-input v-model:value="formState.name" placeholder="例如: 订单服务" />
+            <template #extra><span style="font-size:12px;color:#888">必填。应用的显示名称，用于列表和部署记录中标识</span></template>
           </a-form-item>
         </a-col>
         <a-col :span="8">
-          <a-form-item label="Jar 包名">
+          <a-form-item label="Jar 包名" name="jarName">
             <a-input v-model:value="formState.jarName" placeholder="app.jar" />
+            <template #extra><span style="font-size:12px;color:#888">必填。后端部署时传输和启动的 jar 文件名，如 <code>demo-test-app.jar</code></span></template>
           </a-form-item>
         </a-col>
         <a-col :span="8">
-          <a-form-item label="部署目录">
+          <a-form-item label="部署目录" name="deployDir">
             <a-input v-model:value="formState.deployDir" :placeholder="defaultDeployDir || '/app/data/apps/应用名'" />
-            <template #extra><span style="font-size:12px;color:#888">全局根目录: {{ globalPaths?.deployBaseDir || '加载中...' }}，Jar 和脚本存放目录</span></template>
+            <template #extra><span style="font-size:12px;color:#888">必填。Jar 包和脚本在服务器上的存放目录。全局根目录: <code>{{ globalPaths?.deployBaseDir || '加载中...' }}</code></span></template>
           </a-form-item>
         </a-col>
       </a-row>
 
+      <!-- ====== 前端部署（可选） ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">🌐 前端部署（可选，不部署前端请跳过）</a-divider>
       <a-row :gutter="16">
-        <a-col :span="12">
-          <a-form-item label="前端部署目录（dist.zip 解压目标）">
-            <a-input v-model:value="formState.frontendDeployDir" :placeholder="defaultFrontendDir || '留空则使用 部署目录/frontend'" />
-            <template #extra><span style="font-size:12px;color:#888">上传 dist.zip 后解压到此目录，供 Nginx 等静态服务使用</span></template>
+        <a-col :span="16">
+          <a-form-item label="前端部署目录">
+            <a-input v-model:value="formState.frontendDeployDir" :placeholder="defaultFrontendDir || '留空则默认为 部署目录/frontend'" />
+            <template #extra>
+              <div style="font-size:12px;color:#888;line-height:1.8">
+                <div>选填。仅在部署前端静态资源（dist.zip）时需要。</div>
+                <div>• <b>不部署前端</b> → 不用填，留空即可，不影响后端部署</div>
+                <div>• <b>部署前端</b> → 填写 Nginx 等静态服务指向的目录，如 <code>/usr/share/nginx/html</code></div>
+                <div>• <b>留空时</b> → 自动使用 <code>{{ defaultFrontendDir || '部署目录/frontend' }}</code></div>
+              </div>
+            </template>
           </a-form-item>
         </a-col>
       </a-row>
 
+      <!-- ====== JVM 与脚本 ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">⚙️ JVM 参数与启停脚本</a-divider>
       <a-row :gutter="16">
         <a-col :span="24">
-          <a-form-item label="JVM 参数（G1，保存至数据库）">
-            <template #extra><span style="font-size:12px;color:#888">一键填入会自动生成；修改后请同步更新 start.sh 中的 java 参数行</span></template>
+          <a-form-item label="JVM 参数">
+            <template #extra><span style="font-size:12px;color:#888">上方「一键填入 JVM 模板」会自动生成；也可手动修改</span></template>
             <a-textarea v-model:value="formState.jvmOpts" :rows="2" placeholder="-Xms512m -Xmx1024m -XX:+UseG1GC ..." style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
@@ -141,30 +156,50 @@
 
       <a-row :gutter="16">
         <a-col :span="12">
-          <a-form-item label="启动脚本 start.sh">
-            <template #extra><span style="font-size:12px;color:#888">部署时自动同步到节点的部署目录并执行，无需手动拷贝</span></template>
+          <a-form-item label="启动脚本 start.sh" name="startScript">
+            <template #extra>
+              <div style="font-size:12px;color:#888;line-height:1.8">
+                <div>部署时自动同步到服务器的部署目录并执行。上方「一键填入」可自动生成。</div>
+                <div>脚本会自动按 Jar 包名查找并停掉旧进程，再启动新实例。</div>
+              </div>
+            </template>
             <a-textarea v-model:value="formState.startScript" :rows="6" placeholder="#!/bin/bash&#10;nohup java -jar app.jar > logs/startup.log 2>&1 &" style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
         <a-col :span="12">
           <a-form-item label="停止脚本 stop.sh">
-            <template #extra><span style="font-size:12px;color:#888">部署时自动同步到节点的部署目录并执行，无需手动拷贝</span></template>
-            <a-textarea v-model:value="formState.stopScript" :rows="6" placeholder="#!/bin/bash&#10;PID_FILE=pid&#10;if [ -f &quot;$PID_FILE&quot; ]; then kill $(cat $PID_FILE); rm -f $PID_FILE; fi" style="font-family:'JetBrains Mono',monospace;font-size:12px" />
+            <template #extra>
+              <div style="font-size:12px;color:#888;line-height:1.8">
+                <div>部署新版本前自动执行，按 Jar 包名查找并停止旧进程。</div>
+                <div>上方「一键填入」可自动生成，无需手动编写。</div>
+              </div>
+            </template>
+            <a-textarea v-model:value="formState.stopScript" :rows="6" placeholder="#!/bin/bash&#10;ps -ef | grep 'java.*-jar.*app.jar' | ..." style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
       </a-row>
 
-      <a-form-item label="部署节点">
-        <a-select v-model:value="formState.nodeIds" mode="multiple" style="width: 100%" placeholder="选择要部署到的节点" :max-tag-count="3">
+      <!-- ====== 部署节点 ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">🖥️ 部署节点</a-divider>
+      <a-form-item label="部署节点" name="nodeIds">
+        <a-select v-model:value="formState.nodeIds" mode="multiple" style="width: 100%" placeholder="选择要部署到的服务器节点" :max-tag-count="3">
           <a-select-option v-for="n in nodeOptions" :key="n.id" :value="n.id">
             <span>{{ n.name }} ({{ n.ip }})</span>
           </a-select-option>
         </a-select>
+        <template #extra><span style="font-size:12px;color:#888">必填，至少选择 1 个节点。部署时会同时将应用分发到所有选中的节点</span></template>
       </a-form-item>
 
-      <a-divider orientation="left" style="font-size: 13px; color: #888">部署后健康检查</a-divider>
+      <!-- ====== 健康检查 ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">🏥 部署后健康检查</a-divider>
       <a-form-item label="启用健康检查">
-        <template #extra><span style="font-size:12px;color:#888">部署后探测应用是否存活；若你的工程暂无健康地址，可关闭此项，部署将跳过健康检查直接判定成功</span></template>
+        <template #extra>
+          <div style="font-size:12px;color:#888;line-height:1.8">
+            <div>部署后自动探测应用是否成功启动。</div>
+            <div>• <b>开启</b> → 用 curl 请求指定端口+路径，检查返回内容是否包含关键字</div>
+            <div>• <b>关闭</b> → 跳过检查，启动脚本执行完即判定部署成功（适用于无 HTTP 接口的应用）</div>
+          </div>
+        </template>
         <a-switch v-model:checked="formState.healthCheckEnabled" checked-children="开" un-checked-children="关" />
       </a-form-item>
       <a-row :gutter="16" v-if="formState.healthCheckEnabled">
@@ -185,6 +220,15 @@
         </a-col>
       </a-row>
 
+      <!-- ====== 填写指南 ====== -->
+      <a-divider orientation="left" style="font-size: 13px; color: #888">📖 填写指南</a-divider>
+      <a-alert type="info" show-icon style="margin-bottom: 16px">
+        <template #message><span style="font-weight:500">不同场景需要填写哪些字段？</span></template>
+        <template #description>
+          <a-table :data-source="guideData" :columns="guideColumns" :pagination="false" size="small" bordered style="margin-top:8px" />
+        </template>
+      </a-alert>
+
       <a-form-item>
         <a-space>
           <a-button type="primary" html-type="submit" :loading="loading"><save-outlined /> 保存</a-button>
@@ -196,8 +240,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, h } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Modal, message } from 'ant-design-vue'
 import type { ProjectModel, NodeModel } from '../types'
 import { createProject, updateProject, getProject } from '../api/project'
 import { getNodes } from '../api/node'
@@ -277,6 +322,54 @@ const defaultFrontendDir = computed(() => {
   return `${base}/${globalPaths.value.frontendSubDir}`
 })
 
+// ====== 填写指南表格 ======
+const guideColumns = [
+  { title: '部署场景', dataIndex: 'scenario', key: 'scenario', width: 130 },
+  { title: '应用名称', dataIndex: 'name', key: 'name', width: 80 },
+  { title: 'Jar 包名', dataIndex: 'jarName', key: 'jarName', width: 90 },
+  { title: '部署目录', dataIndex: 'deployDir', key: 'deployDir', width: 90 },
+  { title: '前端部署目录', dataIndex: 'frontendDir', key: 'frontendDir', width: 110 },
+  { title: '启停脚本', dataIndex: 'scripts', key: 'scripts', width: 100 },
+  { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 80 },
+  { title: '说明', dataIndex: 'note', key: 'note' }
+]
+
+const guideData = [
+  {
+    key: '1',
+    scenario: '☕ 仅部署后端',
+    name: '✅ 必填',
+    jarName: '✅ 必填',
+    deployDir: '✅ 必填',
+    frontendDir: '⬜ 不用填',
+    scripts: '✅ 填写（或一键填入）',
+    nodeIds: '✅ 必填',
+    note: '最常见场景。Jar 包通过一键部署传输到服务器，脚本控制启停'
+  },
+  {
+    key: '2',
+    scenario: '🌐 仅部署前端',
+    name: '✅ 必填',
+    jarName: '⬜ 不用填',
+    deployDir: '✅ 必填',
+    frontendDir: '✅ 填写（Nginx 目录）',
+    scripts: '⬜ 不用填',
+    nodeIds: '✅ 必填',
+    note: '上传 dist.zip 时自动解压到前端目录，供 Nginx 等使用'
+  },
+  {
+    key: '3',
+    scenario: '☕+🌐 前后端都部署',
+    name: '✅ 必填',
+    jarName: '✅ 必填',
+    deployDir: '✅ 必填',
+    frontendDir: '✅ 填写',
+    scripts: '✅ 填写',
+    nodeIds: '✅ 必填',
+    note: '上传 jar 走后端部署流程，上传 dist.zip 走前端部署流程'
+  }
+]
+
 const formState = ref<any>({
   name: '',
   jarName: '',
@@ -296,6 +389,8 @@ const formState = ref<any>({
 const rules: Record<string, Rule[]> = {
   name: [{ required: true, message: '请输入应用名称' }],
   jarName: [{ required: true, message: '请输入 Jar 包名（如 demo-test-app.jar）' }],
+  deployDir: [{ required: true, message: '请输入部署目录' }],
+  nodeIds: [{ required: true, type: 'array', min: 1, message: '请至少选择一个部署节点' }],
   startScript: [{
     validator: (_rule: Rule, value: string) => {
       if (!value || !formState.value.jarName) return Promise.resolve()
@@ -371,7 +466,17 @@ watch(() => formState.value.jarName, (newJarName) => {
   }
 })
 
-async function handleSubmit() {
+function getNodeNames(): string {
+  if (!formState.value.nodeIds || formState.value.nodeIds.length === 0) return '未选择'
+  return (formState.value.nodeIds as string[])
+    .map((id: string) => {
+      const node = nodeOptions.value.find(n => n.id === id)
+      return node ? `${node.name} (${node.ip})` : id
+    })
+    .join('、')
+}
+
+function doSubmit() {
   // 保存前自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
   if (formState.value.jarName && formState.value.startScript) {
     const jarNameInScript = extractJarNameFromScript(formState.value.startScript)
@@ -380,23 +485,54 @@ async function handleSubmit() {
     }
   }
 
-  try {
-    loading.value = true
-    const id = route.params.id as string
-    const payload = { ...formState.value } as any
-    // nodeIds 在前端是多选数组，后端字段是 String，提交前转为逗号分隔字符串
-    if (Array.isArray(payload.nodeIds)) {
-      payload.nodeIds = payload.nodeIds.join(',')
-    }
-    if (id) {
-      await updateProject(id, payload as ProjectModel)
-    } else {
-      await createProject(payload as ProjectModel)
-    }
-    router.push('/projects')
-  } finally {
-    loading.value = false
+  loading.value = true
+  const id = route.params.id as string
+  const payload = { ...formState.value } as any
+  // nodeIds 在前端是多选数组，后端字段是 String，提交前转为逗号分隔字符串
+  if (Array.isArray(payload.nodeIds)) {
+    payload.nodeIds = payload.nodeIds.join(',')
   }
+
+  const apiCall = id ? updateProject(id, payload as ProjectModel) : createProject(payload as ProjectModel)
+  apiCall
+    .then(() => {
+      message.success(id ? '应用更新成功' : '应用创建成功')
+      router.push('/projects')
+    })
+    .catch((e: any) => {
+      message.error('保存失败: ' + (e?.message || '未知错误'))
+    })
+    .finally(() => {
+      loading.value = false
+    })
+}
+
+async function handleSubmit() {
+  // 先触发表单校验
+  try {
+    await formRef.value?.validateFields()
+  } catch {
+    // 校验失败，ant-design-vue 已自动高亮，不弹框
+    return
+  }
+
+  // 校验通过，弹确认框
+  const nodeNames = getNodeNames()
+  const isEdit_ = isEdit.value
+
+  Modal.confirm({
+    title: isEdit_ ? '确认更新应用' : '确认创建应用',
+    width: 480,
+    content: h('div', [
+      h('p', [h('strong', '应用名称：'), h('span', formState.value.name || '-')]),
+      h('p', [h('strong', 'Jar 包名：'), h('span', formState.value.jarName || '-')]),
+      h('p', [h('strong', '部署目录：'), h('span', formState.value.deployDir || '-')]),
+      h('p', [h('strong', '部署节点：'), h('span', nodeNames)])
+    ]),
+    okText: isEdit_ ? '确认更新' : '确认创建',
+    cancelText: '返回修改',
+    onOk: doSubmit
+  })
 }
 
 onMounted(async () => {

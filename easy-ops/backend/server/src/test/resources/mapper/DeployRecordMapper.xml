@@ -5,12 +5,18 @@
         SELECT * FROM deploy_record WHERE id = #{id}
     </select>
     <select id="findByProjectId" resultType="com.ops.common.model.DeployModel">
-        SELECT * FROM deploy_record WHERE project_id = #{projectId}
+        SELECT * FROM deploy_record
+        <where>
+            <if test="projectId != null">AND project_id = #{projectId}</if>
+        </where>
         ORDER BY create_time DESC
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
     <select id="countByProjectId" resultType="long">
-        SELECT COUNT(*) FROM deploy_record WHERE project_id = #{projectId}
+        SELECT COUNT(*) FROM deploy_record
+        <where>
+            <if test="projectId != null">AND project_id = #{projectId}</if>
+        </where>
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO deploy_record (project_id, version_id, node_id, status, jar_name, log, start_time, end_time, create_time, schedule_time)

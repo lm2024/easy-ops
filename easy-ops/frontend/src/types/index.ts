@@ -260,7 +260,7 @@ export interface LogNodeScope {
 export interface LogAggregateEntry {
   nodeId: number
   nodeName?: string
-  timestamp?: number | string
+  timestamp?: number
   content: string
   lineNo?: number
   sourceFile?: string

@@ -187,9 +187,22 @@ public class MonitorCollectorService {
 
         Map<String, Object> sysInfo = agentClient.get(node.getId(), "/sys/info", null);
         if (sysInfo != null) {
-            snap.setHostCpuPercent(toDecimal(sysInfo.get("cpuPercent")));
-            snap.setHostMemoryPercent(toInt(sysInfo.get("memoryPercent")));
-            snap.setDiskUsagePercent(toInt(sysInfo.get("diskUsagePercent")));
+            // Agent 返回 cpuUsagePercent / memoryUsagePercent，不是 cpuPercent / memoryPercent
+            snap.setHostCpuPercent(toDecimal(sysInfo.get("cpuUsagePercent")));
+            snap.setHostMemoryPercent(toInt(sysInfo.get("memoryUsagePercent")));
+            // diskUsagePercent 取根分区的使用率
+            Object disks = sysInfo.get("disks");
+            if (disks instanceof java.util.List) {
+                for (Object d : (java.util.List<?>) disks) {
+                    if (d instanceof Map) {
+                        Object mount = ((Map<?, ?>) d).get("mountPoint");
+                        if ("/".equals(mount)) {
+                            snap.setDiskUsagePercent(toInt(((Map<?, ?>) d).get("usagePercent")));
+                            break;
+                        }
+                    }
+                }
+            }
         }
 
         snapshotMapper.insert(snap);
