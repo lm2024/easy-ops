@@ -7,8 +7,13 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 
 /**
- * 安全配置类
- * 启动时校验 JWT 密钥是否已配置（通过环境变量）
+ * 安全配置类 — 启动时校验 jwt.secret 是否存在
+ * <p>
+ * 注意：当前项目的用户 token 实际由 {@link com.ops.server.controller.SystemController#generateToken()}
+ * 使用 SecureRandom 生成随机字符串，并非标准 JWT（无签名/验签）。
+ * jwt.secret 仅在此做启动存在性校验，未被任何签发或解析逻辑引用。
+ * Agent 认证使用独立的 AGENT_TOKEN（X-Token header），前端仅透传 token，均与此值无关。
+ * 本地开发使用 application.yml 中的默认值即可，无需设置环境变量。
  */
 @Configuration
 @Order(0)

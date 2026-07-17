@@ -45,9 +45,6 @@ ALTER TABLE project_info ADD COLUMN IF NOT EXISTS jar_name VARCHAR(200) DEFAULT 
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS deploy_dir VARCHAR(500) DEFAULT '';
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS frontend_deploy_dir VARCHAR(500) DEFAULT '';
 
--- 版本包类型（jar / frontend）
-ALTER TABLE version_package ADD COLUMN IF NOT EXISTS package_type VARCHAR(20) DEFAULT 'jar';
-
 -- 版本包表
 CREATE TABLE IF NOT EXISTS version_package (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -62,6 +59,9 @@ CREATE TABLE IF NOT EXISTS version_package (
 );
 CREATE INDEX IF NOT EXISTS idx_version_project ON version_package(project_id);
 CREATE INDEX IF NOT EXISTS idx_version_project_ver ON version_package(project_id, version);
+
+-- 版本包类型（jar / frontend）
+ALTER TABLE version_package ADD COLUMN IF NOT EXISTS package_type VARCHAR(20) DEFAULT 'jar';
 
 -- 部署记录表
 CREATE TABLE IF NOT EXISTS deploy_record (

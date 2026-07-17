@@ -139,6 +139,10 @@ public class SystemInfoCollector {
 
     private int sampleCpuUsagePercent(String os) {
         try {
+            // 优先读 cgroup（容器环境获取容器自身 CPU，非容器环境读到宿主机 cgroup 也准确）
+            int cgroupCpu = sampleCpuFromCgroup();
+            if (cgroupCpu > 0) return cgroupCpu;
+            // cgroup 不可用或返回 0，降级到 /proc
             if (os.contains("linux")) {
                 String topLine = readLine("top -bn1 | grep '%Cpu(s)'", false);
                 if (topLine != null) {
@@ -207,6 +211,25 @@ public class SystemInfoCollector {
         long usedMB = 0;
         long buffersCachedMB = 0;
         int percent = 0;
+
+        // 优先读 cgroup（容器环境获取容器自身内存，非容器环境有 cgroup 限制时也准确）
+        long[] cgroupMem = readCgroupMemory();
+        if (cgroupMem != null) {
+            totalMB = cgroupMem[0];
+            usedMB = cgroupMem[1];
+            if (totalMB > 0) {
+                percent = (int) (usedMB * 100 / totalMB);
+            }
+            mem.put("totalMemoryMB", totalMB);
+            mem.put("usedMemoryMB", usedMB);
+            mem.put("freeMemoryMB", Math.max(0, totalMB - usedMB));
+            mem.put("availableMemoryMB", Math.max(0, totalMB - usedMB));
+            mem.put("buffersCachedMB", 0);
+            mem.put("memoryUsagePercent", percent);
+            mem.put("memoryUsedDescription", "容器内存使用量（cgroup 限制）");
+            mem.put("memorySummary", String.format("容器内存: %dMB / %dMB (%d%%)", usedMB, totalMB, percent));
+            return mem;
+        }
 
         if (os.contains("linux")) {
             try {
@@ -501,5 +524,140 @@ public class SystemInfoCollector {
 
     private double roundGb(long bytes) {
         return Math.round(bytes * 10.0 / (1024 * 1024 * 1024)) / 10.0;
+    }
+
+    // ==================== Docker / cgroup ====================
+
+    /** 判断是否运行在 Docker 容器中 */
+    private boolean isInDocker() {
+        // 方法1: 检查 .dockerenv 文件
+        if (new java.io.File("/.dockerenv").exists()) {
+            return true;
+        }
+        // 方法2: 检查 cgroup 信息
+        try {
+            String cgroup = readLine("cat /proc/1/cgroup 2>/dev/null", false);
+            if (cgroup != null && (cgroup.contains("docker") || cgroup.contains("kubepods") || cgroup.contains("containerd"))) {
+                return true;
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    /**
+     * 从 cgroup 读取容器 CPU 使用率。
+     * cgroup v1: /sys/fs/cgroup/cpuacct/cpuacct.usage (纳秒)
+     * 两次采样间隔计算百分比。
+     */
+    private int sampleCpuFromCgroup() {
+        try {
+            long usage1 = readCgroupCpuUsage();
+            if (usage1 <= 0) return 0;
+            long wall1 = System.nanoTime();
+            Thread.sleep(2000); // 2秒采样，空闲时也能测到差异
+            long usage2 = readCgroupCpuUsage();
+            if (usage2 <= usage1) return 0;
+            long wall2 = System.nanoTime();
+
+            long cpuDelta = usage2 - usage1; // 纳秒
+            long wallDelta = wall2 - wall1;  // 纳秒
+
+            if (wallDelta > 0) {
+                // cgroup usage_usec 是总 CPU 时间，除以核心数得到等效单核百分比
+                int cores = Runtime.getRuntime().availableProcessors();
+                return (int) Math.min(100, Math.round(cpuDelta * 100.0 / wallDelta / cores));
+            }
+        } catch (Exception ignored) {
+        }
+        return 0;
+    }
+
+    /** 读取 cgroup CPU 使用时间（纳秒） */
+    private long readCgroupCpuUsage() {
+        // cgroup v1: 单行纯数字（纳秒）
+        try {
+            java.io.File v1 = new java.io.File("/sys/fs/cgroup/cpuacct/cpuacct.usage");
+            if (v1.exists()) {
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(v1));
+                String line = r.readLine();
+                r.close();
+                if (line != null && !line.trim().isEmpty()) {
+                    return Long.parseLong(line.trim());
+                }
+            }
+        } catch (Exception ignored) {}
+
+        // cgroup v2: 多行 key-value，取 usage_usec 行（微秒 → 纳秒）
+        try {
+            java.io.File v2 = new java.io.File("/sys/fs/cgroup/cpu.stat");
+            if (v2.exists()) {
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(v2));
+                String line;
+                while ((line = r.readLine()) != null) {
+                    if (line.startsWith("usage_usec ")) {
+                        r.close();
+                        return Long.parseLong(line.split("\\s+")[1]) * 1000;
+                    }
+                }
+                r.close();
+            }
+        } catch (Exception ignored) {}
+        return 0;
+    }
+
+    /**
+     * 从 cgroup 读取容器内存限制和使用量。
+     * @return [totalMB, usedMB]，失败返回 null
+     */
+    private long[] readCgroupMemory() {
+        try {
+            // cgroup v2: memory.max + memory.current（优先，因为更新）
+            String maxStr = readCgroupFile("/sys/fs/cgroup/memory.max");
+            String curStr = readCgroupFile("/sys/fs/cgroup/memory.current");
+            if (maxStr != null && curStr != null && !"max".equals(maxStr.trim())) {
+                long maxBytes = Long.parseLong(maxStr.trim());
+                long curBytes = Long.parseLong(curStr.trim());
+                if (maxBytes > 100L * 1024 * 1024 * 1024) return null;
+                return new long[]{maxBytes / (1024 * 1024), curBytes / (1024 * 1024)};
+            }
+
+            // cgroup v1: memory.limit_in_bytes + memory.usage_in_bytes
+            String limitStr = readCgroupFile("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+            String usageStr = readCgroupFile("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+            if (limitStr != null && usageStr != null) {
+                long limitBytes = Long.parseLong(limitStr.trim());
+                long usageBytes = Long.parseLong(usageStr.trim());
+                if (limitBytes > 100L * 1024 * 1024 * 1024) return null;
+                return new long[]{limitBytes / (1024 * 1024), usageBytes / (1024 * 1024)};
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** 直接用 Java I/O 读取 cgroup 文件第一行（不用 shell） */
+    private String readCgroupFile(String path) {
+        try {
+            java.io.File f = new java.io.File(path);
+            if (!f.exists()) return null;
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.FileReader(f));
+            String line = r.readLine();
+            r.close();
+            return line;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** 读取文件第一行 */
+    private String readFileLine(String path) {
+        try {
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.FileReader(path));
+            String line = reader.readLine();
+            reader.close();
+            return line;
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 }

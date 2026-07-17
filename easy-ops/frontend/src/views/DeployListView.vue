@@ -13,9 +13,6 @@
           <a-select v-model:value="form.projectId" style="width: 220px" placeholder="选择要部署的应用" @change="onProjectChange">
             <a-select-option v-for="p in projects" :key="p.id" :value="p.id">
               {{ p.name }}
-              <template #suffixIcon>
-                <info-circle-outlined />
-              </template>
             </a-select-option>
           </a-select>
         </a-form-item>
@@ -30,9 +27,13 @@
         </a-form-item>
 
         <a-form-item label="部署节点">
-          <a-space wrap>
+          <a-space wrap v-if="targetNodes.length > 0">
             <a-tag v-for="n in targetNodes" :key="n" color="blue">{{ n }}</a-tag>
           </a-space>
+          <span v-else>
+            <a-tag color="error">⚠️ 未配置节点</a-tag>
+            <router-link to="/projects" style="font-size:12px; margin-left:4px">去配置 →</router-link>
+          </span>
         </a-form-item>
 
         <a-form-item label="部署方式">
@@ -50,15 +51,62 @@
 
         <a-form-item>
           <a-button type="primary" @click="startDeploy" :loading="deploying"
-                    :disabled="!form.projectId || !form.versionId">
-            {{ form.deployMode === 'now' ? '🚀 执行部署' : '⏰ 创建定时计划' }}
+                    :disabled="!form.projectId || !form.versionId || !hasNodeIds || deploying">
+            {{ deploying ? '⏳ 部署中...' : (form.deployMode === 'now' ? '🚀 执行部署' : '⏰ 创建定时计划') }}
           </a-button>
+        </a-form-item>
+
+        <a-form-item>
+          <a-popconfirm title="强制释放部署锁？仅在部署卡住时使用" ok-text="释放" cancel-text="取消" @confirm="handleForceUnlock">
+            <a-button size="small" danger :disabled="!form.projectId">🔓 解除锁定</a-button>
+          </a-popconfirm>
         </a-form-item>
       </a-form>
     </a-card>
 
-    <!-- 部署结果区域 -->
-    <a-card v-if="lastResult" :bordered="false" style="border-radius: 8px; margin-bottom: 16px"
+    <!-- ========== 部署进度：每个节点独立卡片（实时 WebSocket 推送） ========== -->
+    <a-card v-if="deploying" :bordered="false" style="border-radius: 8px; margin-bottom: 16px; border-left: 4px solid #1890ff">
+      <template #title>
+        <a-space>
+          <loading-outlined spin style="color: #1890ff" />
+          <span style="font-weight:600">部署进行中</span>
+          <a-tag color="processing">{{ deployElapsed }}s</a-tag>
+          <span style="font-size:12px;color:#888">（{{ doneNodeCount }}/{{ nodeProgressList.length }} 节点已完成）</span>
+        </a-space>
+      </template>
+
+      <!-- 总体进度条 -->
+      <a-progress :percent="overallPercent" :status="overallProgressStatus" size="small" style="margin-bottom: 16px" />
+
+      <!-- 每个节点的状态卡片 -->
+      <div v-for="(np, i) in nodeProgressList" :key="i" class="node-progress-item">
+        <div class="node-progress-header">
+          <a-space>
+            <loading-outlined v-if="np.phase === 'running'" spin style="color:#1890ff" />
+            <check-circle-outlined v-else-if="np.phase === 'done'" style="color:#52c41a" />
+            <close-circle-outlined v-else-if="np.phase === 'failed'" style="color:#ff4d4f" />
+            <clock-circle-outlined v-else style="color:#d9d9d9" />
+            <span style="font-weight:500">{{ np.nodeName }}</span>
+          </a-space>
+          <a-space>
+            <a-tag :color="nodePhaseColor(np.phase)">{{ nodePhaseText(np) }}</a-tag>
+          </a-space>
+        </div>
+        <!-- 进行中的节点显示详细步骤 -->
+        <div class="node-progress-steps">
+          <a-steps :current="np.currentStep + 1" size="small" :status="np.phase === 'failed' ? 'error' : np.phase === 'running' ? 'process' : 'finish'">
+            <a-step title="停止" />
+            <a-step title="传输" />
+            <a-step title="启动" />
+            <a-step title="验证" />
+          </a-steps>
+          <div v-if="np.detail" style="font-size:12px;color:#888;margin-top:4px">{{ np.detail }}</div>
+        </div>
+      </div>
+    </a-card>
+
+    <!-- ========== 部署结果：每个节点详情 ========== -->
+    <a-card v-if="lastResult && !deploying" :bordered="false" style="border-radius: 8px; margin-bottom: 16px"
             :class="'result-card-' + (lastResult.status === 1 || lastResult.status === 4 ? 'success' : lastResult.status === 5 ? 'schedule' : 'fail')">
       <template #title>
         <a-space>
@@ -69,7 +117,22 @@
         </a-space>
       </template>
 
-      <a-timeline v-if="lastResult.steps" style="margin:0">
+      <!-- 多节点部署结果 -->
+      <template v-if="lastResult.nodeResults && lastResult.nodeResults.length > 0">
+        <div v-for="(nr, i) in lastResult.nodeResults" :key="i" class="node-result-item">
+          <div class="node-result-header">
+            <a-space>
+              <check-circle-outlined v-if="nr.success" style="color:#52c41a" />
+              <close-circle-outlined v-else style="color:#ff4d4f" />
+              <span style="font-weight:500">{{ nr.nodeName || '节点#' + nr.nodeId }}</span>
+            </a-space>
+            <span :style="{ color: nr.success ? '#52c41a' : '#ff4d4f', fontWeight: 500 }">{{ nr.message }}</span>
+          </div>
+        </div>
+      </template>
+
+      <!-- 单节点回滚结果 steps -->
+      <a-timeline v-else-if="lastResult.steps" style="margin:0">
         <a-timeline-item v-for="(step, i) in lastResult.steps" :key="i"
                          :color="step.success ? 'green' : 'red'">
           <template #dot>
@@ -80,6 +143,7 @@
           <pre class="step-detail">{{ step.detail }}</pre>
         </a-timeline-item>
       </a-timeline>
+
       <a-collapse ghost style="margin-top:8px">
         <a-collapse-panel header="📄 查看完整日志">
           <pre class="log-pre">{{ lastResult.log }}</pre>
@@ -87,7 +151,7 @@
       </a-collapse>
     </a-card>
 
-    <!-- 部署历史 -->
+    <!-- ========== 部署历史 ========== -->
     <a-card :bordered="false" style="border-radius: 8px">
       <template #title>
         <a-space>
@@ -101,14 +165,23 @@
                :pagination="historyPagination" row-key="id" size="small"
                @change="handleTableChange">
         <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'projectName'">
+            <a-tag color="blue">{{ projectMap[String(record.projectId)] || '项目#' + record.projectId }}</a-tag>
+          </template>
           <template v-if="column.key === 'status'">
             <a-badge :status="statusMap[record.status]?.badge" :text="statusMap[record.status]?.text" />
           </template>
           <template v-if="column.key === 'nodeName'">
             {{ getNodeName(record.nodeId) || '节点#' + record.nodeId }}
           </template>
+          <template v-if="column.key === 'versionId'">
+            <span style="font-weight:500">v{{ record.versionId }}</span>
+          </template>
           <template v-if="column.key === 'startTime'">
             {{ fmtTime(record.startTime) }}
+          </template>
+          <template v-if="column.key === 'endTime'">
+            {{ fmtTime(record.endTime) }}
           </template>
           <template v-if="column.key === 'scheduleTime'">
             <template v-if="record.scheduleTime && record.scheduleTime > 0">
@@ -121,7 +194,6 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-button type="link" size="small" @click="showLog(record)">📋 日志</a-button>
-            <a-button type="link" size="small" v-if="record.status === 1" @click="rollback(record)">↩️ 回滚</a-button>
             <a-popconfirm v-if="record.status === 5" title="确定取消此定时部署?" ok-text="确定" cancel-text="取消" @confirm="cancelSchedule(record.id)">
               <a-button type="link" size="small" danger><stop-outlined /> 取消</a-button>
             </a-popconfirm>
@@ -139,15 +211,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { message } from 'ant-design-vue'
+import { message, Modal } from 'ant-design-vue'
 import type { Dayjs } from 'dayjs'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
 import { getVersions } from '../api/version'
-import { getDeployRecords, createDeploy, rollbackDeploy, cancelScheduledDeploy } from '../api/deploy'
+import { getDeployRecords, createDeploy, cancelScheduledDeploy, forceUnlockDeploy } from '../api/deploy'
 import {
-  RocketOutlined, CheckCircleOutlined, CloseCircleOutlined,
-  ClockCircleOutlined, HistoryOutlined, InfoCircleOutlined, StopOutlined
+  RocketOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
+  ClockCircleOutlined, HistoryOutlined, StopOutlined
 } from '@ant-design/icons-vue'
 
 // ====== 表单状态 ======
@@ -165,17 +237,175 @@ const nodeMap = ref<Record<string, string>>({})
 const deploying = ref(false)
 const lastResult = ref<any>(null)
 
+// ====== 每节点进度（由 WebSocket 实时更新） ======
+interface NodeProgress {
+  nodeId: string
+  nodeName: string
+  phase: 'waiting' | 'running' | 'done' | 'failed'
+  currentStep: number  // 0-3
+  detail: string
+}
+const nodeProgressList = ref<NodeProgress[]>([])
+const deployElapsed = ref(0)
+let elapsedTimer: any = null
+let deployWs: WebSocket | null = null
+
+const doneNodeCount = computed(() =>
+  nodeProgressList.value.filter(n => n.phase === 'done' || n.phase === 'failed').length
+)
+
+const overallPercent = computed(() => {
+  const total = nodeProgressList.value.length
+  if (total === 0) return 0
+  const done = doneNodeCount.value
+  const running = nodeProgressList.value.filter(n => n.phase === 'running')
+  let runningProgress = 0
+  running.forEach(n => { runningProgress += ((n.currentStep + 1) / 4) * 25 })
+  return Math.min(99, Math.round(((done * 100) + runningProgress) / total))
+})
+
+const overallProgressStatus = computed(() => {
+  if (nodeProgressList.value.some(n => n.phase === 'failed')) return 'exception'
+  if (doneNodeCount.value === nodeProgressList.value.length && nodeProgressList.value.length > 0) return 'success'
+  return 'active'
+})
+
+function nodePhaseColor(phase: string): string {
+  if (phase === 'done') return 'success'
+  if (phase === 'failed') return 'error'
+  if (phase === 'running') return 'processing'
+  return 'default'
+}
+
+function nodePhaseText(np: NodeProgress): string {
+  if (np.phase === 'done') return '✅ 完成'
+  if (np.phase === 'failed') return '❌ 失败'
+  if (np.phase === 'running') {
+    const stepNames = ['停止旧进程', '传输文件', '启动应用', '健康检查']
+    return '⏳ ' + (stepNames[np.currentStep] || '处理中')
+  }
+  return '⏳ 等待中'
+}
+
+// ====== WebSocket 连接 ======
+function connectDeployWs(deployId: string) {
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const token = localStorage.getItem('token') || ''
+  const wsUrl = `${wsProtocol}//${location.host}/api/ws/deploy?deployId=${deployId}&token=${encodeURIComponent(token)}`
+  deployWs = new WebSocket(wsUrl)
+
+  deployWs.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      handleWsMessage(msg)
+    } catch (e) {
+      console.warn('WS parse error:', event.data)
+    }
+  }
+
+  deployWs.onerror = () => {
+    console.warn('Deploy WebSocket error')
+  }
+
+  deployWs.onclose = () => {
+    deployWs = null
+  }
+}
+
+function handleWsMessage(msg: any) {
+  if (msg.type === 'node-step') {
+    const np = nodeProgressList.value.find(n => n.nodeId === String(msg.nodeId))
+    if (!np) return
+
+    if (msg.status === 'running') {
+      np.phase = 'running'
+      np.currentStep = msg.stepIndex >= 0 ? msg.stepIndex : 0
+      np.detail = msg.detail || ''
+      // 如果前面有节点还是 waiting，激活第一个
+      const firstWaiting = nodeProgressList.value.find(n => n.phase === 'waiting')
+      if (firstWaiting && firstWaiting !== np) {
+        // 保持 waiting，等当前节点完成后再激活
+      }
+    } else if (msg.status === 'done') {
+      np.currentStep = msg.stepIndex >= 0 ? msg.stepIndex : np.currentStep
+      np.detail = msg.detail || ''
+      // 如果是最后一步（health）完成，标记节点完成
+      if (msg.step === 'health' || msg.step === 'transfer') {
+        np.phase = 'done'
+        np.currentStep = 3
+        // 激活下一个 waiting 节点
+        const nextWaiting = nodeProgressList.value.find(n => n.phase === 'waiting')
+        if (nextWaiting) nextWaiting.phase = 'running'
+      }
+    } else if (msg.status === 'failed') {
+      np.phase = 'failed'
+      np.detail = msg.detail || ''
+      // 激活下一个 waiting 节点
+      const nextWaiting = nodeProgressList.value.find(n => n.phase === 'waiting')
+      if (nextWaiting) nextWaiting.phase = 'running'
+    }
+  } else if (msg.type === 'deploy-done') {
+    // 部署完成
+    lastResult.value = {
+      status: msg.status,
+      message: msg.message,
+      nodeResults: msg.nodeResults || [],
+      log: (msg.nodeResults || []).map((nr: any) => `${nr.nodeName}: ${nr.message}`).join('\n')
+    }
+
+    // 标记所有 running 的节点为最终状态
+    nodeProgressList.value.forEach(np => {
+      if (np.phase === 'running') {
+        // 从 nodeResults 中找对应结果
+        const nr = (msg.nodeResults || []).find((r: any) => String(r.nodeId) === np.nodeId)
+        np.phase = nr?.success ? 'done' : 'failed'
+        np.currentStep = 3
+      }
+    })
+
+    const success = msg.status === 1 || msg.status === 4
+    if (success) message.success('✅ 部署成功')
+    else if (msg.status === 5) message.info('⏰ 定时部署计划已创建')
+    else message.error('❌ 部署失败')
+
+    deploying.value = false
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+    if (deployWs) { deployWs.close(); deployWs = null }
+    fetchHistory()
+  }
+}
+
+function disconnectWs() {
+  if (deployWs) {
+    deployWs.close()
+    deployWs = null
+  }
+}
+
 // ====== 部署历史 ======
 const deployHistory = ref<any[]>([])
 const loadingHistory = ref(false)
-const historyPagination = ref({ current: 1, pageSize: 20, total: 0 })
+const historyPagination = ref({
+  current: 1,
+  pageSize: 10,
+  total: 0,
+  showSizeChanger: true,
+  showQuickJumper: true,
+  pageSizeOptions: ['10', '20', '50'],
+  showTotal: (total: number) => `共 ${total} 条`
+})
 const logVisible = ref(false)
 const logContent = ref('')
 const nowMs = ref(Date.now())
-let refreshTimer: any = null
 let countdownTimer: any = null
 
 // ====== 计算属性 ======
+const hasNodeIds = computed(() => {
+  if (!form.value.projectId) return false
+  const p = projects.value.find(p => p.id === form.value.projectId)
+  return !!(p && p.nodeIds && String(p.nodeIds).trim())
+})
+
 const targetNodes = computed(() => {
   if (!form.value.projectId) return []
   const p = projects.value.find(p => p.id === form.value.projectId)
@@ -188,10 +418,13 @@ const pendingCount = computed(() =>
   deployHistory.value.filter(r => r.status === 5).length
 )
 
+const projectMap = ref<Record<string, string>>({})
+// versionMap removed (unused)
+
 const statusMap: Record<number, { badge: string; text: string }> = {
   0: { badge: 'processing', text: '⏳ 进行中' },
-  1: { badge: 'success', text: '✅ 部署成功' },
-  2: { badge: 'error', text: '❌ 部署失败' },
+  1: { badge: 'success', text: '✅ 成功' },
+  2: { badge: 'error', text: '❌ 失败' },
   3: { badge: 'default', text: '⛔ 已取消' },
   4: { badge: 'success', text: '↩️✅ 回滚成功' },
   5: { badge: 'warning', text: '⏰ 待部署' }
@@ -199,13 +432,14 @@ const statusMap: Record<number, { badge: string; text: string }> = {
 
 const historyColumns = [
   { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '版本', dataIndex: 'versionId', key: 'versionId', width: 70 },
-  { title: 'Jar包', dataIndex: 'jarName', key: 'jarName', width: 130, ellipsis: true },
+  { title: '应用', dataIndex: 'projectId', key: 'projectName', width: 120 },
   { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 130 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 110 },
-  { title: '执行时间', dataIndex: 'scheduleTime', key: 'scheduleTime', width: 170 },
-  { title: '创建时间', dataIndex: 'startTime', key: 'startTime', width: 160 },
-  { title: '操作', key: 'action', width: 180, fixed: 'right' as const }
+  { title: '版本', dataIndex: 'versionId', key: 'versionId', width: 80 },
+  { title: 'Jar包', dataIndex: 'jarName', key: 'jarName', width: 130, ellipsis: true },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 160 },
+  { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160 },
+  { title: '操作', key: 'action', width: 100, fixed: 'right' as const }
 ]
 
 // ====== 方法 ======
@@ -245,6 +479,16 @@ async function cancelSchedule(id: number) {
   }
 }
 
+async function handleForceUnlock() {
+  if (!form.value.projectId) return
+  try {
+    await forceUnlockDeploy(form.value.projectId)
+    message.success('🔓 部署锁已释放，可以重新部署了')
+  } catch (e: any) {
+    message.error('释放失败: ' + (e.message || ''))
+  }
+}
+
 async function loadProjects() {
   const res = await getProjects()
   projects.value = res.data.list
@@ -258,6 +502,12 @@ async function loadNodes() {
   nodeMap.value = map
 }
 
+function buildProjectMap() {
+  const map: Record<string, string> = {}
+  projects.value.forEach((p: any) => map[String(p.id)] = p.name)
+  projectMap.value = map
+}
+
 async function onProjectChange() {
   form.value.versionId = undefined
   lastResult.value = null
@@ -268,12 +518,17 @@ async function onProjectChange() {
 }
 
 async function fetchHistory() {
-  if (!form.value.projectId) return
   loadingHistory.value = true
   try {
-    const res = await getDeployRecords(form.value.projectId, historyPagination.value.current, historyPagination.value.pageSize)
+    // 获取所有项目的部署历史（不按 projectId 过滤）
+    const res = await getDeployRecords(
+      undefined as any,
+      historyPagination.value.current,
+      historyPagination.value.pageSize
+    )
     deployHistory.value = res.data.list
     historyPagination.value.total = res.data.total
+    buildProjectMap()
   } finally { loadingHistory.value = false }
 }
 
@@ -284,35 +539,88 @@ function handleTableChange(pag: any) {
 }
 
 async function startDeploy() {
+  if (deploying.value) {
+    message.warning('部署正在进行中，请勿重复提交')
+    return
+  }
+
   if (!form.value.projectId || !form.value.versionId) { message.warning('请选择应用和版本'); return }
   if (form.value.deployMode === 'schedule') {
     if (!form.value.scheduleDate) { message.warning('请选择计划执行时间'); return }
     if (form.value.scheduleDate.valueOf() <= Date.now()) { message.warning('计划时间必须晚于当前时间'); return }
   }
 
-  // 从应用配置中获取目标节点（后端会自动分发到所有节点）
   const p = projects.value.find(p => p.id === form.value.projectId)
-  if (!p || !p.nodeIds) { message.warning('该应用未配置部署节点'); return }
+  if (!p || !p.nodeIds) {
+    Modal.warning({
+      title: "⚠️ 应用未配置部署节点",
+      content: `应用「${p?.name || ''}」尚未绑定任何部署节点，请先到【应用管理】→ 编辑应用 → 选择部署节点后再操作。`,
+      okText: "我知道了"
+    })
+    return
+  }
 
+  // ====== 开始部署 ======
   deploying.value = true
   lastResult.value = null
+  deployElapsed.value = 0
+
+  // 解析节点列表并初始化每节点进度
+  const nodeIds = p.nodeIds.split(',').map((s: string) => s.trim()).filter(Boolean)
+  nodeProgressList.value = nodeIds.map((id: string, i: number) => ({
+    nodeId: id,
+    nodeName: nodeMap.value[id] || '节点#' + id,
+    phase: i === 0 ? 'running' : 'waiting' as const,
+    currentStep: 0,
+    detail: ''
+  }))
+
+  // 启动计时器
+  elapsedTimer = setInterval(() => { deployElapsed.value++ }, 1000)
+
   try {
     const scheduleTime = form.value.deployMode === 'schedule' && form.value.scheduleDate
       ? form.value.scheduleDate.valueOf() : undefined
     const res = await createDeploy(form.value.projectId, form.value.versionId, undefined, scheduleTime)
-    lastResult.value = res.data
-    if (res.data.status === 1) message.success('✅ 部署成功')
-    else if (res.data.status === 5) message.info('⏰ 定时部署计划已创建')
-    else message.error('❌ 部署失败')
-    fetchHistory()
+    const data = res.data
+
+    if (data.status === 5) {
+      // 定时部署，直接结束
+      deploying.value = false
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+      message.info('⏰ 定时部署计划已创建')
+      fetchHistory()
+      return
+    }
+
+    // 连接 WebSocket 获取实时进度
+    if (data.deployId) {
+      connectDeployWs(data.deployId)
+    } else {
+      // 没有 deployId（不应该发生），直接结束
+      deploying.value = false
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+    }
   } catch (e: any) {
+    deploying.value = false
+    if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
+    const errMsg = e?.response?.data?.message || e.message || '未知错误'
+    const isConflict = e?.response?.data?.code === 1009 || errMsg.includes('正在部署中')
     lastResult.value = {
       status: 2,
-      message: '❌ 部署请求失败',
-      steps: [{ name: '❌ 异常', success: false, detail: e.message || '未知错误' }],
-      log: e.message || '未知错误'
+      message: isConflict ? '⚠️ 部署冲突' : '❌ 部署请求失败',
+      nodeResults: [{ nodeId: '?', nodeName: '?', success: false, message: errMsg }],
+      log: errMsg
     }
-  } finally { deploying.value = false }
+    nodeProgressList.value.forEach(np => {
+      if (np.phase === 'running') np.phase = 'failed'
+    })
+    if (isConflict) {
+      Modal.warning({ title: '⚠️ 部署冲突', content: errMsg, okText: '我知道了' })
+    } else {
+      message.error('❌ 部署失败: ' + errMsg)
+    }
+  }
 }
 
 function showLog(record: any) {
@@ -320,36 +628,53 @@ function showLog(record: any) {
   logVisible.value = true
 }
 
-async function rollback(record: any) {
-  try {
-    const res = await rollbackDeploy(record.id)
-    lastResult.value = res.data
-    message.info('回滚请求已执行')
-    fetchHistory()
-  } catch (e: any) {
-    message.error('回滚失败: ' + (e.message || '未知错误'))
-  }
-}
-
 onMounted(async () => {
   await Promise.all([loadProjects(), loadNodes()])
+  buildProjectMap()
   if (projects.value.length > 0) {
     form.value.projectId = projects.value[0].id
     await onProjectChange()
   }
-  // 每秒更新倒计时
-  countdownTimer = setInterval(() => {
-    nowMs.value = Date.now()
-  }, 1000)
+  fetchHistory()
+  countdownTimer = setInterval(() => { nowMs.value = Date.now() }, 1000)
 })
 
 onUnmounted(() => {
-  if (refreshTimer) clearInterval(refreshTimer)
   if (countdownTimer) clearInterval(countdownTimer)
+  if (elapsedTimer) clearInterval(elapsedTimer)
+  disconnectWs()
 })
 </script>
 
 <style scoped>
+.node-progress-item {
+  border: 1px solid var(--eo-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--eo-bg-muted);
+}
+.node-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.node-progress-steps {
+  margin-top: 4px;
+}
+.node-result-item {
+  border: 1px solid var(--eo-border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--eo-bg-muted);
+}
+.node-result-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 .step-detail {
   background: var(--eo-code-bg);
   color: var(--eo-code-text);

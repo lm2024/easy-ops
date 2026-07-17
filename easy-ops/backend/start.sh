@@ -31,6 +31,7 @@ fi
 
 echo "启动后端服务 (端口 8081)..."
 cd "$SCRIPT_DIR/server"
+# JWT_SECRET 仅用于启动校验（SecurityConfig），实际 token 由 SecureRandom 生成，非标准 JWT
 export JWT_SECRET="${JWT_SECRET:-easy-ops-jwt-secret-key-2024-secure-random}"
 nohup "$JAVA_BIN" -jar "$JAR" >> "$LOG_FILE" 2>&1 &
 

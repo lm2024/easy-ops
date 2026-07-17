@@ -188,24 +188,53 @@ export function generateStartScript(jarName: string, jvmOpts: string): string {
   return `#!/bin/bash
 # EasyOps 自动生成 — 在部署目录执行
 JAR_NAME=${jar}
+cd "$(dirname "$0")"
+
+# 先停掉同名 jar 的旧进程（防止端口冲突）
+OLD_PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
+if [ -n "$OLD_PIDS" ]; then
+  echo "发现旧进程，先停止: $OLD_PIDS"
+  for p in $OLD_PIDS; do kill "$p" 2>/dev/null; done
+  sleep 2
+  for p in $OLD_PIDS; do kill -9 "$p" 2>/dev/null; done
+fi
+
 mkdir -p logs
 nohup java ${jvmOpts} -jar "$JAR_NAME" >> logs/startup.log 2>&1 &
-echo $! > pid
-echo "Started PID=$(cat pid)"`
+echo "Started PID=$! jar=$JAR_NAME"`
 }
 
-export function generateStopScript(): string {
+export function generateStopScript(jarName?: string): string {
+  const jar = jarName || 'app.jar'
   return `#!/bin/bash
-PID_FILE=pid
-if [ ! -f "$PID_FILE" ]; then
-  echo "pid file not found"
-  exit 1
+# EasyOps 自动生成 — 按 jar 包名查找并停止进程
+JAR_NAME=${jar}
+
+# 按 jar 名查找进程（排除 grep 自身）
+PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
+
+if [ -z "$PIDS" ]; then
+  echo "未找到 $JAR_NAME 的运行进程"
+  exit 0
 fi
-PID=$(cat "$PID_FILE")
-kill "$PID" 2>/dev/null && sleep 2
-kill -9 "$PID" 2>/dev/null
-rm -f "$PID_FILE"
-echo "Stopped PID=$PID"`
+
+echo "停止 $JAR_NAME 进程: $PIDS"
+for p in $PIDS; do
+  kill "$p" 2>/dev/null
+done
+
+# 等待优雅退出
+sleep 3
+
+# 检查是否还在，强杀残留
+for p in $PIDS; do
+  if kill -0 "$p" 2>/dev/null; then
+    echo "强杀残留进程: $p"
+    kill -9 "$p" 2>/dev/null
+  fi
+done
+
+echo "✅ 已停止 $JAR_NAME"`
 }
 
 function heapRange(env: EnvType, xmxMB: number, totalMemMB: number): string {
@@ -349,7 +378,7 @@ export function buildJvmTemplatePlan(
     osReserveMB,
     jvmOpts,
     startScript: generateStartScript(jar, jvmOpts),
-    stopScript: generateStopScript(),
+    stopScript: generateStopScript(jar),
     params: buildParamSpecs(env, xmsMB, xmxMB, cpuCores, totalMemMB),
     envProfile: getEnvProfile(env),
     memoryGuide: buildMemoryGuide(totalMemMB, osReserveMB, xmxMB),

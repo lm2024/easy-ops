@@ -27,3 +27,8 @@ export function updateProject(id: string, project: ProjectModel) {
 export function deleteProject(id: string) {
   return request.delete<any, Result>(`/projects/${id}`)
 }
+
+/** 对单个节点执行 start / stop / restart */
+export function operateProjectNode(projectId: string, nodeId: string, action: 'start' | 'stop' | 'restart') {
+  return request.post<any, Result<any>>(`/process/${projectId}/${nodeId}/${action}`)
+}

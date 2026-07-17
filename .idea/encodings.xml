@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/agent/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/agent/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/server/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/backend/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/easy-ops/demo-test-app/src/main/java" charset="UTF-8" />
+  </component>
+</project>
