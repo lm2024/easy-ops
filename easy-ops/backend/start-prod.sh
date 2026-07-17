@@ -15,6 +15,7 @@ if [ ! -f "$JAR" ]; then
 fi
 
 # 必须连同 server/data/ 一起拷贝，否则 H2 数据会丢失/重新初始化
+# JWT_SECRET 仅用于启动校验（SecurityConfig），实际 token 由 SecureRandom 生成，非标准 JWT
 export JWT_SECRET="${JWT_SECRET:-easy-ops-jwt-secret-key-2024-secure-random}"
 
 echo "启动后端服务 (端口 8081) ..."

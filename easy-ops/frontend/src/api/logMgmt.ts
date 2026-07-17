@@ -1,6 +1,6 @@
 import request from '../utils/request'
 import type {
-  Result, ProjectLogProfileModel, LogFileInfo, LogDiscoverResult, LogViewResult,
+  Result, ProjectLogProfileModel, LogDiscoverResult, LogViewResult,
   LogAggregateResult, LogSearchResult
 } from '../types'
 

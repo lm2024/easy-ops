@@ -490,12 +490,6 @@ async function reloadLogFiles() {
   }
 }
 
-function formatSize(size?: number) {
-  if (size == null) return '-'
-  if (size < 1024) return `${size}B`
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)}KB`
-  return `${(size / 1024 / 1024).toFixed(1)}MB`
-}
 
 function onProjectChange() {
   nodeId.value = undefined
@@ -684,7 +678,7 @@ function showLogDetail(record: LogAggregateEntry) {
 function showSearchDetail(item: LogSearchHit) {
   detailLog.value = {
     ...item,
-    content: item.matchedLine || item.content,
+    content: item.matchedLine || item.content || "",
     sourcePath: item.file
   }
   detailContext.value = item.context || []

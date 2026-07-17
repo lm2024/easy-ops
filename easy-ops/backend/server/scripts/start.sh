@@ -23,6 +23,7 @@ if [ ! -f "$SERVER_JAR" ]; then
   exit 1
 fi
 
+# JWT_SECRET 仅用于 SecurityConfig 启动校验，实际 token 由 SecureRandom 生成，非标准 JWT
 export JWT_SECRET
 ARGS=""
 for a in $(server_java_args); do ARGS="$ARGS $a"; done
