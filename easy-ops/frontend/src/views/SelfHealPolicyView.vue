@@ -68,27 +68,44 @@
         </a-select>
       </template>
 
-      <a-timeline>
-        <a-timeline-item
-          v-for="evt in events"
-          :key="evt.id"
-          :color="eventColor(evt.eventType)"
-        >
-          <div class="event-title">
-            <a-tag>{{ evt.eventType }}</a-tag>
-            <span>{{ evt.nodeName || evt.nodeId }}</span>
-            <span class="event-time">{{ formatTime(evt.createTime) }}</span>
-          </div>
-          <div class="event-detail">{{ evt.detail }}</div>
-          <div v-if="evt.retryCount != null" class="event-retry">
-            重试 {{ evt.retryCount }}/{{ evt.maxRetries }}
-          </div>
-        </a-timeline-item>
-      </a-timeline>
-      <a-empty v-if="!events.length && !eventsLoading" />
-      <div v-if="eventsTotal > events.length" style="text-align: center; margin-top: 12px">
-        <a-button :loading="eventsLoading" @click="loadMoreEvents">加载更多</a-button>
-      </div>
+      <a-table
+        :columns="eventColumns"
+        :data-source="events"
+        :loading="eventsLoading"
+        :pagination="eventPagination"
+        row-key="id"
+        size="small"
+        @change="handleEventTableChange"
+      >
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'projectName'">
+            <a-tag color="blue">{{ record.projectName || ('项目#' + record.projectId) }}</a-tag>
+          </template>
+          <template v-if="column.key === 'nodeName'">
+            {{ record.nodeName || ('节点#' + record.nodeId) }}
+          </template>
+          <template v-if="column.key === 'eventType'">
+            <a-tag :color="eventColor(record.eventType)">{{ eventLabel(record.eventType) }}</a-tag>
+          </template>
+          <template v-if="column.key === 'retryInfo'">
+            <span v-if="record.retryCount != null">
+              {{ record.retryCount }} / {{ record.maxRetries }}
+              <a-tag v-if="record.retryCount >= record.maxRetries" color="red" size="small">已熔断</a-tag>
+            </span>
+            <span v-else>-</span>
+          </template>
+          <template v-if="column.key === 'detail'">
+            <a-tooltip :title="record.detail">
+              <span style="max-width: 300px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">
+                {{ record.detail || '-' }}
+              </span>
+            </a-tooltip>
+          </template>
+          <template v-if="column.key === 'createTime'">
+            {{ formatTime(record.createTime) }}
+          </template>
+        </template>
+      </a-table>
     </a-card>
 
     <!-- 策略编辑 -->
@@ -145,9 +162,15 @@ const policies = ref<SelfHealPolicyModel[]>([])
 const policyLoading = ref(false)
 const events = ref<SelfHealEventModel[]>([])
 const eventsLoading = ref(false)
-const eventsTotal = ref(0)
-const eventsPage = ref(1)
 const filterProjectId = ref<number>()
+const eventPagination = ref({
+  current: 1,
+  pageSize: 20,
+  total: 0,
+  showSizeChanger: true,
+  pageSizeOptions: ['20', '50', '100'],
+  showTotal: (total: number) => `共 ${total} 条`
+})
 const policyModalVisible = ref(false)
 const policySaving = ref(false)
 const editingPolicy = reactive<SelfHealPolicyModel>({
@@ -165,6 +188,15 @@ const policyColumns = [
   { title: '操作', key: 'action', width: 160 }
 ]
 
+const eventColumns = [
+  { title: '应用', key: 'projectName', width: 120 },
+  { title: '节点', key: 'nodeName', width: 140 },
+  { title: '事件类型', key: 'eventType', width: 110 },
+  { title: '重试次数', key: 'retryInfo', width: 120 },
+  { title: '详情', key: 'detail', ellipsis: true },
+  { title: '时间', key: 'createTime', width: 150 }
+]
+
 function formatTime(ts?: number) {
   return ts ? dayjs(ts).format('MM-DD HH:mm:ss') : ''
 }
@@ -174,6 +206,13 @@ function eventColor(type: string) {
     RESTART: 'blue', RETRY: 'orange', CIRCUIT_BREAK: 'red', RECOVER: 'green'
   }
   return map[type] || 'gray'
+}
+
+function eventLabel(type: string) {
+  const map: Record<string, string> = {
+    RESTART: '重启', RETRY: '重试', CIRCUIT_BREAK: '熔断', RECOVER: '恢复'
+  }
+  return map[type] || type
 }
 
 async function fetchPolicies() {
@@ -187,26 +226,20 @@ async function fetchPolicies() {
 }
 
 async function fetchEvents() {
-  eventsPage.value = 1
   eventsLoading.value = true
   try {
-    const res = await listEvents(filterProjectId.value, 1, 20)
+    const res = await listEvents(filterProjectId.value, eventPagination.value.current, eventPagination.value.pageSize)
     events.value = res.data?.list || []
-    eventsTotal.value = res.data?.total || 0
+    eventPagination.value.total = res.data?.total || 0
   } finally {
     eventsLoading.value = false
   }
 }
 
-async function loadMoreEvents() {
-  eventsPage.value++
-  eventsLoading.value = true
-  try {
-    const res = await listEvents(filterProjectId.value, eventsPage.value, 20)
-    events.value.push(...(res.data?.list || []))
-  } finally {
-    eventsLoading.value = false
-  }
+function handleEventTableChange(pag: any) {
+  eventPagination.value.current = pag.current
+  eventPagination.value.pageSize = pag.pageSize
+  fetchEvents()
 }
 
 function showEditPolicy(record: SelfHealPolicyModel | null) {

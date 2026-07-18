@@ -5,20 +5,27 @@
         SELECT * FROM operation_log WHERE id = #{id}
     </select>
     <select id="findByModule" resultType="com.ops.common.model.OperationLogModel">
-        SELECT * FROM operation_log
+        SELECT o.*, u.username FROM operation_log o
+        LEFT JOIN sys_user u ON o.user_id = u.id
         <where>
             <if test="module != null and module != ''">
-                AND module = #{module}
+                AND o.module = #{module}
+            </if>
+            <if test="userId != null">
+                AND o.user_id = #{userId}
             </if>
         </where>
-        ORDER BY create_time DESC
+        ORDER BY o.create_time DESC
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
     <select id="countByModule" resultType="long">
-        SELECT COUNT(*) FROM operation_log
+        SELECT COUNT(*) FROM operation_log o
         <where>
             <if test="module != null and module != ''">
-                AND module = #{module}
+                AND o.module = #{module}
+            </if>
+            <if test="userId != null">
+                AND o.user_id = #{userId}
             </if>
         </where>
     </select>

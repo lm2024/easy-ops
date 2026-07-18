@@ -21,6 +21,7 @@
             <setting-outlined /> 告警配置
           </a-button>
           <a-popconfirm
+            v-if="isAdmin"
             title="确定要清空所有告警记录吗？"
             ok-text="确认清空"
             cancel-text="取消"
@@ -58,10 +59,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import type { AlarmModel } from '../types'
 import { getAlarms, clearAlarms } from '../api/monitor'
+import { useAuthStore } from '../stores/auth'
 import {
   SearchOutlined,
   SettingOutlined,
@@ -69,6 +71,9 @@ import {
   AlertOutlined,
   DeleteOutlined
 } from '@ant-design/icons-vue'
+
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'ADMIN')
 
 const alarms = ref<AlarmModel[]>([])
 const loading = ref(false)

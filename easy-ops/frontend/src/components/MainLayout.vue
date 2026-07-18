@@ -55,7 +55,7 @@
           <a-menu-item key="monitor"><dashboard-outlined /><span>仪表盘</span></a-menu-item>
           <a-menu-item key="app-monitor"><fund-outlined /><span>应用监控</span></a-menu-item>
           <a-menu-item key="alarms"><alert-outlined /><span>告警中心</span></a-menu-item>
-          <a-menu-item key="alarm-config"><notification-outlined /><span>告警配置</span></a-menu-item>
+          <a-menu-item key="alarm-config"><setting-outlined /><span>告警配置</span></a-menu-item>
           <a-menu-item key="self-heal"><medicine-box-outlined /><span>自愈策略</span></a-menu-item>
         </a-sub-menu>
 
@@ -196,7 +196,7 @@ import {
   UserOutlined, LogoutOutlined, CloudServerOutlined,
   ClusterOutlined, FolderOpenOutlined, TagOutlined, RocketOutlined,
   CodeOutlined, FileTextOutlined, SettingOutlined,
-  DashboardOutlined, AlertOutlined, NotificationOutlined,
+  DashboardOutlined, AlertOutlined,
   BulbOutlined, TeamOutlined, AuditOutlined,
   FundOutlined, MedicineBoxOutlined, BookOutlined,
   SkinOutlined
@@ -238,8 +238,8 @@ const pathPrefixMap: Record<string, string> = {
 const prefixToSub: Record<string, string> = {
   nodes: 'sub-core', projects: 'sub-core', versions: 'sub-core', deploy: 'sub-core',
   console: 'sub-tools', 'config-manage': 'sub-tools', 'log-manage': 'sub-tools',
-  monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', alarms: 'sub-monitor',
-  'alarm-config': 'sub-monitor', 'self-heal': 'sub-monitor',
+  monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
+  'self-heal': 'sub-monitor',
   knowledge: 'sub-knowledge',
   'ai-config': 'sub-system', users: 'sub-system', operations: 'sub-system'
 }
@@ -299,7 +299,7 @@ const monitorItems = [
   { key: 'monitor', title: '仪表盘', icon: DashboardOutlined },
   { key: 'app-monitor', title: '应用监控', icon: FundOutlined },
   { key: 'alarms', title: '告警中心', icon: AlertOutlined },
-  { key: 'alarm-config', title: '告警配置', icon: NotificationOutlined },
+  { key: 'alarm-config', title: '告警配置', icon: SettingOutlined },
   { key: 'self-heal', title: '自愈策略', icon: MedicineBoxOutlined },
 ]
 const knowledgeItems = [
