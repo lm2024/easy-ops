@@ -27,7 +27,7 @@
 
 构建：`cd easy-ops/backend && mvn package -DskipTests`；离线：`./build-offline.sh`。
 
-默认管理员 `admin / admin123`。
+默认管理员 `admin / Admin123!`。
 
 ## 部署（三机不共享）
 

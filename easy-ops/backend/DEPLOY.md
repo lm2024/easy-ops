@@ -164,7 +164,7 @@ cd backend && docker-compose up -d
 | Agent | `easy-ops-agent-1.0.0-SNAPSHOT.jar` | 2123 `/api` |
 | 前端 | dist（Nginx） | 80/3000 |
 
-默认账号：`admin / admin123`
+默认账号：`admin / Admin123!`
 
 ---
 

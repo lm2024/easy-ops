@@ -37,3 +37,8 @@ export function updateUser(id: number, user: UserModel) {
 export function deleteUser(id: number) {
   return request.delete<any, Result>(`/auth/users/${id}`)
 }
+
+/** 重置管理员密码为默认密码 Admin123! */
+export function resetAdminPassword() {
+  return request.post<any, Result<string>>('/auth/reset')
+}
