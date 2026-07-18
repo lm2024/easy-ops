@@ -114,10 +114,12 @@ public class MonitorCollectorService {
         List<String> checkMethods = new ArrayList<String>();
         checkMethods.add("PS_GREP");
 
+        // 进程在运行 → 健康；进程不在 → 异常
         String healthStatus = alive ? "UP" : "DOWN";
         String healthDetail = alive ? "Shell检测: 进程运行中" : "Shell检测: 进程未运行";
         Integer responseMs = null;
 
+        // HTTP 探针：只补充信息，不改变健康状态（进程活着就是健康）
         ProjectHealthProbeModel probe = resolveProbe(project);
         if (alive && probe != null && probe.getEnabled() != null && probe.getEnabled() == 1
                 && StringUtils.hasText(probe.getUrl())) {
@@ -141,14 +143,10 @@ public class MonitorCollectorService {
             responseMs = toInt(probeData.get("responseMs"));
             snap.setResponseMs(responseMs);
             if ("UP".equals(probeStatus)) {
-                healthStatus = "UP";
                 healthDetail = "Shell+HTTP探针: 全部通过";
-            } else if ("DOWN".equals(probeStatus)) {
-                healthStatus = "DOWN";
-                healthDetail = "HTTP探针失败: " + diagnoseProbeFailure(probeDetail, probe);
             } else {
-                healthStatus = "DEGRADED";
-                healthDetail = "HTTP探针异常: " + diagnoseProbeFailure(probeDetail, probe);
+                // 探针失败不影响健康状态，但记录原因供排查
+                healthDetail = "进程运行中，HTTP探针未通过: " + diagnoseProbeFailure(probeDetail, probe);
             }
         }
 
