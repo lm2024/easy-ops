@@ -190,7 +190,7 @@ export function generateStartScript(jarName: string, jvmOpts: string): string {
 JAR_NAME=${jar}
 cd "$(dirname "$0")"
 
-# 先停掉同名 jar 的旧进程（防止端口冲突）
+# ========== 1. 停掉旧进程（防止端口冲突）==========
 OLD_PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
 if [ -n "$OLD_PIDS" ]; then
   echo "发现旧进程，先停止: $OLD_PIDS"
@@ -199,7 +199,48 @@ if [ -n "$OLD_PIDS" ]; then
   for p in $OLD_PIDS; do kill -9 "$p" 2>/dev/null; done
 fi
 
+# ========== 2. 清理历史日志（启动前）==========
 mkdir -p logs
+
+# 2a. 清理启动输出日志（每次重启重新记录）
+rm -f logs/startup.log logs/nohup.out 2>/dev/null
+
+# 2b. 清理 logback 归档日志（带日期后缀的）
+#     匹配: app-2026-07-17.log, app.2026-07-17.log, app.2026-07-17.0.log
+#           app-2026-07-17-1.log, app.log.2026-07-17 等
+#     保留: app.log, tm-info.log, tm-error.log 等实时日志（不带日期）
+find logs/ -maxdepth 1 -type f \\( \\
+  -name "*.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*" \\
+  -o -name "*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*" \\
+  -o -name "*.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*" \\
+\\) -delete 2>/dev/null
+
+# 2c. 清理归档子目录（如 logs/archive/）
+if [ -d "logs/archive" ]; then
+  rm -rf logs/archive/*
+  echo "已清理 logs/archive/ 归档目录"
+fi
+
+# 2d. 清理 heap dump 文件（OOM 产生的 .hprof，通常几百 MB 到几 GB）
+find . -maxdepth 2 -type f -name "*.hprof" -delete 2>/dev/null
+find . -maxdepth 2 -type f -name "java_pid*.hprof" -delete 2>/dev/null
+find . -maxdepth 2 -type f -name "heapdump.hprof" -delete 2>/dev/null
+# 也清理 GC 日志归档（如果有）
+find . -maxdepth 2 -type f -name "gc.log.*" -delete 2>/dev/null
+
+# 2e. 清理超大的实时日志（>50MB 截断保留最后 1000 行，防止磁盘撑满）
+for f in logs/*.log; do
+  [ -f "$f" ] || continue
+  SIZE=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null || echo 0)
+  if [ "$SIZE" -gt 52428800 ]; then
+    echo "日志 $f 超过 50MB，截断保留最后 1000 行"
+    tail -1000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  fi
+done
+
+echo "历史日志清理完成"
+
+# ========== 3. 启动应用 ==========
 nohup java ${jvmOpts} -jar "$JAR_NAME" >> logs/startup.log 2>&1 &
 echo "Started PID=$! jar=$JAR_NAME"`
 }

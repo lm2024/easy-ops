@@ -67,6 +67,14 @@ public class SecurityContext {
     }
 
     /**
+     * 判断当前用户是否为管理员
+     */
+    public boolean isAdmin() {
+        String role = getCurrentRole();
+        return role != null && role.equals("admin");
+    }
+
+    /**
      * 判断当前用户是否有权限访问指定项目 (SEC-004)
      * admin 角色拥有所有项目的权限
      */

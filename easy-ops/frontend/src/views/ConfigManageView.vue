@@ -3,548 +3,543 @@
     <a-card :bordered="false" style="border-radius: 8px">
       <template #title>
         <a-space>
-          <setting-outlined style="color: #722ed1" />
-          <span style="font-weight: 600">配置文件管理</span>
+          <setting-outlined style="color: #1890ff" />
+          <span style="font-weight: 600">配置管理</span>
         </a-space>
       </template>
       <template #extra>
         <a-space>
           <a-select
-            v-model:value="projectId"
+            v-model:value="selectedProjectId"
             style="width: 220px"
-            placeholder="选择项目"
+            placeholder="选择应用"
+            allow-clear
             @change="onProjectChange"
           >
-            <a-select-option v-for="p in projects" :key="p.id" :value="Number(p.id)">
+            <a-select-option v-for="p in projects" :key="p.id" :value="p.id">
               {{ p.name }}
             </a-select-option>
           </a-select>
-          <a-button :disabled="!projectId" @click="showAddFile">
-            <plus-outlined /> 新增配置
-          </a-button>
-          <a-button :disabled="!selectedFileId" :loading="refreshing" @click="handleRefresh">
-            <reload-outlined /> 刷新快照
+          <a-button type="primary" size="small" :disabled="!selectedProjectId" @click="showAddModal">
+            <plus-outlined /> 新建配置
           </a-button>
         </a-space>
       </template>
 
-      <a-row :gutter="16">
-        <a-col :span="8">
-          <a-table
-            :columns="fileColumns"
-            :data-source="configFiles"
-            :loading="filesLoading"
-            row-key="id"
-            size="small"
-            :pagination="false"
-            :row-class-name="fileRowClass"
-            :custom-row="fileCustomRow"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'isPrimary'">
-                <a-tag v-if="record.isPrimary === 1" color="blue">主配置</a-tag>
-              </template>
-              <template v-if="column.key === 'action'">
-                <a-popconfirm title="确认删除？" @confirm="handleDeleteFile(record.id)">
-                  <a-button type="link" size="small" danger>删除</a-button>
-                </a-popconfirm>
-              </template>
-            </template>
-          </a-table>
+      <!-- 未选择应用 -->
+      <a-empty v-if="!selectedProjectId" description="请先选择一个应用" style="margin: 80px 0" />
 
-          <a-divider>节点快照</a-divider>
-          <a-table
-            :columns="snapshotColumns"
-            :data-source="snapshots"
-            :loading="snapshotLoading"
-            row-key="nodeId"
-            size="small"
-            :pagination="false"
-          >
-            <template #bodyCell="{ column, record }">
-              <template v-if="column.key === 'syncStatus'">
-                <a-tag :color="syncColor(record.syncStatus)">{{ syncLabel(record.syncStatus) }}</a-tag>
-              </template>
-              <template v-if="column.key === 'action'">
-                <a-button type="link" size="small" @click="loadNodeContent(record.nodeId)">查看</a-button>
-              </template>
-            </template>
-          </a-table>
-          <a-button
-            v-if="snapshots.length > 1"
-            block
-            style="margin-top: 8px"
-            :loading="comparing"
-            @click="handleCompare"
-          >
-            <diff-outlined /> 对比差异
-          </a-button>
-        </a-col>
+      <!-- 已选择应用 -->
+      <template v-else>
+        <!-- 配置文件列表为空 -->
+        <a-empty v-if="!loading && configFiles.length === 0" description="该应用下暂无配置文件，点击「新建配置」添加" style="margin: 80px 0">
+          <a-button type="primary" @click="showAddModal"><plus-outlined /> 新建配置</a-button>
+        </a-empty>
 
-        <a-col :span="16">
-          <a-space style="margin-bottom: 12px">
-            <a-select
-              v-model:value="editNodeId"
-              style="width: 180px"
-              placeholder="编辑节点"
-              :disabled="!selectedFileId"
-            >
-              <a-select-option v-for="n in projectNodes" :key="n.id" :value="Number(n.id)">
-                {{ n.name }}
-              </a-select-option>
-            </a-select>
-            <a-button :disabled="!editNodeId" :loading="contentLoading" @click="loadContent">
-              <search-outlined /> 读取
-            </a-button>
-            <a-button type="primary" :disabled="!editNodeId" :loading="distributing" @click="showDistribute">
-              <cloud-upload-outlined /> 分发
-            </a-button>
-          </a-space>
-          <a-alert
-            v-if="contentError"
-            type="warning"
-            :message="contentError"
-            closable
-            style="margin-bottom: 8px"
-            @close="contentError = ''"
-          />
-          <a-space v-if="contentSource.type !== 'none'" style="margin-bottom: 8px">
-            <a-tag v-if="contentSource.type === 'read'" color="blue">
-              已读取节点: {{ contentSource.nodeName || contentSource.nodeId }}
-            </a-tag>
-            <a-tag v-else-if="contentSource.type === 'manual'" color="orange">
-              手动编辑中 — 未从节点 {{ projectNodes.find(n => Number(n.id) === editNodeId)?.name || editNodeId }} 读取
-            </a-tag>
-          </a-space>
-          <a-textarea
-              v-model:value="content"
-              :rows="22"
-              placeholder="选择配置文件和节点后点击「读取」获取远程内容，也可直接手动输入内容后分发..."
-              class="config-editor"
-            />
-        </a-col>
-      </a-row>
+        <!-- 左右分栏 -->
+        <a-row v-else :gutter="16" style="min-height: 500px">
+          <!-- 左侧：配置文件列表 -->
+          <a-col :span="6">
+            <div style="border-right: 1px solid #f0f0f0; padding-right: 12px">
+              <div style="font-weight: 500; margin-bottom: 8px; color: #666">配置文件 ({{ configFiles.length }})</div>
+              <div
+                v-for="file in configFiles"
+                :key="file.id"
+                class="config-file-item"
+                :class="{ active: selectedFile?.id === file.id }"
+                @click="selectFile(file)"
+              >
+                <div style="display: flex; align-items: center; justify-content: space-between">
+                  <div>
+                    <file-text-outlined style="margin-right: 4px; color: #1890ff" />
+                    <span style="font-weight: 500">{{ file.fileName }}</span>
+                  </div>
+                  <a-space size="small">
+                    <a-tooltip title="删除">
+                      <a-popconfirm title="确认删除此配置文件定义？" @confirm="handleDeleteFile(file.id!)">
+                        <delete-outlined style="color: #ff4d4f; cursor: pointer" />
+                      </a-popconfirm>
+                    </a-tooltip>
+                  </a-space>
+                </div>
+                <div style="font-size: 11px; color: #999; margin-top: 2px">{{ file.relativePath }}</div>
+                <!-- 同步状态 -->
+                <div v-if="fileSyncStatus[file.id!]" style="margin-top: 4px">
+                  <a-tag :color="fileSyncStatus[file.id!].allSame ? 'green' : 'orange'" size="small">
+                    {{ fileSyncStatus[file.id!].syncLabel }}
+                  </a-tag>
+                </div>
+              </div>
+            </div>
+          </a-col>
+
+          <!-- 右侧：编辑器 -->
+          <a-col :span="18">
+            <template v-if="selectedFile">
+              <!-- 文件名 + 节点配置状态 -->
+              <div style="margin-bottom: 8px">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
+                  <a-space>
+                    <span style="font-weight: 600; font-size: 15px">{{ selectedFile.fileName }}</span>
+                    <span style="color: #999; font-size: 12px">{{ selectedFile.relativePath }}</span>
+                  </a-space>
+                  <a-button size="small" @click="loadContentAuto" :loading="contentLoading">
+                    <reload-outlined /> 刷新
+                  </a-button>
+                </div>
+
+                <!-- 节点配置状态条：一眼看出哪些节点配置一致/不同 -->
+                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
+                  <div
+                    v-for="n in nodeConfigStatus"
+                    :key="n.nodeId"
+                    class="node-status-chip"
+                    :class="{ active: editNodeId === n.nodeId, online: n.online, offline: !n.online }"
+                    @click="switchNode(n)"
+                  >
+                    <a-badge :status="n.online ? (n.hashOk ? 'success' : 'warning') : 'default'" />
+                    <span>{{ n.nodeName }}</span>
+                    <span v-if="!n.online" style="color: #999; font-size: 10px">(离线)</span>
+                  </div>
+                </div>
+
+                <!-- 当前读取状态 -->
+                <a-alert v-if="contentSource === 'manual' && editContent" type="warning" show-icon style="margin-bottom: 8px" :banner="true">
+                  <template #message>内容已手动修改，分发前请确认</template>
+                </a-alert>
+                <a-alert v-if="contentError" type="error" show-icon style="margin-bottom: 8px">
+                  <template #message>{{ contentError }}</template>
+                </a-alert>
+                <a-alert v-if="!editContent && !contentLoading && !contentError" type="info" show-icon style="margin-bottom: 8px">
+                  <template #message>
+                    <span v-if="editNodeId">该节点上此配置文件为空或不存在，请编辑后分发</span>
+                    <span v-else>所有节点均无此配置文件，请编辑后分发</span>
+                  </template>
+                </a-alert>
+                <div v-if="editNodeId && editContent && !contentError" style="font-size: 12px; color: #52c41a; margin-bottom: 8px">
+                  ✓ 已从 <b>{{ currentEditNodeName }}</b> 读取配置内容
+                </div>
+              </div>
+
+              <!-- 编辑器 -->
+              <a-textarea
+                v-model:value="editContent"
+                :rows="22"
+                placeholder="配置内容..."
+                style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6"
+                @input="onContentEdit"
+              />
+
+              <!-- 分发面板 -->
+              <a-card size="small" style="margin-top: 12px" title="📤 分发配置">
+                <a-row :gutter="16" align="middle">
+                  <a-col :span="14">
+                    <div style="color: #888; font-size: 12px; margin-bottom: 4px">分发到节点：</div>
+                    <a-checkbox-group v-model:value="distributeNodeIds">
+                      <a-checkbox v-for="n in projectNodes" :key="n.id" :value="n.id">
+                        {{ n.name }}
+                      </a-checkbox>
+                    </a-checkbox-group>
+                  </a-col>
+                  <a-col :span="4">
+                    <a-checkbox v-model:checked="restartAfterDistribute">分发后重启</a-checkbox>
+                  </a-col>
+                  <a-col :span="6" style="text-align: right">
+                    <a-button
+                      type="primary"
+                      @click="handleDistribute"
+                      :loading="distributing"
+                      :disabled="distributeNodeIds.length === 0 || !editContent"
+                    >
+                      <send-outlined /> 保存并分发
+                    </a-button>
+                  </a-col>
+                </a-row>
+
+                <!-- 分发结果 -->
+                <div v-if="distributeResult" style="margin-top: 8px">
+                  <a-divider style="margin: 8px 0" />
+                  <div v-for="(r, i) in distributeResult" :key="i" style="font-size: 12px; margin-bottom: 2px">
+                    <check-circle-outlined v-if="r.success" style="color: #52c41a; margin-right: 4px" />
+                    <close-circle-outlined v-else style="color: #ff4d4f; margin-right: 4px" />
+                    {{ r.nodeName }}: {{ r.message }}
+                  </div>
+                </div>
+              </a-card>
+            </template>
+
+            <a-empty v-else description="请从左侧选择一个配置文件" style="margin: 80px 0" />
+          </a-col>
+        </a-row>
+      </template>
     </a-card>
 
-    <!-- 新增配置文件 -->
-    <a-modal v-model:open="addFileVisible" title="新增配置文件" @ok="handleAddFile" width="560px">
-      <a-alert type="info" show-icon style="margin-bottom:12px"
-               message="快速模板：选择环境后一键填入文件名和路径" />
-      <a-space wrap style="margin-bottom: 16px">
-        <a-button size="small" @click="applyConfigPreset('dev')">🌱 dev</a-button>
-        <a-button size="small" @click="applyConfigPreset('test')">🧪 test</a-button>
-        <a-button size="small" @click="applyConfigPreset('prod')">🚀 prod</a-button>
-        <a-button size="small" type="primary" ghost @click="applyConfigPreset('default')">默认 application.yml</a-button>
-      </a-space>
+    <!-- 新建配置弹窗 -->
+    <a-modal v-model:open="addModalVisible" title="新建配置文件" @ok="handleAddFile" :confirm-loading="addLoading" width="420px">
       <a-form layout="vertical">
-        <a-form-item label="文件名" required>
-          <a-input v-model:value="newFile.fileName" placeholder="application.yml" />
+        <a-form-item label="配置文件路径（相对于部署目录）" required>
+          <a-input v-model:value="newFile.relativePath" placeholder="config/application.yml" size="large" />
         </a-form-item>
-        <a-form-item label="相对路径" required>
-          <a-input v-model:value="newFile.relativePath" placeholder="config/application.yml" />
-        </a-form-item>
-        <a-form-item label="备注">
-          <a-input v-model:value="newFile.remark" />
-        </a-form-item>
+        <div style="margin-bottom: 16px">
+          <div style="color: #888; font-size: 12px; margin-bottom: 6px">快速选择常用配置：</div>
+          <a-space wrap>
+            <a-button v-for="preset in pathPresets" :key="preset.path" size="small" @click="applyPreset(preset)">
+              {{ preset.label }}
+            </a-button>
+          </a-space>
+        </div>
       </a-form>
-    </a-modal>
-
-    <!-- 分发 -->
-    <a-modal
-      v-model:open="distributeVisible"
-      :title="distributeResult ? '分发结果' : '分发配置'"
-      :ok-text="distributeResult ? '关闭' : '开始分发'"
-      :cancel-text="distributeResult ? undefined : '取消'"
-      :cancel-button-props="distributeResult ? { style: { display: 'none' } } : {}"
-      @ok="distributeResult ? distributeVisible = false : handleDistribute()"
-      @cancel="distributeResult = null"
-    >
-      <template v-if="!distributeResult">
-        <a-alert
-          v-if="contentSource.type === 'manual'"
-          type="warning"
-          message="当前内容为手动编辑，未从目标节点读取。建议先点击「读取」获取节点当前配置后再修改。"
-          style="margin-bottom: 12px"
-        />
-        <a-form layout="vertical">
-          <a-form-item label="内容来源">
-            <a-tag v-if="contentSource.type === 'read'" color="blue">已读取: {{ contentSource.nodeName }}</a-tag>
-            <a-tag v-else-if="contentSource.type === 'manual'" color="orange">手动编辑</a-tag>
-            <span v-else style="color: #999">无</span>
-            <a-tag v-if="editNodeId && projectNodes.find(n => Number(n.id) === editNodeId)?.name !== contentSource.nodeName" style="margin-left: 4px">
-              编辑节点: {{ projectNodes.find(n => Number(n.id) === editNodeId)?.name }}
-            </a-tag>
-          </a-form-item>
-          <a-form-item label="目标节点">
-            <a-checkbox-group v-model:value="distributeNodeIds" :options="nodeOptions" />
-          </a-form-item>
-          <a-form-item>
-            <a-checkbox v-model:checked="restartAfter">分发后重启进程</a-checkbox>
-          </a-form-item>
-        </a-form>
-      </template>
-      <template v-else>
-        <a-alert
-          :type="distributeResult.status === 1 ? 'success' : distributeResult.status === 3 ? 'error' : 'warning'"
-          :message="distributeResult.status === 1 ? '全部分发成功' : distributeResult.status === 3 ? '全部分发失败' : '部分分发成功'"
-          style="margin-bottom: 12px"
-        />
-        <a-table
-          :columns="resultColumns"
-          :data-source="distributeResult.results"
-          row-key="nodeId"
-          size="small"
-          :pagination="false"
-        >
-          <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'nodeId'">
-              {{ projectNodes.find(n => Number(n.id) === record.nodeId)?.name || record.nodeId }}
-            </template>
-            <template v-if="column.key === 'result'">
-              <a-tag :color="record.success ? 'green' : 'red'">
-                {{ record.success ? '成功' : '失败' }}
-              </a-tag>
-            </template>
-            <template v-if="column.key === 'restart'">
-              <template v-if="record.restarted">
-                <a-tag v-if="record.restartSuccess" color="green">已重启</a-tag>
-                <a-tag v-else color="red">重启失败</a-tag>
-              </template>
-              <span v-else style="color: #999">—</span>
-            </template>
-          </template>
-        </a-table>
-      </template>
-    </a-modal>
-
-    <!-- 对比结果 -->
-    <a-modal v-model:open="diffVisible" title="节点配置对比" :footer="null" width="640px">
-      <div v-for="d in diffResults" :key="d.nodeId" class="diff-block">
-        <a-tag :color="d.identical ? 'green' : 'red'">
-          {{ d.nodeName || d.nodeId }} — {{ d.identical ? '一致' : '有差异' }}
-        </a-tag>
-        <pre v-if="d.diffLines?.length" class="diff-lines">{{ d.diffLines.join('\n') }}</pre>
-      </div>
     </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, unref } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
-import type { ProjectModel, NodeModel, ProjectConfigFileModel, NodeConfigSnapshotModel, ConfigSnapshotResult } from '../types'
-import { getProjects } from '../api/project'
-import { getNodes } from '../api/node'
-import { getGlobalPaths, type GlobalPaths } from '../api/system'
+import type { ProjectConfigFileModel } from '../types'
 import {
   listConfigFiles, createConfigFile, deleteConfigFile,
-  getConfigSnapshot, getConfigContent, compareConfig,
-  distributeConfig, refreshConfigSnapshots
+  getConfigSnapshot, getConfigContent, getConfigContentAuto, distributeConfig
 } from '../api/configMgmt'
+import { getProjects } from '../api/project'
+import { getNodes } from '../api/node'
 import {
-  SettingOutlined, PlusOutlined, ReloadOutlined, SearchOutlined,
-  CloudUploadOutlined, DiffOutlined
+  SettingOutlined, PlusOutlined, FileTextOutlined, DeleteOutlined,
+  ReloadOutlined, SendOutlined, CheckCircleOutlined, CloseCircleOutlined
 } from '@ant-design/icons-vue'
 
-const projects = ref<ProjectModel[]>([])
-const allNodes = ref<NodeModel[]>([])
-const projectId = ref<number>()
+// ====== 状态 ======
+const projects = ref<any[]>([])
+const selectedProjectId = ref<number>()
 const configFiles = ref<ProjectConfigFileModel[]>([])
-const selectedFileId = ref<number>()
-const snapshots = ref<NodeConfigSnapshotModel[]>([])
-const content = ref('')
-const contentError = ref('')
-const contentSource = ref<{ type: 'read' | 'manual' | 'none'; nodeId?: number; nodeName?: string }>({ type: 'none' })
-const editNodeId = ref<number>()
-const filesLoading = ref(false)
-const snapshotLoading = ref(false)
-const contentLoading = ref(false)
-const refreshing = ref(false)
-const comparing = ref(false)
-const distributing = ref(false)
-const addFileVisible = ref(false)
-const distributeVisible = ref(false)
-const diffVisible = ref(false)
-const diffResults = ref<Array<{ nodeId: number; nodeName?: string; identical: boolean; diffLines?: string[] }>>([])
-const distributeNodeIds = ref<number[]>([])
-const restartAfter = ref(false)
-const distributeResult = ref<{ status: number; results: Array<{ nodeId: number; success: boolean; error?: string }> } | null>(null)
-const newFile = ref({ fileName: '', relativePath: '', remark: '' })
-const globalPaths = ref<GlobalPaths | null>(null)
+const loading = ref(false)
 
-const CONFIG_PRESETS: Record<string, { fileName: string; relativePath: string; remark: string }> = {
-  default: { fileName: 'application.yml', relativePath: 'config/application.yml', remark: '主配置' },
-  dev: { fileName: 'application-dev.yml', relativePath: 'config/application-dev.yml', remark: '开发环境' },
-  test: { fileName: 'application-test.yml', relativePath: 'config/application-test.yml', remark: '测试环境' },
-  prod: { fileName: 'application-prod.yml', relativePath: 'config/application-prod.yml', remark: '生产环境' }
+// 文件同步状态
+const fileSyncStatus = ref<Record<number, { allSame: boolean; syncLabel: string; totalNodes: number; sameCount: number }>>({})
+
+// 编辑器
+const selectedFile = ref<ProjectConfigFileModel>()
+const editContent = ref('')
+const editNodeId = ref<number>()
+const contentLoading = ref(false)
+const contentSource = ref<'node' | 'manual'>('node')
+const contentError = ref('')
+
+// 节点
+const projectNodes = ref<any[]>([])
+
+// 分发
+const distributeNodeIds = ref<number[]>([])
+const restartAfterDistribute = ref(false)
+const distributing = ref(false)
+const distributeResult = ref<Array<{ nodeName: string; success: boolean; message: string }>>()
+
+// 新建配置
+const addModalVisible = ref(false)
+const addLoading = ref(false)
+const newFile = reactive<ProjectConfigFileModel>({
+  projectId: 0,
+  fileName: '',
+  relativePath: ''
+})
+
+// 节点配置状态（用于状态条显示）
+const nodeConfigStatus = ref<Array<{
+  nodeId: number; nodeName: string; nodeIp: string;
+  online: boolean; hashOk: boolean; hash: string
+}>>([])
+
+const currentEditNodeName = computed(() => {
+  const n = nodeConfigStatus.value.find(n => n.nodeId === editNodeId.value)
+  return n?.nodeName || '未知节点'
+})
+
+const pathPresets = [
+  { name: 'application.yml', path: 'config/application.yml', label: 'application.yml' },
+  { name: 'application-dev.yml', path: 'config/application-dev.yml', label: 'application-dev.yml' },
+  { name: 'application-prod.yml', path: 'config/application-prod.yml', label: 'application-prod.yml' },
+  { name: 'logback-spring.xml', path: 'config/logback-spring.xml', label: 'logback.xml' },
+  { name: 'bootstrap.yml', path: 'config/bootstrap.yml', label: 'bootstrap.yml' }
+]
+
+// ====== 方法 ======
+async function loadProjects() {
+  const res = await getProjects()
+  projects.value = res.data.list
 }
 
-function applyConfigPreset(env: string) {
-  const preset = CONFIG_PRESETS[env] || CONFIG_PRESETS.default
-  const configDir = globalPaths.value?.configSubDir || 'config'
-  newFile.value = {
-    fileName: preset.fileName,
-    relativePath: `${configDir}/${preset.fileName}`,
-    remark: preset.remark
+async function loadProjectNodes() {
+  if (!selectedProjectId.value) { projectNodes.value = []; return }
+  const project = projects.value.find(p => p.id === selectedProjectId.value)
+  if (!project || !project.nodeIds) { projectNodes.value = []; return }
+  const nodeIds = project.nodeIds.split(',').map((s: string) => s.trim()).filter(Boolean)
+  const nodeRes = await getNodes(1, 1000)
+  projectNodes.value = nodeRes.data.list.filter((n: any) => nodeIds.includes(String(n.id)))
+  // 默认全选
+  distributeNodeIds.value = projectNodes.value.map((n: any) => n.id)
+}
+
+async function loadConfigFiles() {
+  if (!selectedProjectId.value) { configFiles.value = []; return }
+  loading.value = true
+  try {
+    const res = await listConfigFiles(selectedProjectId.value)
+    configFiles.value = res.data || []
+    // 加载每个文件的同步状态
+    for (const file of configFiles.value) {
+      if (file.id) loadFileSyncStatus(file.id)
+    }
+  } finally {
+    loading.value = false
   }
 }
 
-const fileColumns = [
-  { title: '文件名', dataIndex: 'fileName', key: 'fileName', ellipsis: true },
-  { title: '路径', dataIndex: 'relativePath', key: 'relativePath', ellipsis: true },
-  { title: '类型', key: 'isPrimary', width: 80 },
-  { title: '操作', key: 'action', width: 60 }
-]
-const snapshotColumns = [
-  { title: '节点', dataIndex: 'nodeName', key: 'nodeName' },
-  { title: '哈希', dataIndex: 'contentHash', key: 'contentHash', ellipsis: true, width: 100 },
-  { title: '状态', key: 'syncStatus', width: 80 },
-  { title: '操作', key: 'action', width: 60 }
-]
-const resultColumns = [
-  { title: '节点', dataIndex: 'nodeId', key: 'nodeId' },
-  { title: '分发', key: 'result', width: 100 },
-  { title: '重启', key: 'restart', width: 100 },
-  { title: '详情', dataIndex: 'error', key: 'error', ellipsis: true }
-]
-
-const projectNodes = computed(() => {
-  // 兼容 ref 与 setupState reactive 解包后的数组两种形态（避免 .value 在解包下取到 undefined）
-  const ao = unref(allNodes)
-  const pv = unref(projects)
-  const pid = unref(projectId)
-  if (!pid) return []
-  const proj = (pv || []).find(p => Number(p.id) === Number(pid))
-  if (!proj?.nodeIds) return []
-  const ids = String(proj.nodeIds).split(',').map(s => Number(s.trim()))
-  return (ao || []).filter(n => ids.includes(Number(n.id)))
-})
-
-const nodeOptions = computed(() =>
-  projectNodes.value.map(n => ({ label: n.name, value: Number(n.id) }))
-)
-
-function syncColor(s?: number) {
-  return ({ 1: 'green', 2: 'red', 3: 'orange' } as Record<number, string>)[s || 0] || 'default'
-}
-function syncLabel(s?: number) {
-  return ({ 0: '未知', 1: '一致', 2: '差异', 3: '定制' } as Record<number, string>)[s || 0] || '未知'
-}
-
-function fileRowClass(record: ProjectConfigFileModel) {
-  return record.id === selectedFileId.value ? 'selected-row' : ''
-}
-function fileCustomRow(record: ProjectConfigFileModel) {
-  return { onClick: () => selectFile(record) }
-}
-
-async function fetchProjects() {
-  const [pRes, nRes] = await Promise.all([getProjects(1, 100), getNodes(1, 200)])
-  projects.value = pRes.data.list || []
-  allNodes.value = nRes.data.list || []
+async function loadFileSyncStatus(fileId: number) {
+  if (!selectedProjectId.value) return
+  try {
+    const res = await getConfigSnapshot(selectedProjectId.value, fileId)
+    const data = res.data
+    const totalNodes = data.nodes?.length || 0
+    const sameCount = data.nodes?.filter((n: any) => n.syncStatus === 1).length || 0
+    fileSyncStatus.value[fileId] = {
+      allSame: data.allSame,
+      totalNodes,
+      sameCount,
+      syncLabel: data.allSame ? `${totalNodes}/${totalNodes} 同步` : `${sameCount}/${totalNodes} 有差异`
+    }
+  } catch {
+    // ignore
+  }
 }
 
 async function onProjectChange() {
-  selectedFileId.value = undefined
-  configFiles.value = []
-  snapshots.value = []
-  content.value = ''
+  selectedFile.value = undefined
+  editContent.value = ''
   contentError.value = ''
-  contentSource.value = { type: 'none' }
-  if (!projectId.value) return
-  filesLoading.value = true
-  try {
-    const res = await listConfigFiles(projectId.value)
-    configFiles.value = res.data || []
-  } finally {
-    filesLoading.value = false
+  distributeResult.value = undefined
+  await loadProjectNodes()
+  await loadConfigFiles()
+  // 自动选中第一个文件
+  if (configFiles.value.length > 0) {
+    selectFile(configFiles.value[0])
   }
 }
 
 async function selectFile(file: ProjectConfigFileModel) {
-  selectedFileId.value = file.id
+  selectedFile.value = file
+  editContent.value = ''
   contentError.value = ''
-  snapshotLoading.value = true
+  contentSource.value = 'node'
+  distributeResult.value = undefined
+  // 加载节点配置状态
+  await loadNodeConfigStatus(file.id!)
+  // 自动从第一个在线节点读取
+  await loadContentAuto()
+}
+
+async function loadNodeConfigStatus(fileId: number) {
+  if (!selectedProjectId.value) return
   try {
-    const res = await getConfigSnapshot(projectId.value!, file.id!)
-    const data: ConfigSnapshotResult = res.data
-    snapshots.value = (data.nodes || []).map((s: NodeConfigSnapshotModel) => ({
-      ...s,
-      nodeName: projectNodes.value.find(n => Number(n.id) === s.nodeId)?.name
+    const res = await getConfigSnapshot(selectedProjectId.value, fileId)
+    const snapData = res.data
+    const nodes = snapData.nodes || []
+    const hashes = nodes.map((n: any) => n.contentHash).filter(Boolean)
+    const refHash = hashes.length > 0 ? hashes[0] : ''
+    nodeConfigStatus.value = projectNodes.value.map((pn: any) => {
+      const snap = nodes.find((n: any) => n.nodeId === pn.id)
+      return {
+        nodeId: pn.id,
+        nodeName: pn.name,
+        nodeIp: pn.ip,
+        online: pn.status === 1,
+        hash: snap?.contentHash || '',
+        hashOk: snap?.contentHash ? snap.contentHash === refHash : false
+      }
+    })
+  } catch {
+    // 快照不可用时，只显示节点在线状态
+    nodeConfigStatus.value = projectNodes.value.map((pn: any) => ({
+      nodeId: pn.id, nodeName: pn.name, nodeIp: pn.ip,
+      online: pn.status === 1, hashOk: false, hash: ''
     }))
-  } finally {
-    snapshotLoading.value = false
   }
 }
 
-async function loadNodeContent(nodeId: number) {
-  editNodeId.value = nodeId
+async function switchNode(n: { nodeId: number; online: boolean }) {
+  if (!n.online) {
+    message.warning('该节点离线，无法读取配置')
+    return
+  }
+  editNodeId.value = n.nodeId
   await loadContent()
 }
 
-async function loadContent() {
-  if (!projectId.value || !editNodeId.value || !selectedFileId.value) return
+async function loadContentAuto() {
+  if (!selectedProjectId.value || !selectedFile.value?.id) return
   contentLoading.value = true
   contentError.value = ''
   try {
-    const res = await getConfigContent(projectId.value, editNodeId.value, selectedFileId.value)
-    content.value = res.data || ''
-    const node = projectNodes.value.find(n => Number(n.id) === editNodeId.value)
-    contentSource.value = { type: 'read', nodeId: editNodeId.value, nodeName: node?.name }
+    const res = await getConfigContentAuto(selectedProjectId.value, selectedFile.value.id)
+    editContent.value = res.data.content || ''
+    editNodeId.value = res.data.nodeId
+    contentSource.value = 'node'
   } catch (e: any) {
-    const msg = e?.response?.data?.message || e?.message || '读取失败'
-    contentError.value = msg + '。你可以直接在下方编辑区手动输入配置内容后分发。'
-    const node = projectNodes.value.find(n => Number(n.id) === editNodeId.value)
-    contentSource.value = { type: 'manual', nodeId: editNodeId.value, nodeName: node?.name }
+    const status = e?.response?.status
+    const msg = e?.response?.data?.message || e?.message || ''
+    if (status === 404 || msg.includes('不存在') || msg.includes('not found') || msg.includes('无法读取')) {
+      // 配置文件尚未部署到节点，不算报错，让用户直接编辑
+      editContent.value = ''
+      editNodeId.value = undefined
+      contentSource.value = 'manual'
+    } else {
+      contentError.value = '读取失败: ' + (msg || '所有节点离线')
+      editContent.value = ''
+    }
   } finally {
     contentLoading.value = false
   }
 }
 
-function showAddFile() {
-  applyConfigPreset('default')
-  addFileVisible.value = true
-}
-
-async function handleAddFile() {
-  if (!projectId.value || !newFile.value.fileName) return
-  await createConfigFile({
-    projectId: projectId.value,
-    fileName: newFile.value.fileName,
-    relativePath: newFile.value.relativePath || newFile.value.fileName,
-    remark: newFile.value.remark
-  })
-  addFileVisible.value = false
-  message.success('已添加')
-  onProjectChange()
-}
-
-async function handleDeleteFile(id: number) {
-  await deleteConfigFile(id, projectId.value!)
-  message.success('已删除')
-  onProjectChange()
-}
-
-async function handleRefresh() {
-  refreshing.value = true
+async function loadContent() {
+  if (!selectedProjectId.value || !selectedFile.value?.id || !editNodeId.value) return
+  contentLoading.value = true
+  contentError.value = ''
   try {
-    await refreshConfigSnapshots(projectId.value!, selectedFileId.value!)
-    message.success('快照已刷新')
-    const file = configFiles.value.find(f => f.id === selectedFileId.value)
-    if (file) await selectFile(file)
+    const res = await getConfigContent(selectedProjectId.value, editNodeId.value, selectedFile.value.id)
+    editContent.value = res.data || ''
+    contentSource.value = 'node'
+  } catch (e: any) {
+    contentError.value = '读取失败: ' + (e?.response?.data?.message || e?.message || '节点离线')
   } finally {
-    refreshing.value = false
+    contentLoading.value = false
   }
 }
 
-// 静默刷新快照（不分发后不弹提示）
-async function refreshSnapshotsSilently() {
-  try {
-    await refreshConfigSnapshots(projectId.value!, selectedFileId.value!)
-    const file = configFiles.value.find(f => f.id === selectedFileId.value)
-    if (file) await selectFile(file)
-  } catch {
-    // 静默忽略
-  }
-}
-
-async function handleCompare() {
-  if (snapshots.value.length < 2) return
-  comparing.value = true
-  try {
-    const baseNodeId = snapshots.value[0].nodeId
-    const targetNodeIds = snapshots.value.slice(1).map(s => s.nodeId)
-    const res = await compareConfig({
-      projectId: projectId.value!,
-      configFileId: selectedFileId.value!,
-      baseNodeId,
-      targetNodeIds
-    })
-    diffResults.value = res.data?.diffs || []
-    diffVisible.value = true
-  } finally {
-    comparing.value = false
-  }
-}
-
-function showDistribute() {
-  // 默认只选当前编辑节点，避免误分发到所有节点
-  distributeNodeIds.value = editNodeId.value ? [editNodeId.value] : []
-  distributeResult.value = null
-  distributeVisible.value = true
+function onContentEdit() {
+  contentSource.value = 'manual'
 }
 
 async function handleDistribute() {
-  if (!distributeNodeIds.value.length) return
+  if (!selectedProjectId.value || !selectedFile.value?.id || !editContent.value) return
+  if (distributeNodeIds.value.length === 0) { message.warning('请选择至少一个目标节点'); return }
+
   distributing.value = true
-  distributeResult.value = null
+  distributeResult.value = undefined
   try {
     const res = await distributeConfig({
-      projectId: projectId.value!,
-      configFileId: selectedFileId.value!,
-      content: content.value,
+      projectId: selectedProjectId.value,
+      configFileId: selectedFile.value.id,
+      content: editContent.value,
       targetNodeIds: distributeNodeIds.value,
-      distributeType: distributeNodeIds.value.length > 1 ? 'BATCH' : 'SINGLE',
-      restartAfter: restartAfter.value
+      restartAfter: restartAfterDistribute.value
     })
-    // 展示分发结果
-    distributeResult.value = res.data
-    // 分发后自动刷新节点快照
-    if (res.data?.status === 1 || res.data?.status === 2) {
-      refreshSnapshotsSilently()
+    // 解析结果
+    const resultDetail = res.data?.resultDetail
+    if (typeof resultDetail === 'string') {
+      try { distributeResult.value = JSON.parse(resultDetail) } catch { /* ignore */ }
+    } else if (Array.isArray(resultDetail)) {
+      distributeResult.value = resultDetail
     }
-    if (res.data?.status === 1) {
-      message.success('全部分发成功')
-    } else if (res.data?.status === 3) {
-      message.error('全部分发失败')
-    } else {
-      message.warning('部分分发成功')
-    }
+    message.success('配置分发完成')
+    contentSource.value = 'node'
+    // 刷新同步状态
+    if (selectedFile.value.id) loadFileSyncStatus(selectedFile.value.id)
   } catch (e: any) {
-    message.error(e?.response?.data?.message || e?.message || '分发失败')
+    message.error('分发失败: ' + (e?.response?.data?.message || e?.message || '未知错误'))
   } finally {
     distributing.value = false
   }
 }
 
-// 切换编辑节点时清空所有状态
-watch(editNodeId, (newId, oldId) => {
-  if (!newId || newId === oldId) return
-  content.value = ''
-  contentError.value = ''
-  contentSource.value = { type: 'none' }
-})
+function showAddModal() {
+  newFile.projectId = selectedProjectId.value || 0
+  newFile.fileName = ''
+  newFile.relativePath = ''
+  addModalVisible.value = true
+}
 
-// 监听手动编辑：用户修改 textarea 内容时，如果之前是从节点读取的，标记为已修改
-watch(content, (newVal, oldVal) => {
-  if (contentSource.value.type === 'read' && newVal !== oldVal && contentSource.value.nodeId) {
-    contentSource.value = { ...contentSource.value, type: 'manual' }
-  }
-})
+function applyPreset(preset: { name: string; path: string }) {
+  newFile.relativePath = preset.path
+  newFile.fileName = preset.name
+}
 
-onMounted(async () => {
+async function handleAddFile() {
+  if (!newFile.relativePath) { message.warning('请填写配置文件路径'); return }
+  // 从路径中提取文件名
+  const parts = newFile.relativePath.split('/')
+  newFile.fileName = parts[parts.length - 1] || newFile.relativePath
+  addLoading.value = true
   try {
-    const gp = await getGlobalPaths()
-    globalPaths.value = gp.data
-  } catch { /* ignore */ }
-  fetchProjects()
-})
+    newFile.projectId = selectedProjectId.value!
+    await createConfigFile(newFile)
+    message.success('配置文件定义已创建')
+    addModalVisible.value = false
+    await loadConfigFiles()
+  } catch (e: any) {
+    message.error('创建失败: ' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } finally {
+    addLoading.value = false
+  }
+}
+
+async function handleDeleteFile(fileId: number) {
+  if (!selectedProjectId.value) return
+  try {
+    await deleteConfigFile(fileId, selectedProjectId.value)
+    message.success('已删除')
+    if (selectedFile.value?.id === fileId) {
+      selectedFile.value = undefined
+      editContent.value = ''
+    }
+    await loadConfigFiles()
+  } catch (e: any) {
+    message.error('删除失败: ' + (e?.message || ''))
+  }
+}
+
+// ====== 初始化 ======
+onMounted(loadProjects)
 </script>
 
 <style scoped>
-.config-editor {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 13px;
+.config-file-item {
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  border: 1px solid transparent;
+  transition: all 0.15s;
 }
-:deep(.selected-row) { background: rgba(114, 46, 209, 0.1) !important; }
-.diff-block { margin-bottom: 12px; }
-.diff-lines {
-  background: #1a1a1a;
-  padding: 8px;
+.config-file-item:hover {
+  background: #f5f5f5;
+}
+.config-file-item.active {
+  background: #e6f7ff;
+  border-color: #91d5ff;
+}
+.node-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
   border-radius: 4px;
   font-size: 12px;
-  margin-top: 4px;
-  max-height: 200px;
-  overflow: auto;
+  cursor: pointer;
+  border: 1px solid #e8e8e8;
+  background: #fafafa;
+  transition: all 0.15s;
+}
+.node-status-chip:hover {
+  border-color: #91d5ff;
+  background: #f0f8ff;
+}
+.node-status-chip.active {
+  border-color: #1890ff;
+  background: #e6f7ff;
+  font-weight: 500;
+}
+.node-status-chip.offline {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

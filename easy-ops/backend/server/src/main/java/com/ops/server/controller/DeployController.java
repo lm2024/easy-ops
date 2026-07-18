@@ -10,6 +10,7 @@ import com.ops.common.response.Result;
 import com.ops.server.mapper.*;
 import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.websocket.DeployHandler;
+import com.ops.server.service.AuditLogService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -48,6 +49,9 @@ public class DeployController {
 
     @Autowired
     private DeployHandler deployHandler;
+
+    @Autowired
+    private AuditLogService auditLog;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -166,6 +170,7 @@ public class DeployController {
         // ====== 立即部署：生成 deployId，后台异步执行 ======
         String deployId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         log.info("[Deploy] 开始异步部署: deployId={}, projectId={}, nodes={}", deployId, projectId, targetNodeIds.size());
+        auditLog.log("DEPLOY", "DEPLOY", "发起部署: 项目=" + project.getName() + ", 版本=" + version.getVersion() + ", 节点数=" + targetNodeIds.size());
 
         // 异步执行部署
         final Long finalProjectId = projectId;
@@ -525,6 +530,7 @@ public class DeployController {
             return Result.error(1009, "该项目正在部署中，请等待当前部署完成后再回滚");
         }
         try {
+            auditLog.log("DEPLOY", "ROLLBACK", "回滚部署: 记录ID=" + id + ", 项目ID=" + record.getProjectId());
             return doRollback(id, record);
         } finally {
             lock.unlock();
@@ -686,6 +692,7 @@ public class DeployController {
         if (record == null) return Result.error(500, "部署记录不存在");
         if (record.getStatus() != 5) return Result.paramError("只有待部署状态的记录才能取消");
         deployRecordMapper.updateStatus(id, 3, "⛔ 已手动取消定时部署", System.currentTimeMillis());
+        auditLog.log("DEPLOY", "CANCEL", "取消定时部署: 记录ID=" + id);
         return Result.success();
     }
 }

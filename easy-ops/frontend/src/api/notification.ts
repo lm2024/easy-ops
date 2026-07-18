@@ -27,3 +27,13 @@ export function markNotificationRead(id: number) {
 export function ackNotification(id: number) {
   return request.post<any, Result>(`/notifications/${id}/ack`)
 }
+
+/** 全部标记已读 */
+export function markAllRead() {
+  return request.post<any, Result<string>>('/notifications/read-all')
+}
+
+/** 清空已读通知 */
+export function clearReadNotifications() {
+  return request.delete<any, Result<string>>('/notifications/read')
+}

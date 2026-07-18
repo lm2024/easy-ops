@@ -3,6 +3,7 @@ package com.ops.server.configmgmt.controller;
 import com.ops.common.model.ProjectConfigFileModel;
 import com.ops.common.response.Result;
 import com.ops.server.configmgmt.service.ConfigMgmtService;
+import com.ops.server.service.AuditLogService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +26,9 @@ public class ConfigMgmtController {
     @Autowired
     private SecurityContext securityContext;
 
+    @Autowired
+    private AuditLogService auditLog;
+
     /**
      * GET /api/config/files - 查询项目配置文件列表
      */
@@ -44,6 +48,7 @@ public class ConfigMgmtController {
         if (!securityContext.hasProjectPermission(model.getProjectId())) {
             return Result.error(403, "无权访问该项目");
         }
+        auditLog.log("CONFIG", "CREATE", "新增配置文件: " + model.getRelativePath() + ", 项目ID=" + model.getProjectId());
         return Result.success(configMgmtService.createFile(model));
     }
 
@@ -56,6 +61,7 @@ public class ConfigMgmtController {
         if (!securityContext.hasProjectPermission(model.getProjectId())) {
             return Result.error(403, "无权访问该项目");
         }
+        auditLog.log("CONFIG", "UPDATE", "修改配置文件: " + model.getRelativePath() + " (ID=" + id + ")");
         return Result.success(configMgmtService.updateFile(model));
     }
 
@@ -68,6 +74,7 @@ public class ConfigMgmtController {
             return Result.error(403, "无权访问该项目");
         }
         configMgmtService.deleteFile(id);
+        auditLog.log("CONFIG", "DELETE", "删除配置文件: ID=" + id + ", 项目ID=" + projectId);
         return Result.success();
     }
 
@@ -93,6 +100,19 @@ public class ConfigMgmtController {
             return Result.error(403, "无权访问该项目");
         }
         return Result.success(configMgmtService.getContent(projectId, nodeId, configFileId));
+    }
+
+    /**
+     * GET /api/config/content/auto - 自动选在线节点读取配置内容
+     * 不需要指定 nodeId，自动找第一个在线节点读取
+     */
+    @GetMapping("/content/auto")
+    public Result<?> getContentAuto(@RequestParam Long projectId,
+                                    @RequestParam Long configFileId) {
+        if (!securityContext.hasProjectPermission(projectId)) {
+            return Result.error(403, "无权访问该项目");
+        }
+        return Result.success(configMgmtService.getContentAuto(projectId, configFileId));
     }
 
     /**
@@ -125,6 +145,7 @@ public class ConfigMgmtController {
         String distributeType = body.get("distributeType") != null
                 ? body.get("distributeType").toString() : "BATCH";
         boolean restartAfter = Boolean.TRUE.equals(body.get("restartAfter"));
+        auditLog.log("CONFIG", "DISTRIBUTE", "分发配置: 配置文件ID=" + configFileId + ", 项目ID=" + projectId + ", 节点数=" + targetNodeIds.size() + ", 重启=" + restartAfter);
         return Result.success(configMgmtService.distribute(projectId, configFileId, content,
                 targetNodeIds, distributeType, restartAfter, securityContext.getCurrentUserId()));
     }

@@ -225,10 +225,11 @@ public class SystemController {
     @GetMapping("/operations")
     public Result<?> getOperations(
             @RequestParam(required = false) String module,
+            @RequestParam(required = false) Long userId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<OperationLogModel> logs = operationLogMapper.findByModule(module, page, pageSize);
-        Long total = operationLogMapper.countByModule(module);
+        List<OperationLogModel> logs = operationLogMapper.findByModule(module, userId, page, pageSize);
+        Long total = operationLogMapper.countByModule(module, userId);
         Map<String, Object> data = new HashMap<>();
         data.put("list", logs);
         data.put("total", total);

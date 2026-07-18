@@ -26,5 +26,11 @@ public interface UserNotificationStateMapper {
 
     Long countUnread(@Param("userId") Long userId, @Param("now") Long now);
 
+    /** 全部标记已读（插入或更新所有未读通知的状态） */
+    int markAllRead(@Param("userId") Long userId);
+
+    /** 清空已读通知（将已读通知设为过期） */
+    int clearRead(@Param("userId") Long userId, @Param("now") Long now);
+
     int deleteByNotificationIds(@Param("notificationIds") java.util.List<Long> notificationIds);
 }

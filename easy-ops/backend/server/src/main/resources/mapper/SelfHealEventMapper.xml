@@ -3,9 +3,10 @@
 <mapper namespace="com.ops.server.mapper.SelfHealEventMapper">
 
     <select id="findByFilters" resultType="com.ops.common.model.SelfHealEventModel">
-        SELECT e.*, n.name AS node_name
+        SELECT e.*, n.name AS node_name, p.name AS project_name
         FROM self_heal_event e
         LEFT JOIN node_info n ON e.node_id = n.id
+        LEFT JOIN project_info p ON e.project_id = p.id
         <where>
             <if test="projectId != null">
                 AND e.project_id = #{projectId}

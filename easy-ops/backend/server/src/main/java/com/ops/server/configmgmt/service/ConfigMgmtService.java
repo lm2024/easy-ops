@@ -136,6 +136,39 @@ public class ConfigMgmtService {
         return agentClient.extractDataString(agentClient.getForMap(node, "/file/config", params));
     }
 
+    /**
+     * 自动选第一个在线节点读取配置内容（不需要指定 nodeId）
+     * 返回 { content, nodeId, nodeName } 或抛异常"所有节点离线"
+     */
+    public Map<String, Object> getContentAuto(Long projectId, Long configFileId) {
+        ProjectConfigFileModel file = requireFile(configFileId, projectId);
+        ProjectModel project = requireProject(projectId);
+        String configPath = ConfigDistributeService.resolveConfigPath(project, file);
+
+        // 遍历项目节点，找第一个在线的
+        for (Long nodeId : parseNodeIds(project)) {
+            NodeModel node = nodeMapper.findById(nodeId);
+            if (node == null || node.getStatus() == null || node.getStatus() != 1) {
+                continue;
+            }
+            try {
+                Map<String, String> params = new HashMap<>();
+                params.put("configPath", configPath);
+                String content = agentClient.extractDataString(agentClient.getForMap(node, "/file/config", params));
+                Map<String, Object> result = new HashMap<>();
+                result.put("content", content != null ? content : "");
+                result.put("nodeId", node.getId());
+                result.put("nodeName", node.getName());
+                result.put("nodeIp", node.getIp());
+                return result;
+            } catch (Exception e) {
+                // 该节点读取失败，尝试下一个
+                continue;
+            }
+        }
+        throw new BusinessException(1002, "所有节点离线或均无法读取配置文件");
+    }
+
     public Map<String, Object> compare(Long projectId, Long configFileId,
                                        Long baseNodeId, List<Long> targetNodeIds) {
         ProjectConfigFileModel file = requireFile(configFileId, projectId);

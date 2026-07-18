@@ -37,6 +37,13 @@ export function getConfigContent(projectId: number, nodeId: number, configFileId
   })
 }
 
+/** 自动选在线节点读取配置内容（不需要指定 nodeId） */
+export function getConfigContentAuto(projectId: number, configFileId: number) {
+  return request.get<any, Result<{ content: string; nodeId: number; nodeName: string; nodeIp: string }>>('/config/content/auto', {
+    params: { projectId, configFileId }
+  })
+}
+
 /** 多节点配置对比 */
 export function compareConfig(params: {
   projectId: number

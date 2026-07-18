@@ -10,6 +10,8 @@ import com.ops.server.mapper.MonitorSnapshotMapper;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectHealthProbeMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.selfheal.service.NotificationService;
+import com.ops.server.controller.AlarmController;
 import com.alibaba.fastjson2.JSON;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 从 Agent 采集应用监控数据并写入快照表。
@@ -46,6 +49,11 @@ public class MonitorCollectorService {
     private ProjectHealthProbeMapper probeMapper;
     @Autowired
     private GlobalPathProperties globalPathProperties;
+    @Autowired
+    private NotificationService notificationService;
+
+    /** 告警去重：projectId-nodeId-condition → 上次告警时间 */
+    private final ConcurrentHashMap<String, Long> alarmCooldown = new ConcurrentHashMap<>();
 
     /**
      * 采集所有在线节点上的项目监控数据
@@ -206,7 +214,91 @@ public class MonitorCollectorService {
         }
 
         snapshotMapper.insert(snap);
+        // 检查异常并生成通知
+        checkAndAlarm(snap, project, node);
         return snap;
+    }
+
+    /**
+     * 检查监控快照中的异常条件，自动生成平台通知（所有用户可见）
+     * 阈值从告警配置中读取，可通过 /api/alarms/config 动态调整
+     */
+    private void checkAndAlarm(MonitorSnapshotModel snap, ProjectModel project, NodeModel node) {
+        Map<String, Object> config = AlarmController.getConfig();
+        String projectName = project.getName();
+        String nodeName = node.getName();
+
+        // 冷却时间
+        int cooldownMinutes = config.containsKey("cooldownMinutes") ? ((Number) config.get("cooldownMinutes")).intValue() : 30;
+        long cooldownMs = cooldownMinutes * 60L * 1000;
+
+        // 1. 健康检查失败
+        if (isTrue(config, "healthCheckEnabled") && "DOWN".equals(snap.getHealthStatus())) {
+            String key = project.getId() + "-" + node.getId() + "-DOWN";
+            if (shouldAlarm(key, cooldownMs)) {
+                notificationService.createBroadcastNotification(
+                        "ALERT", "CRITICAL",
+                        "【" + projectName + "】" + nodeName + " 异常",
+                        "健康状态: DOWN\n" + snap.getHealthDetail(),
+                        project.getId(), node.getId(), "MONITOR");
+            }
+        }
+
+        // 2. 健康降级
+        if (isTrue(config, "healthCheckEnabled") && "DEGRADED".equals(snap.getHealthStatus())) {
+            String key = project.getId() + "-" + node.getId() + "-DEGRADED";
+            if (shouldAlarm(key, cooldownMs)) {
+                notificationService.createBroadcastNotification(
+                        "ALERT", "WARNING",
+                        "【" + projectName + "】" + nodeName + " 降级",
+                        "健康状态: DEGRADED\n" + snap.getHealthDetail(),
+                        project.getId(), node.getId(), "MONITOR");
+            }
+        }
+
+        // 3. CPU 过高
+        int cpuThreshold = config.containsKey("cpuThreshold") ? ((Number) config.get("cpuThreshold")).intValue() : 90;
+        if (isTrue(config, "cpuEnabled") && snap.getHostCpuPercent() != null
+                && snap.getHostCpuPercent().compareTo(new BigDecimal(cpuThreshold)) > 0) {
+            String key = project.getId() + "-" + node.getId() + "-CPU";
+            if (shouldAlarm(key, cooldownMs)) {
+                notificationService.createBroadcastNotification(
+                        "ALERT", "WARNING",
+                        "【" + projectName + "】" + nodeName + " CPU 过高",
+                        "主机 CPU 使用率: " + snap.getHostCpuPercent() + "% (阈值: " + cpuThreshold + "%)",
+                        project.getId(), node.getId(), "MONITOR");
+            }
+        }
+
+        // 4. 响应超时
+        int responseThreshold = config.containsKey("responseThreshold") ? ((Number) config.get("responseThreshold")).intValue() : 5000;
+        if (isTrue(config, "responseEnabled") && snap.getResponseMs() != null
+                && snap.getResponseMs() > responseThreshold) {
+            String key = project.getId() + "-" + node.getId() + "-TIMEOUT";
+            if (shouldAlarm(key, cooldownMs)) {
+                notificationService.createBroadcastNotification(
+                        "ALERT", "WARNING",
+                        "【" + projectName + "】" + nodeName + " 响应超时",
+                        "响应时间: " + snap.getResponseMs() + "ms (阈值: " + responseThreshold + "ms)",
+                        project.getId(), node.getId(), "MONITOR");
+            }
+        }
+    }
+
+    private boolean isTrue(Map<String, Object> config, String key) {
+        Object val = config.get(key);
+        return val instanceof Boolean ? (Boolean) val : Boolean.parseBoolean(String.valueOf(val));
+    }
+
+    /** 检查是否在冷却期内，避免重复告警 */
+    private boolean shouldAlarm(String key, long cooldownMs) {
+        long now = System.currentTimeMillis();
+        Long lastAlarm = alarmCooldown.get(key);
+        if (lastAlarm != null && (now - lastAlarm) < cooldownMs) {
+            return false;
+        }
+        alarmCooldown.put(key, now);
+        return true;
     }
 
     /**

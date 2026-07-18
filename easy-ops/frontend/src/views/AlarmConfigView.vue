@@ -8,43 +8,65 @@
         </a-space>
       </template>
 
-      <a-form :model="formState" layout="vertical" @finish="handleSave" style="max-width: 600px">
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="SMTP服务器" name="smtpHost">
-              <a-input v-model:value="formState.smtpHost" placeholder="smtp.example.com" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="SMTP端口" name="smtpPort">
-              <a-input-number v-model:value="formState.smtpPort" style="width: 100%" :min="1" :max="65535" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-row :gutter="16">
-          <a-col :span="12">
-            <a-form-item label="发件人邮箱" name="smtpUser">
-              <a-input v-model:value="formState.smtpUser" placeholder="alert@example.com" />
-            </a-form-item>
-          </a-col>
-          <a-col :span="12">
-            <a-form-item label="邮箱密码" name="smtpPassword">
-              <a-input-password v-model:value="formState.smtpPassword" placeholder="••••••••" />
-            </a-form-item>
-          </a-col>
-        </a-row>
-        <a-form-item label="接收地址" name="receiveAddress">
-          <a-input v-model:value="formState.receiveAddress" placeholder="多个邮箱用逗号分隔" />
+      <a-alert type="info" show-icon style="margin-bottom: 16px">
+        <template #message>配置监控告警的触发条件和阈值。告警信息会显示在顶部铃铛图标上，所有登录用户可见。</template>
+      </a-alert>
+
+      <a-form :model="formState" layout="vertical" @finish="handleSave" style="max-width: 650px">
+        <!-- 健康检查告警 -->
+        <a-divider orientation="left" style="font-size: 13px; color: #888">🏥 健康检查告警</a-divider>
+        <a-form-item label="健康检查失败告警">
+          <template #extra>应用进程停止或 HTTP 探针检测失败时触发告警</template>
+          <a-switch v-model:checked="formState.healthCheckEnabled" checked-children="开" un-checked-children="关" />
         </a-form-item>
+
+        <!-- CPU 告警 -->
+        <a-divider orientation="left" style="font-size: 13px; color: #888">💻 CPU 告警</a-divider>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="CPU 告警开关">
+              <a-switch v-model:checked="formState.cpuEnabled" checked-children="开" un-checked-children="关" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="CPU 阈值 (%)">
+              <template #extra>主机 CPU 使用率超过此值时触发告警</template>
+              <a-input-number v-model:value="formState.cpuThreshold" :min="50" :max="100" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <!-- 响应超时告警 -->
+        <a-divider orientation="left" style="font-size: 13px; color: #888">⏱️ 响应超时告警</a-divider>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="响应超时告警开关">
+              <a-switch v-model:checked="formState.responseEnabled" checked-children="开" un-checked-children="关" />
+            </a-form-item>
+          </a-col>
+          <a-col :span="12">
+            <a-form-item label="超时阈值 (ms)">
+              <template #extra>HTTP 探针响应时间超过此值时触发告警</template>
+              <a-input-number v-model:value="formState.responseThreshold" :min="1000" :max="30000" :step="1000" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
+        <!-- 通用配置 -->
+        <a-divider orientation="left" style="font-size: 13px; color: #888">⚙️ 通用配置</a-divider>
+        <a-row :gutter="16">
+          <a-col :span="12">
+            <a-form-item label="告警冷却时间（分钟）">
+              <template #extra>同一应用+节点+条件的告警，冷却时间内不重复提醒</template>
+              <a-input-number v-model:value="formState.cooldownMinutes" :min="5" :max="1440" style="width: 100%" />
+            </a-form-item>
+          </a-col>
+        </a-row>
+
         <a-form-item>
-          <a-space>
-            <a-button type="primary" html-type="submit" :loading="loading">
-              <save-outlined /> 保存
-            </a-button>
-            <a-button @click="sendTest">
-              <mail-outlined /> 发送测试邮件
-            </a-button>
-          </a-space>
+          <a-button type="primary" html-type="submit" :loading="saving">
+            <save-outlined /> 保存配置
+          </a-button>
         </a-form-item>
       </a-form>
     </a-card>
@@ -53,39 +75,38 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
-import type { AlarmConfigModel } from '../types'
+import { message } from 'ant-design-vue'
 import { getAlarmConfig, saveAlarmConfig } from '../api/monitor'
-import {
-  SaveOutlined,
-  MailOutlined,
-  NotificationOutlined
-} from '@ant-design/icons-vue'
+import { SaveOutlined, NotificationOutlined } from '@ant-design/icons-vue'
 
-const formState = ref<Partial<AlarmConfigModel>>({
-  smtpHost: '',
-  smtpPort: 465,
-  smtpUser: '',
-  smtpPassword: '',
-  receiveAddress: ''
+const formState = ref({
+  healthCheckEnabled: true,
+  cpuEnabled: true,
+  cpuThreshold: 90,
+  responseEnabled: true,
+  responseThreshold: 5000,
+  nodeOfflineEnabled: true,
+  cooldownMinutes: 30
 })
-const loading = ref(false)
+const saving = ref(false)
 
 async function fetchData() {
   const res = await getAlarmConfig()
-  formState.value = res.data
-}
-
-async function handleSave() {
-  try {
-    loading.value = true
-    await saveAlarmConfig(formState.value as AlarmConfigModel)
-  } finally {
-    loading.value = false
+  if (res.data) {
+    formState.value = { ...formState.value, ...res.data }
   }
 }
 
-async function sendTest() {
-  // Placeholder: send test alarm
+async function handleSave() {
+  saving.value = true
+  try {
+    await saveAlarmConfig(formState.value)
+    message.success('告警配置已保存')
+  } catch (e: any) {
+    message.error('保存失败: ' + (e?.message || ''))
+  } finally {
+    saving.value = false
+  }
 }
 
 onMounted(fetchData)

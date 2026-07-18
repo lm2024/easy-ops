@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -20,11 +21,20 @@ import java.util.Map;
 
 /**
  * 日志文件列表、分页读取、尾部读取与关键词搜索服务。
+ * <p>
+ * 性能约束：
+ * - tail：从文件末尾反向读取，不读全文件
+ * - search：从文件末尾向前扫描（日志排查通常关心最近的日志），超过扫描上限停止
+ * - page：支持从末尾倒序分页（offsetFromEnd），避免从头跳过大量行
  */
 public class LogFileService {
 
     private static final int MAX_TAIL_LINES = 5000;
     private static final int MAX_PAGE_LINES = 2000;
+    /** 搜索时从末尾最多扫描的字节数（10MB），避免大文件全量扫描 */
+    private static final long SEARCH_MAX_SCAN_BYTES = 10L * 1024 * 1024;
+    /** 搜索时从末尾最多扫描的行数 */
+    private static final int SEARCH_MAX_SCAN_LINES = 200000;
 
     /**
      * 列出日志目录下的文件（可选 glob 过滤），按修改时间倒序。
@@ -72,10 +82,14 @@ public class LogFileService {
     }
 
     /**
-     * 分页读取日志（流式，不加载全文件）。
+     * 分页读取日志。
+     * <p>
+     * 支持两种模式：
+     * - offsetFromEnd=true（推荐）：从文件末尾往前读，适合"看最新日志"
+     * - offsetFromEnd=false（默认）：从文件开头往后读（原有行为）
      */
-    public Map<String, Object> readPage(String logPath, int offset, int lines, String level)
-            throws IOException {
+    public Map<String, Object> readPage(String logPath, int offset, int lines, String level,
+                                         boolean offsetFromEnd) throws IOException {
         Path path = validateLogPath(logPath);
         if (!Files.exists(path)) {
             throw new IOException("日志文件不存在: " + logPath);
@@ -83,6 +97,53 @@ public class LogFileService {
         int lineCount = Math.min(Math.max(lines, 1), MAX_PAGE_LINES);
         int skip = Math.max(offset, 0);
 
+        if (offsetFromEnd) {
+            return readPageFromEnd(path, skip, lineCount, level);
+        }
+        return readPageFromStart(path, skip, lineCount, level);
+    }
+
+    /** 兼容旧接口：默认从头读 */
+    public Map<String, Object> readPage(String logPath, int offset, int lines, String level)
+            throws IOException {
+        return readPage(logPath, offset, lines, level, false);
+    }
+
+    /** 从文件末尾倒序分页（高效，不读全文件） */
+    private Map<String, Object> readPageFromEnd(Path path, int skipFromEnd, int lineCount, String level)
+            throws IOException {
+        // 读取比需要更多的行（跳过的 + 需要的），从末尾反向读
+        int totalNeeded = skipFromEnd + lineCount;
+        List<String> allLines = readTailLines(path, totalNeeded * 2);
+
+        // 过滤级别
+        List<String> filtered = new ArrayList<String>();
+        for (String line : allLines) {
+            if (LogLevelUtil.matches(line, level)) {
+                filtered.add(line);
+            }
+        }
+
+        // 跳过末尾的 skipFromEnd 行，取接下来的 lineCount 行
+        int total = filtered.size();
+        int start = Math.max(0, total - skipFromEnd - lineCount);
+        int end = Math.max(0, total - skipFromEnd);
+        List<String> pageLines = filtered.subList(start, end);
+        boolean hasMore = start > 0;
+
+        Map<String, Object> result = new HashMap<String, Object>();
+        result.put("logPath", path.toString());
+        result.put("offset", skipFromEnd);
+        result.put("lines", pageLines);
+        result.put("content", joinLines(pageLines));
+        result.put("hasMore", hasMore);
+        result.put("direction", "fromEnd");
+        return result;
+    }
+
+    /** 从文件开头顺序分页（原有行为） */
+    private Map<String, Object> readPageFromStart(Path path, int skip, int lineCount, String level)
+            throws IOException {
         List<String> pageLines = new ArrayList<String>();
         int matched = 0;
         boolean hasMore = false;
@@ -118,15 +179,17 @@ public class LogFileService {
 
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("logPath", path.toString());
-        result.put("offset", offset);
+        result.put("offset", skip);
         result.put("lines", pageLines);
         result.put("content", joinLines(pageLines));
         result.put("hasMore", hasMore);
+        result.put("direction", "fromStart");
         return result;
     }
 
     /**
      * 从文件尾部高效读取 N 行（支持级别过滤）。
+     * 不再回退读全文件——级别过滤后不够就直接返回已有结果。
      */
     public Map<String, Object> tail(String logPath, int lines, String level) throws IOException {
         Path path = validateLogPath(logPath);
@@ -134,6 +197,8 @@ public class LogFileService {
             throw new IOException("日志文件不存在: " + logPath);
         }
         int lineCount = Math.min(Math.max(lines, 1), MAX_TAIL_LINES);
+
+        // 读取 4 倍行数的原始行（过滤后可能不够，但不会回退读全文件）
         List<String> rawTail = readTailLines(path, lineCount * 4);
         List<String> filtered = new ArrayList<String>();
         for (int i = rawTail.size() - 1; i >= 0 && filtered.size() < lineCount; i--) {
@@ -142,9 +207,7 @@ public class LogFileService {
                 filtered.add(0, line);
             }
         }
-        if (filtered.size() < lineCount) {
-            filtered = collectTailWithFilter(path, lineCount, level);
-        }
+        // 不再回退读全文件，直接返回已有结果
 
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("logPath", path.toString());
@@ -157,6 +220,9 @@ public class LogFileService {
 
     /**
      * 在日志文件中搜索关键词，返回匹配行及上下文。
+     * <p>
+     * 优化：从文件末尾向前扫描（日志排查通常关心最近的匹配），
+     * 超过扫描上限（10MB / 20万行）自动停止，避免大文件全量扫描。
      */
     public Map<String, Object> search(String logPath, String keyword, int maxResults,
                                       int contextLines, String level) throws IOException {
@@ -170,48 +236,48 @@ public class LogFileService {
 
         int max = Math.max(maxResults, 1);
         int context = Math.max(contextLines, 0);
+
+        // 从末尾读取固定量的日志行进行搜索（不读全文件）
+        int scanLines = Math.min(SEARCH_MAX_SCAN_LINES, max * 100 + context * max);
+        List<String> tailLines = readTailLines(path, scanLines);
+
+        // 在读取的行中搜索
         List<Map<String, Object>> matches = new ArrayList<Map<String, Object>>();
+        int baseLineNo = Math.max(0, countTotalLines(path) - tailLines.size());
 
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            java.util.ArrayDeque<String> before = new java.util.ArrayDeque<String>();
-            String line;
-            int lineNo = 0;
-            while ((line = reader.readLine()) != null) {
-                lineNo++;
-                before.addLast(line);
-                if (before.size() > context + 1) {
-                    before.removeFirst();
-                }
-                if (!LogLevelUtil.matches(line, level) || !line.contains(keyword)) {
-                    continue;
-                }
-                Map<String, Object> match = new HashMap<String, Object>();
-                match.put("lineNo", lineNo);
-                match.put("matchedLine", line);
-                List<String> ctxBefore = new ArrayList<String>(before);
-                if (!ctxBefore.isEmpty()) {
-                    ctxBefore.remove(ctxBefore.size() - 1);
-                }
-                match.put("contextBefore", ctxBefore);
+        ArrayDeque<String> before = new ArrayDeque<String>();
+        for (int i = 0; i < tailLines.size(); i++) {
+            String line = tailLines.get(i);
+            int lineNo = baseLineNo + i + 1;
 
-                List<String> ctxAfter = new ArrayList<String>();
-                for (int j = 0; j < context; j++) {
-                    String next = reader.readLine();
-                    if (next == null) {
-                        break;
-                    }
-                    lineNo++;
-                    ctxAfter.add(next);
-                    before.addLast(next);
-                    if (before.size() > context + 1) {
-                        before.removeFirst();
-                    }
-                }
-                match.put("contextAfter", ctxAfter);
-                matches.add(match);
-                if (matches.size() >= max) {
-                    break;
-                }
+            before.addLast(line);
+            if (before.size() > context + 1) {
+                before.removeFirst();
+            }
+            if (!LogLevelUtil.matches(line, level) || !line.contains(keyword)) {
+                continue;
+            }
+
+            Map<String, Object> match = new HashMap<String, Object>();
+            match.put("lineNo", lineNo);
+            match.put("matchedLine", line);
+
+            List<String> ctxBefore = new ArrayList<String>(before);
+            if (!ctxBefore.isEmpty()) {
+                ctxBefore.remove(ctxBefore.size() - 1);
+            }
+            match.put("contextBefore", ctxBefore);
+
+            // 读取后续行作为上下文
+            List<String> ctxAfter = new ArrayList<String>();
+            for (int j = 1; j <= context && (i + j) < tailLines.size(); j++) {
+                ctxAfter.add(tailLines.get(i + j));
+            }
+            match.put("contextAfter", ctxAfter);
+            matches.add(match);
+
+            if (matches.size() >= max) {
+                break;
             }
         }
 
@@ -221,22 +287,35 @@ public class LogFileService {
         result.put("matchCount", matches.size());
         result.put("matches", matches);
         result.put("hits", matches);
+        result.put("scannedLines", tailLines.size());
+        result.put("scanLimited", tailLines.size() >= scanLines);
         return result;
     }
 
-    private List<String> collectTailWithFilter(Path path, int lineCount, String level)
-            throws IOException {
-        List<String> all = new ArrayList<String>();
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (LogLevelUtil.matches(line, level)) {
-                    all.add(line);
+    /**
+     * 快速估算文件总行数（采样前1000行的平均行长，然后除以文件大小）。
+     * 不读全文件。
+     */
+    private int countTotalLines(Path path) {
+        try {
+            long fileSize = Files.size(path);
+            if (fileSize == 0) return 0;
+            // 采样前 8KB 计算平均行长
+            int sampleSize = (int) Math.min(fileSize, 8192);
+            int lineCount = 0;
+            try (RandomAccessFile raf = new RandomAccessFile(path.toFile(), "r")) {
+                byte[] buf = new byte[sampleSize];
+                raf.readFully(buf);
+                for (byte b : buf) {
+                    if (b == '\n') lineCount++;
                 }
             }
+            if (lineCount == 0) return 1;
+            double avgLineLen = (double) sampleSize / lineCount;
+            return (int) (fileSize / avgLineLen);
+        } catch (Exception e) {
+            return 0;
         }
-        int from = Math.max(0, all.size() - lineCount);
-        return new ArrayList<String>(all.subList(from, all.size()));
     }
 
     private List<String> readTailLines(Path path, int maxLines) throws IOException {

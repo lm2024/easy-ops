@@ -148,8 +148,14 @@ public class ConfigDistributeService {
     }
 
     private void restartProject(Long projectId, NodeModel node) {
+        ProjectModel project = projectMapper.findById(projectId);
+        if (project == null) return;
         String url = agentClient.getAgentBase(node) + "/process/" + projectId + "/restart";
-        restTemplate.postForObject(url, null, Map.class);
+        Map<String, String> body = new HashMap<>();
+        body.put("startScript", project.getStartScript() != null ? project.getStartScript() : "");
+        body.put("stopScript", project.getStopScript() != null ? project.getStopScript() : "");
+        body.put("deployDir", project.getDeployDir() != null ? project.getDeployDir() : "");
+        restTemplate.postForObject(url, body, Map.class);
     }
 
     static String resolveConfigPath(ProjectModel project, ProjectConfigFileModel file) {
