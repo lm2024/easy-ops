@@ -8,8 +8,11 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -85,5 +88,59 @@ public class ConfigFileService {
             throw new IOException("配置文件路径非法");
         }
         return path;
+    }
+
+    /**
+     * 扫描指定目录下的配置文件，按 Spring Boot 外部配置加载优先级：
+     * 1. {deployDir}/config/ 子目录（递归，最高优先级）
+     * 2. {deployDir}/ 根目录（仅第一层，不含子目录）
+     */
+    public List<Map<String, Object>> discoverConfigs(String deployDir) throws IOException {
+        String baseDir = deployDir != null ? deployDir.trim() : "";
+        if (baseDir.isEmpty()) {
+            throw new IOException("deployDir 不能为空");
+        }
+        Path basePath = Paths.get(baseDir).toAbsolutePath().normalize();
+        List<Map<String, Object>> result = new ArrayList<Map<String, Object>>();
+        
+        // 1. 扫描 {deployDir}/config/（Spring Boot 外部配置最高优先级）
+        Path configDir = basePath.resolve("config");
+        if (Files.exists(configDir) && Files.isDirectory(configDir)) {
+            scanConfigDir(configDir, configDir, "config/", result);
+        }
+        
+        // 2. 扫描 {deployDir}/ 根目录（仅第一层）
+        scanConfigDir(basePath, basePath, "", result);
+        
+        return result;
+    }
+
+    private void scanConfigDir(Path root, Path dir, String prefix, List<Map<String, Object>> result) throws IOException {
+        File[] files = dir.toFile().listFiles();
+        if (files == null) return;
+        boolean isRootScan = prefix.isEmpty();
+        for (File f : files) {
+            if (f.isDirectory()) {
+                // config/ 内子目录递归扫描；根目录不递归
+                if (!isRootScan && !f.getName().startsWith(".")) {
+                    scanConfigDir(root, f.toPath(), prefix + f.getName() + "/", result);
+                }
+            } else if (isConfigFile(f.getName())) {
+                String fullPath = f.getAbsolutePath();
+                String relativePath = prefix + f.getName();
+                Map<String, Object> item = new LinkedHashMap<String, Object>();
+                item.put("fileName", f.getName());
+                item.put("relativePath", relativePath);
+                item.put("fullPath", fullPath);
+                item.put("size", f.length());
+                result.add(item);
+            }
+        }
+    }
+
+    private boolean isConfigFile(String name) {
+        String lower = name.toLowerCase();
+        return lower.endsWith(".yml") || lower.endsWith(".yaml")
+                || lower.endsWith(".properties") || lower.endsWith(".conf");
     }
 }

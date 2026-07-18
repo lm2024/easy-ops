@@ -56,7 +56,7 @@ public class GlobalExceptionHandler {
         } else {
             errorMsg = "系统内部错误: " + className;
         }
-        log.error("Unexpected exception [{}]: {}", className, e.getMessage());
+        log.error("Unexpected exception [{}]: {}", className, e.getMessage(), e);
         response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
         return Result.error(500, errorMsg);
     }

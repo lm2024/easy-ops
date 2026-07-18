@@ -70,3 +70,10 @@ export function distributeConfig(params: {
 export function refreshConfigSnapshots(projectId: number, configFileId: number) {
   return request.post<any, Result>('/config/refresh', { projectId, configFileId })
 }
+
+/** 扫描 Agent 节点自动发现配置文件 */
+export function scanConfigFiles(projectId: number) {
+  return request.post<any, Result<ProjectConfigFileModel[]>>('/config/scan', null, {
+    params: { projectId }
+  })
+}
