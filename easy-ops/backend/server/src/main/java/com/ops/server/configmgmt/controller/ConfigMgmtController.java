@@ -163,6 +163,19 @@ public class ConfigMgmtController {
         return Result.success(configMgmtService.refreshSnapshots(projectId, configFileId));
     }
 
+    /**
+     * POST /api/config/scan - 自动扫描 Agent 节点的配置文件并导入
+     * 遍历项目的所有在线节点，扫描 config/ 目录下的配置文件，
+     * 若发现尚未在 DB 中注册的文件则自动创建记录。
+     */
+    @PostMapping("/scan")
+    public Result<?> scanConfigFiles(@RequestParam Long projectId) {
+        if (!securityContext.hasProjectPermission(projectId)) {
+            return Result.error(403, "无权访问该项目");
+        }
+        return Result.success(configMgmtService.scanAndImport(projectId));
+    }
+
     private Long toLong(Object value) {
         if (value == null) {
             return null;

@@ -165,22 +165,53 @@ public class DeployScheduler {
                     try {
                         Thread.sleep(3000);
                         Map<String, String> cmdReq = new HashMap<>();
-                        cmdReq.put("command", "curl -s --max-time 3 http://127.0.0.1:8080/hello");
+                        int hcPort = project.getHealthCheckPort() != null ? project.getHealthCheckPort() : 8080;
+                        String hcPath = (project.getHealthCheckPath() != null && !project.getHealthCheckPath().isEmpty()) ? project.getHealthCheckPath() : "/hello";
+                        String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "200";
+                        String healthCmd = "curl -s -w \"\\n%{http_code}\" --max-time 3 http://127.0.0.1:" + hcPort + hcPath;
+                        String[] hcKeywords = hcKeywordRaw.split(",");
+                        cmdReq.put("command", healthCmd);
                         Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                        String output = "";
+                        String cmdOutput = "";
                         if (shellResp != null && shellResp.get("data") instanceof Map) {
-                            output = ((Map<String, Object>) shellResp.get("data")).get("stdout") != null
+                            cmdOutput = ((Map<String, Object>) shellResp.get("data")).get("stdout") != null
                                     ? ((Map<String, Object>) shellResp.get("data")).get("stdout").toString() : "";
                         }
-                        if (output.contains("Hello") || output.contains("DEPLOYED")) {
+                        String[] lines = cmdOutput.split("\\n");
+                        String statusCode = "";
+                        StringBuilder body = new StringBuilder();
+                        for (int li = 0; li < lines.length; li++) {
+                            if (li == lines.length - 1) {
+                                statusCode = lines[li].trim();
+                            } else {
+                                if (body.length() > 0) body.append("\n");
+                                body.append(lines[li]);
+                            }
+                        }
+                        String output = body.toString();
+                        boolean matched = false;
+                        if (statusCode.startsWith("2")) { matched = true; }
+                        if (!matched) {
+                            for (String kw : hcKeywords) {
+                                String trimmed = kw.trim();
+                                if (trimmed.matches("\\d{3}") && statusCode.equals(trimmed)) { matched = true; break; }
+                            }
+                        }
+                        if (!matched) {
+                            for (String kw : hcKeywords) {
+                                String trimmed = kw.trim();
+                                if (!trimmed.matches("\\d{3}") && body.toString().contains(trimmed)) { matched = true; break; }
+                            }
+                        }
+                        if (matched) {
                             healthy.set(true);
                             synchronized (logBuf) {
-                                logBuf.append("✅ 健康检查通过 (第").append(i).append("次)\n");
+                                logBuf.append("✅ 健康检查通过 (HTTP ").append(statusCode).append(") (第").append(i).append("次)\n");
                             }
                             break;
                         } else {
                             synchronized (logBuf) {
-                                logBuf.append("⏳ 第").append(i).append("次检查: 等待就绪...\n");
+                                logBuf.append("⏳ 第").append(i).append("次检查: HTTP ").append(statusCode).append(" 等待就绪...\n");
                             }
                         }
                     } catch (Exception e) {

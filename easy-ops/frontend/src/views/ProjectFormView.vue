@@ -41,15 +41,18 @@
       <a-alert type="info" show-icon style="margin-bottom: 12px">
         <template #message>
           <span style="font-weight: 500">{{ currentEnvProfile.icon }} {{ currentEnvProfile.label }}</span>
+          <span class="help-toggle" style="margin-left:8px" @click="toggleHelp('envProfile')">{{ expandedHelps.has('envProfile') ? '▼' : '▶' }} 详情</span>
         </template>
         <template #description>
-          <div class="env-desc">{{ currentEnvProfile.summary }}</div>
-          <ul class="env-list">
-            <li v-for="(g, i) in currentEnvProfile.goals" :key="'g' + i">{{ g }}</li>
-          </ul>
-          <div class="env-meta">
-            <div><strong>堆策略：</strong>{{ currentEnvProfile.heapStrategy }}</div>
-            <div><strong>GC 策略：</strong>{{ currentEnvProfile.gcStrategy }}</div>
+          <div v-show="expandedHelps.has('envProfile')">
+            <div class="env-desc">{{ currentEnvProfile.summary }}</div>
+            <ul class="env-list">
+              <li v-for="(g, i) in currentEnvProfile.goals" :key="'g' + i">{{ g }}</li>
+            </ul>
+            <div class="env-meta">
+              <div><strong>堆策略：</strong>{{ currentEnvProfile.heapStrategy }}</div>
+              <div><strong>GC 策略：</strong>{{ currentEnvProfile.gcStrategy }}</div>
+            </div>
           </div>
         </template>
       </a-alert>
@@ -108,19 +111,36 @@
         <a-col :span="8">
           <a-form-item label="应用名称" name="name">
             <a-input v-model:value="formState.name" placeholder="例如: 订单服务" />
-            <template #extra><span style="font-size:12px;color:#888">必填。应用的显示名称，用于列表和部署记录中标识</span></template>
+            <template #extra>
+              <span class="help-toggle" @click="toggleHelp('name')">{{ expandedHelps.has('name') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('name')" class="help-content">必填。应用的显示名称，用于列表和部署记录中标识</div>
+            </template>
           </a-form-item>
         </a-col>
         <a-col :span="8">
           <a-form-item label="Jar 包名" name="jarName">
             <a-input v-model:value="formState.jarName" placeholder="app.jar" />
-            <template #extra><span style="font-size:12px;color:#888">必填。后端部署时传输和启动的 jar 文件名，如 <code>demo-test-app.jar</code></span></template>
+            <template #extra>
+              <span class="help-toggle" @click="toggleHelp('jarName')">{{ expandedHelps.has('jarName') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('jarName')" class="help-content">必填。后端部署时传输和启动的 jar 文件名，如 <code>demo-test-app.jar</code></div>
+            </template>
           </a-form-item>
         </a-col>
         <a-col :span="8">
           <a-form-item label="部署目录" name="deployDir">
             <a-input v-model:value="formState.deployDir" :placeholder="defaultDeployDir || '/app/data/apps/应用名'" />
-            <template #extra><span style="font-size:12px;color:#888">必填。Jar 包和脚本在服务器上的存放目录。全局根目录: <code>{{ globalPaths?.deployBaseDir || '加载中...' }}</code></span></template>
+            <template #extra>
+              <span class="help-toggle" @click="toggleHelp('deployDir')">{{ expandedHelps.has('deployDir') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('deployDir')" class="help-content">
+                <div><b>必填。</b>应用在 Agent 服务器上的运行目录。</div>
+                <div style="margin-top:4px">以此为基础自动派生以下路径（部署时由 Server 自动管理）：</div>
+                <div>• 📦 <b>版本包存档</b> → <code>{{ deployDirText }}/versions/{版本名}/</code></div>
+                <div>• 🌐 <b>前端静态资源</b> → <code>{{ deployDirText }}/frontend/</code>（未自定义时）</div>
+                <div>• 📝 <b>日志目录</b> → <code>{{ deployDirText }}/logs/</code>（默认约定）</div>
+                <div>• ⚙️ <b>配置目录</b> → <code>{{ deployDirText }}/config/</code>（默认约定）</div>
+                <div style="margin-top:4px;background:#f6f8fa;padding:4px 8px;border-radius:4px">💡 <b>版本包</b>：jar/zip 上传后先存储到版本包目录，启动时复制到 <code>{{ deployDirText }}/</code> 下运行。</div>
+              </div>
+            </template>
           </a-form-item>
         </a-col>
       </a-row>
@@ -132,7 +152,8 @@
           <a-form-item label="前端部署目录">
             <a-input v-model:value="formState.frontendDeployDir" :placeholder="defaultFrontendDir || '留空则默认为 部署目录/frontend'" />
             <template #extra>
-              <div style="font-size:12px;color:#888;line-height:1.8">
+              <span class="help-toggle" @click="toggleHelp('frontendDir')">{{ expandedHelps.has('frontendDir') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('frontendDir')" class="help-content">
                 <div>选填。仅在部署前端静态资源（dist.zip）时需要。</div>
                 <div>• <b>不部署前端</b> → 不用填，留空即可，不影响后端部署</div>
                 <div>• <b>部署前端</b> → 填写 Nginx 等静态服务指向的目录，如 <code>/usr/share/nginx/html</code></div>
@@ -148,7 +169,10 @@
       <a-row :gutter="16">
         <a-col :span="24">
           <a-form-item label="JVM 参数">
-            <template #extra><span style="font-size:12px;color:#888">上方「一键填入 JVM 模板」会自动生成；也可手动修改</span></template>
+            <template #extra>
+              <span class="help-toggle" @click="toggleHelp('jvmOpts')">{{ expandedHelps.has('jvmOpts') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('jvmOpts')" class="help-content">上方「一键填入 JVM 模板」会自动生成；也可手动修改</div>
+            </template>
             <a-textarea v-model:value="formState.jvmOpts" :rows="2" placeholder="-Xms512m -Xmx1024m -XX:+UseG1GC ..." style="font-family:'JetBrains Mono',monospace;font-size:12px" />
           </a-form-item>
         </a-col>
@@ -158,7 +182,8 @@
         <a-col :span="12">
           <a-form-item label="启动脚本 start.sh" name="startScript">
             <template #extra>
-              <div style="font-size:12px;color:#888;line-height:1.8">
+              <span class="help-toggle" @click="toggleHelp('startScript')">{{ expandedHelps.has('startScript') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('startScript')" class="help-content">
                 <div>部署时自动同步到服务器的部署目录并执行。上方「一键填入」可自动生成。</div>
                 <div>脚本会自动按 Jar 包名查找并停掉旧进程，再启动新实例。</div>
               </div>
@@ -169,7 +194,8 @@
         <a-col :span="12">
           <a-form-item label="停止脚本 stop.sh">
             <template #extra>
-              <div style="font-size:12px;color:#888;line-height:1.8">
+              <span class="help-toggle" @click="toggleHelp('stopScript')">{{ expandedHelps.has('stopScript') ? '▼' : '▶' }} 说明</span>
+              <div v-show="expandedHelps.has('stopScript')" class="help-content">
                 <div>部署新版本前自动执行，按 Jar 包名查找并停止旧进程。</div>
                 <div>上方「一键填入」可自动生成，无需手动编写。</div>
               </div>
@@ -187,16 +213,20 @@
             <span>{{ n.name }} ({{ n.ip }})</span>
           </a-select-option>
         </a-select>
-        <template #extra><span style="font-size:12px;color:#888">必填，至少选择 1 个节点。部署时会同时将应用分发到所有选中的节点</span></template>
+        <template #extra>
+          <span class="help-toggle" @click="toggleHelp('nodeIds')">{{ expandedHelps.has('nodeIds') ? '▼' : '▶' }} 说明</span>
+          <div v-show="expandedHelps.has('nodeIds')" class="help-content">必填，至少选择 1 个节点。部署时会同时将应用分发到所有选中的节点</div>
+        </template>
       </a-form-item>
 
       <!-- ====== 健康检查 ====== -->
       <a-divider orientation="left" style="font-size: 13px; color: #888">🏥 部署后健康检查</a-divider>
       <a-form-item label="启用健康检查">
         <template #extra>
-          <div style="font-size:12px;color:#888;line-height:1.8">
+          <span class="help-toggle" @click="toggleHelp('healthCheck')">{{ expandedHelps.has('healthCheck') ? '▼' : '▶' }} 说明</span>
+          <div v-show="expandedHelps.has('healthCheck')" class="help-content">
             <div>部署后自动探测应用是否成功启动。</div>
-            <div>• <b>开启</b> → 用 curl 请求指定端口+路径，检查返回内容是否包含关键字</div>
+            <div>• <b>开启</b> → 用 curl 请求指定端口+路径，检查 HTTP 返回码（2xx 视为通过）或匹配关键字</div>
             <div>• <b>关闭</b> → 跳过检查，启动脚本执行完即判定部署成功（适用于无 HTTP 接口的应用）</div>
           </div>
         </template>
@@ -215,19 +245,23 @@
         </a-col>
         <a-col :span="8">
           <a-form-item label="关键字(逗号分隔)">
-            <a-input v-model:value="formState.healthCheckKeyword" placeholder="Hello,DEPLOYED" />
+            <a-input v-model:value="formState.healthCheckKeyword" placeholder="200（也支持 Hello,DEPLOYED 等文本）" />
           </a-form-item>
         </a-col>
       </a-row>
 
       <!-- ====== 填写指南 ====== -->
-      <a-divider orientation="left" style="font-size: 13px; color: #888">📖 填写指南</a-divider>
-      <a-alert type="info" show-icon style="margin-bottom: 16px">
-        <template #message><span style="font-weight:500">不同场景需要填写哪些字段？</span></template>
-        <template #description>
-          <a-table :data-source="guideData" :columns="guideColumns" :pagination="false" size="small" bordered style="margin-top:8px" />
-        </template>
-      </a-alert>
+      <a-divider orientation="left" style="font-size: 13px; color: #888">
+        <span class="help-toggle" @click="toggleHelp('guide')">{{ expandedHelps.has('guide') ? '▼' : '▶' }} 📖 填写指南</span>
+      </a-divider>
+      <div v-show="expandedHelps.has('guide')">
+        <a-alert type="info" show-icon style="margin-bottom: 16px">
+          <template #message><span style="font-weight:500">不同场景需要填写哪些字段？</span></template>
+          <template #description>
+            <a-table :data-source="guideData" :columns="guideColumns" :pagination="false" size="small" bordered style="margin-top:8px" />
+          </template>
+        </a-alert>
+      </div>
 
       <a-form-item>
         <a-space>
@@ -309,6 +343,10 @@ const staticParamGuide = [
   { flag: '-Dfile.encoding=UTF-8', purpose: '字符集', reason: '避免 Linux 默认编码导致日志与接口乱码。' }
 ]
 
+const deployDirText = computed(() => {
+  return formState.value.deployDir || defaultDeployDir.value || '{deployDir}'
+})
+
 const defaultDeployDir = computed(() => {
   if (!globalPaths.value) return ''
   const name = formState.value.name || 'app'
@@ -383,7 +421,7 @@ const formState = ref<any>({
   healthCheckEnabled: true,
   healthCheckPort: 8080,
   healthCheckPath: '/hello',
-  healthCheckKeyword: 'Hello,DEPLOYED'
+  healthCheckKeyword: '200'
 })
 
 const rules: Record<string, Rule[]> = {
@@ -403,14 +441,22 @@ const rules: Record<string, Rule[]> = {
   }]
 }
 
+// 说明展开状态（默认全部折叠）
+const expandedHelps = ref<Set<string>>(new Set())
+function toggleHelp(key: string) {
+  const s = new Set(expandedHelps.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  expandedHelps.value = s
+}
+
 /** 从 startScript 中提取 JAR_NAME=xxx 的值 */
 function extractJarNameFromScript(script: string): string | null {
   const match = script.match(/JAR_NAME=(\S+)/)
   return match ? match[1] : null
 }
 
-/** 自动修正 startScript 中的 JAR_NAME 使其与 jarName 一致 */
-function fixStartScriptJarName(script: string, jarName: string): string {
+/** 自动修正脚本中的 JAR_NAME 使其与 jarName 一致 */
+function fixScriptJarName(script: string, jarName: string): string {
   if (!script || !jarName) return script
   return script.replace(/JAR_NAME=\S+/, `JAR_NAME=${jarName}`)
 }
@@ -459,10 +505,15 @@ async function fillTemplate() {
   }
 }
 
-// 当 jarName 变化时，自动修正 startScript 中的 JAR_NAME
+// 当 jarName 变化时，自动修正 startScript 和 stopScript 中的 JAR_NAME
 watch(() => formState.value.jarName, (newJarName) => {
-  if (newJarName && formState.value.startScript) {
-    formState.value.startScript = fixStartScriptJarName(formState.value.startScript, newJarName)
+  if (newJarName) {
+    if (formState.value.startScript) {
+      formState.value.startScript = fixScriptJarName(formState.value.startScript, newJarName)
+    }
+    if (formState.value.stopScript) {
+      formState.value.stopScript = fixScriptJarName(formState.value.stopScript, newJarName)
+    }
   }
 })
 
@@ -477,11 +528,16 @@ function getNodeNames(): string {
 }
 
 function doSubmit() {
-  // 保存前自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
-  if (formState.value.jarName && formState.value.startScript) {
-    const jarNameInScript = extractJarNameFromScript(formState.value.startScript)
-    if (jarNameInScript && jarNameInScript !== formState.value.jarName) {
-      formState.value.startScript = fixStartScriptJarName(formState.value.startScript, formState.value.jarName)
+  // 保存前自动修正脚本中 JAR_NAME 与 jarName 不一致的问题
+  if (formState.value.jarName) {
+    if (formState.value.startScript) {
+      const jarNameInScript = extractJarNameFromScript(formState.value.startScript)
+      if (jarNameInScript && jarNameInScript !== formState.value.jarName) {
+        formState.value.startScript = fixScriptJarName(formState.value.startScript, formState.value.jarName)
+      }
+    }
+    if (formState.value.stopScript) {
+      formState.value.stopScript = fixScriptJarName(formState.value.stopScript, formState.value.jarName)
     }
   }
 
@@ -598,5 +654,23 @@ onMounted(async () => {
 .env-block ul {
   margin: 4px 0 0 18px;
   padding: 0;
+}
+.help-toggle {
+  font-size: 12px;
+  color: #1890ff;
+  cursor: pointer;
+  user-select: none;
+}
+.help-toggle:hover {
+  text-decoration: underline;
+}
+.help-content {
+  font-size: 12px;
+  color: #888;
+  line-height: 1.8;
+  margin-top: 4px;
+  padding: 6px 8px;
+  background: #fafafa;
+  border-radius: 4px;
 }
 </style>

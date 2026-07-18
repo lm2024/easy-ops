@@ -186,61 +186,20 @@ export function buildJvmOpts(env: EnvType, xmsMB: number, xmxMB: number): string
 export function generateStartScript(jarName: string, jvmOpts: string): string {
   const jar = jarName || 'app.jar'
   return `#!/bin/bash
-# EasyOps 自动生成 — 在部署目录执行
-JAR_NAME=${jar}
 cd "$(dirname "$0")"
-
-# ========== 1. 停掉旧进程（防止端口冲突）==========
-OLD_PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
-if [ -n "$OLD_PIDS" ]; then
-  echo "发现旧进程，先停止: $OLD_PIDS"
-  for p in $OLD_PIDS; do kill "$p" 2>/dev/null; done
-  sleep 2
-  for p in $OLD_PIDS; do kill -9 "$p" 2>/dev/null; done
-fi
-
-# ========== 2. 清理历史日志（启动前）==========
+JAR_NAME=${jar}
 mkdir -p logs
 
-# 2a. 清理启动输出日志（每次重启重新记录）
-rm -f logs/startup.log logs/nohup.out 2>/dev/null
-
-# 2b. 清理 logback 归档日志（带日期后缀的）
-#     匹配: app-2026-07-17.log, app.2026-07-17.log, app.2026-07-17.0.log
-#           app-2026-07-17-1.log, app.log.2026-07-17 等
-#     保留: app.log, tm-info.log, tm-error.log 等实时日志（不带日期）
-find logs/ -maxdepth 1 -type f \\( \\
-  -name "*.[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]*" \\
-  -o -name "*-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*" \\
-  -o -name "*.[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]*" \\
-\\) -delete 2>/dev/null
-
-# 2c. 清理归档子目录（如 logs/archive/）
-if [ -d "logs/archive" ]; then
-  rm -rf logs/archive/*
-  echo "已清理 logs/archive/ 归档目录"
+# 停掉旧进程
+PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
+if [ -n "$PIDS" ]; then
+  echo "停止旧进程: $PIDS"
+  for p in $PIDS; do kill "$p" 2>/dev/null; done
+  sleep 2
+  for p in $PIDS; do kill -9 "$p" 2>/dev/null; done
 fi
 
-# 2d. 清理 heap dump 文件（OOM 产生的 .hprof，通常几百 MB 到几 GB）
-find . -maxdepth 2 -type f -name "*.hprof" -delete 2>/dev/null
-find . -maxdepth 2 -type f -name "java_pid*.hprof" -delete 2>/dev/null
-find . -maxdepth 2 -type f -name "heapdump.hprof" -delete 2>/dev/null
-# 也清理 GC 日志归档（如果有）
-find . -maxdepth 2 -type f -name "gc.log.*" -delete 2>/dev/null
-
-# 2e. 清理超大的实时日志（>50MB 截断保留最后 1000 行，防止磁盘撑满）
-for f in logs/*.log; do
-  [ -f "$f" ] || continue
-  SIZE=$(stat -c%s "$f" 2>/dev/null || stat -f%z "$f" 2>/dev/null || echo 0)
-  if [ "$SIZE" -gt 52428800 ]; then
-    echo "日志 $f 超过 50MB，截断保留最后 1000 行"
-    tail -1000 "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-  fi
-done
-
-echo "历史日志清理完成"
-
-# ========== 3. 启动应用 ==========
+# 启动
 nohup java ${jvmOpts} -jar "$JAR_NAME" >> logs/startup.log 2>&1 &
 echo "Started PID=$! jar=$JAR_NAME"`
 }
@@ -248,34 +207,16 @@ echo "Started PID=$! jar=$JAR_NAME"`
 export function generateStopScript(jarName?: string): string {
   const jar = jarName || 'app.jar'
   return `#!/bin/bash
-# EasyOps 自动生成 — 按 jar 包名查找并停止进程
 JAR_NAME=${jar}
-
-# 按 jar 名查找进程（排除 grep 自身）
 PIDS=$(ps -ef | grep "[j]ava.*-jar.*$JAR_NAME" | awk '{print $2}')
-
 if [ -z "$PIDS" ]; then
-  echo "未找到 $JAR_NAME 的运行进程"
-  exit 0
+  echo "未找到 $JAR_NAME 进程"; exit 0
 fi
-
-echo "停止 $JAR_NAME 进程: $PIDS"
-for p in $PIDS; do
-  kill "$p" 2>/dev/null
-done
-
-# 等待优雅退出
+echo "停止 $JAR_NAME: $PIDS"
+for p in $PIDS; do kill "$p" 2>/dev/null; done
 sleep 3
-
-# 检查是否还在，强杀残留
-for p in $PIDS; do
-  if kill -0 "$p" 2>/dev/null; then
-    echo "强杀残留进程: $p"
-    kill -9 "$p" 2>/dev/null
-  fi
-done
-
-echo "✅ 已停止 $JAR_NAME"`
+for p in $PIDS; do kill -9 "$p" 2>/dev/null; done
+echo "已停止 $JAR_NAME"`
 }
 
 function heapRange(env: EnvType, xmxMB: number, totalMemMB: number): string {
