@@ -81,7 +81,12 @@
             </a-tag>
           </template>
           <template v-if="column.key === 'healthStatus'">
-            <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
+            <div>
+              <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
+            </div>
+            <div v-if="record.healthStatus !== 'UP' && record.healthDetail" style="font-size:11px;color:#ff4d4f;margin-top:2px;max-width:220px;line-height:1.3">
+              {{ record.healthDetail }}
+            </div>
           </template>
           <template v-if="column.key === 'cpu'">
             <div>总: <b :style="{ color: (record.hostCpuPercent || 0) > 80 ? '#ff4d4f' : '#333' }">{{ formatPercent(record.hostCpuPercent) }}</b></div>

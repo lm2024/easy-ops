@@ -84,9 +84,7 @@
   <section class="auth">
     <div class="auth-inner">
       <h2 class="auth-title">登录 EasyOps 控制台</h2>
-      <p class="auth-sub">欢迎回来，请输入您的账号</p>
-      <p class="auth-hint mono">默认账号 admin · 密码 admin123（区分大小写）</p>
-
+      
       <a-config-provider :theme="formTheme">
         <a-form :model="formState" @finish="handleLogin" layout="vertical" class="auth-form">
           <a-form-item name="username" :rules="[{ required: true, message: '请输入用户名' }]">
@@ -113,6 +111,10 @@
             <button ref="ctaRef" type="submit" class="cta" :disabled="loading">{{ loading ? '登录中…' : '登 录' }}</button>
           </a-form-item>
         </a-form>
+          <div class="reset-row">
+            <a class="reset-link" @click="handleReset">管理员密码重置为默认</a>
+          </div>
+
       </a-config-provider>
     </div>
     <p class="copyright mono">© 2024 EasyOps. All rights reserved.</p>
@@ -124,8 +126,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { login, getCaptcha } from '../api/auth'
-import { message } from 'ant-design-vue'
+import { login, getCaptcha, resetAdminPassword } from '../api/auth'
+import { message, Modal } from 'ant-design-vue'
 import type { ThemeConfig } from 'ant-design-vue/es/config-provider/context'
 
 const router = useRouter()
@@ -240,6 +242,30 @@ async function handleLogin() {
     loading.value = false
   }
 }
+
+async function handleReset() {
+async function handleReset() {
+  Modal.confirm({
+    title: "确认重置管理员密码?",
+    content: "密码将恢复为默认值 Admin123!",
+    okText: "确认重置",
+    cancelText: "取消",
+    okButtonProps: { danger: true },
+    onOk: async () => {
+      try {
+        await resetAdminPassword()
+        message.success("管理员密码已重置为 Admin123!")
+        loadCaptcha()
+      } catch {
+        message.error("重置失败，请联系管理员")
+      }
+    }
+  })
+}
+
+  }
+}
+
 
 function alignSunWithButton() {
   const shell = shellRef.value
@@ -483,19 +509,6 @@ onUnmounted(() => {
   letter-spacing: -0.02em;
   margin: 0 0 8px;
 }
-
-.auth-sub {
-  font-size: 14px;
-  color: var(--muted);
-  margin: 0 0 8px;
-}
-
-.auth-hint {
-  font-size: 12px;
-  color: #a3a3a3;
-  margin: 0 0 2rem;
-}
-
 .field-label {
   display: block;
   font-size: 13px;
@@ -503,15 +516,12 @@ onUnmounted(() => {
   color: var(--accent);
   margin-bottom: 10px;
 }
-
 .field-icon {
   width: 16px;
   height: 16px;
   color: #525252;
 }
-
 .auth-form :deep(.ant-form-item) { margin-bottom: 1.35rem; }
-
 .auth-form :deep(.ant-input),
 .auth-form :deep(.ant-input-affix-wrapper) {
   background: var(--surface) !important;
@@ -521,29 +531,22 @@ onUnmounted(() => {
   height: 48px !important;
   padding: 0 14px !important;
 }
-
 .auth-form :deep(.ant-input),
 .auth-form :deep(.ant-input-password input) {
   color: #e5e5e5 !important;
   font-size: 14px !important;
 }
-
 .auth-form :deep(.ant-input-password input) {
   background: transparent !important;
 }
-
 .auth-form :deep(input::placeholder) { color: #525252 !important; }
 .auth-form :deep(.ant-input-prefix) { margin-right: 10px !important; }
-
 .auth-form :deep(.ant-input-affix-wrapper:hover) { border-color: #404040 !important; }
-
 .auth-form :deep(.ant-input-affix-wrapper-focused) {
   border-color: rgba(232, 255, 89, 0.5) !important;
   box-shadow: 0 0 0 1px rgba(232, 255, 89, 0.1) !important;
 }
-
 .auth-form :deep(.ant-input-password-icon) { color: #525252 !important; }
-
 .cta {
   width: 100%;
   height: 50px;
@@ -558,10 +561,8 @@ onUnmounted(() => {
   cursor: pointer;
   transition: opacity 0.15s;
 }
-
 .cta:hover:not(:disabled) { opacity: 0.92; }
 .cta:disabled { opacity: 0.5; }
-
 .captcha-row {
   display: flex;
   gap: 8px;
@@ -576,7 +577,6 @@ onUnmounted(() => {
   cursor: pointer;
   border: 1px solid #2a2a2a;
 }
-
 .copyright {
   position: absolute;
   right: 2.5rem;
@@ -585,7 +585,6 @@ onUnmounted(() => {
   color: #404040;
   margin: 0;
 }
-
 @media (max-width: 960px) {
   .login-shell { grid-template-columns: 1fr; }
   .narrative { min-height: auto; padding-bottom: 1rem; }
@@ -599,9 +598,22 @@ onUnmounted(() => {
   .topology { width: 100%; }
   .auth { padding: 2rem 1.5rem 3rem; }
 }
-
 @media (prefers-reduced-motion: reduce) {
   .ring-1, .ring-2, .ring-3 { animation: none; opacity: 0; }
   .click-pulse { display: none; }
+}
+.reset-row {
+  text-align: center;
+  margin-top: -0.5rem;
+}
+.reset-link {
+  font-size: 12px;
+  color: #525252;
+  cursor: pointer;
+  transition: color 0.15s;
+  text-decoration: none;
+}
+.reset-link:hover {
+  color: var(--accent);
 }
 </style>

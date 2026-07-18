@@ -107,6 +107,35 @@ public class SystemController {
         return Result.success(data);
     }
 
+    /**
+     * POST /api/auth/reset - 将管理员密码重置为默认密码 Admin123!
+     */
+    @PostMapping("/reset")
+    public Result<?> resetAdminPassword() {
+        UserModel admin = userMapper.findByUsername("admin");
+        if (admin == null) {
+            return Result.error(ErrorCode.SERVER_ERROR, "管理员用户不存在");
+        }
+        String hashed = BCrypt.hashpw("Admin123!", BCrypt.gensalt(10));
+        admin.setPassword(hashed);
+        admin.setUpdateTime(System.currentTimeMillis());
+        userMapper.update(admin);
+
+        try {
+            OperationLogModel logModel = new OperationLogModel();
+            logModel.setUserId(admin.getId());
+            logModel.setModule("AUTH");
+            logModel.setAction("RESET_PASSWORD");
+            logModel.setContent("管理员密码已重置为默认密码 Admin123!");
+            logModel.setCreateTime(System.currentTimeMillis());
+            operationLogMapper.insert(logModel);
+        } catch (Exception e) {
+            System.err.println("[Auth] Failed to write reset log: " + e.getMessage());
+        }
+
+        return Result.success("密码已重置为默认密码 Admin123!");
+    }
+
     private boolean bcryptCheck(String input, String hashed) {
         if (hashed == null) return false;
         return BCrypt.checkpw(input, hashed);
