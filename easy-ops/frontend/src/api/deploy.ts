@@ -32,8 +32,3 @@ export function rollbackDeploy(id: number) {
 export function cancelScheduledDeploy(id: number) {
   return request.post<any, Result>(`/deploy/${id}/cancel`)
 }
-
-/** 强制释放部署锁（卡住时使用） */
-export function forceUnlockDeploy(projectId: string) {
-  return request.post<any, Result<string>>(`/deploy/unlock/${projectId}`)
-}

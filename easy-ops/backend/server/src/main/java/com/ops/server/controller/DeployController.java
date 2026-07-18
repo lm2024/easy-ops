@@ -24,7 +24,6 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.ReentrantLock;
 
 @RestController
 @RequestMapping("/deploy")
@@ -58,16 +57,6 @@ public class DeployController {
 
     private final RestTemplate restTemplate = new RestTemplate();
 
-    /**
-     * 部署锁：projectId -> lock
-     * 同一项目同一时刻只允许一个部署请求
-     */
-    private final ConcurrentHashMap<Long, ReentrantLock> deployLocks = new ConcurrentHashMap<>();
-    /** 锁获取时间戳，用于超时自动释放 */
-    private final ConcurrentHashMap<Long, Long> deployLockTimestamps = new ConcurrentHashMap<>();
-    /** 锁最大持有时间 2 分钟，超时自动释放 */
-    private static final long LOCK_TIMEOUT_MS = 2 * 60 * 1000;
-
     // ======================== 步骤定义 ========================
     private static final String[] STEP_NAMES = {"stop", "transfer", "start", "health"};
     private static final String[] STEP_LABELS = {"停止旧进程", "传输文件", "启动应用", "健康检查"};
@@ -89,47 +78,15 @@ public class DeployController {
             return Result.paramError("项目和版本ID不能为空");
         }
 
-        // 并发控制
-        ReentrantLock lock = deployLocks.computeIfAbsent(projectId, k -> new ReentrantLock());
-        boolean acquired = lock.tryLock();
-
-        if (!acquired) {
-            // 检查锁是否超时（防止死锁）
-            Long lockTime = deployLockTimestamps.get(projectId);
-            long heldMs = lockTime != null ? System.currentTimeMillis() - lockTime : -1;
-            log.warn("[Deploy] 锁冲突: projectId={}, 已持有 {}ms", projectId, heldMs);
-
-            if (heldMs > LOCK_TIMEOUT_MS) {
-                log.warn("[Deploy] 锁超时 {}ms，强制释放 projectId={}", heldMs, projectId);
-                lock.unlock();
-                deployLockTimestamps.remove(projectId);
-                // 重新尝试获取
-                acquired = lock.tryLock();
-            }
-
-            if (!acquired) {
-                log.warn("[Deploy] 拒绝部署: projectId={}, 锁仍被持有 {}ms", projectId, heldMs);
-                String hint = heldMs > LOCK_TIMEOUT_MS
-                        ? "部署锁已超时但仍无法释放，请重启后端服务"
-                        : "请等待当前部署完成后再试（已等待 " + (heldMs / 1000) + " 秒）";
-                return Result.error(1009, "该项目正在部署中。" + hint);
-            }
-        }
-
-        // 记录锁获取时间
-        deployLockTimestamps.put(projectId, System.currentTimeMillis());
-        log.info("[Deploy] 获取锁: projectId={}, deployId 即将生成", projectId);
-
         // 获取项目 & 版本
         ProjectModel project = projectMapper.findById(projectId);
         VersionModel version = versionPackageMapper.findById(versionId);
-        if (project == null) { lock.unlock(); deployLockTimestamps.remove(projectId); log.warn("[Deploy] 项目不存在: projectId={}", projectId); return Result.error(1005, "项目不存在"); }
-        if (version == null) { lock.unlock(); deployLockTimestamps.remove(projectId); log.warn("[Deploy] 版本不存在: versionId={}", versionId); return Result.error(1004, "版本不存在"); }
+        if (project == null) { log.warn("[Deploy] 项目不存在: projectId={}", projectId); return Result.error(1005, "项目不存在"); }
+        if (version == null) { log.warn("[Deploy] 版本不存在: versionId={}", versionId); return Result.error(1004, "版本不存在"); }
 
         // 获取目标节点
         String nodeIdsStr = project.getNodeIds();
         if (nodeIdsStr == null || nodeIdsStr.trim().isEmpty()) {
-            lock.unlock(); deployLockTimestamps.remove(projectId);
             log.warn("[Deploy] 项目未绑定节点: projectId={}", projectId);
             return Result.error(1005, "项目未绑定节点");
         }
@@ -145,7 +102,6 @@ public class DeployController {
 
         // ====== 定时部署分支（不需要异步） ======
         if (scheduleTime != null && scheduleTime > System.currentTimeMillis()) {
-            lock.unlock();
             for (Long nid : targetNodeIds) {
                 DeployModel scheduledDeploy = new DeployModel();
                 scheduledDeploy.setProjectId(projectId);
@@ -189,13 +145,6 @@ public class DeployController {
                     log.error("[Deploy] 推送失败消息异常: deployId={}", deployId, pushEx);
                 }
             } finally {
-                try {
-                    lock.unlock();
-                    deployLockTimestamps.remove(finalProjectId);
-                    log.info("[Deploy] 释放锁: projectId={}", finalProjectId);
-                } catch (Exception unlockEx) {
-                    log.error("[Deploy] 释放锁异常: projectId={}", finalProjectId, unlockEx);
-                }
                 deployHandler.cleanup(deployId);
             }
         }, "deploy-" + deployId).start();
@@ -213,9 +162,16 @@ public class DeployController {
     private void doDeployAsync(String deployId, Long projectId, Long versionId,
                                List<Long> targetNodeIds, ProjectModel project, VersionModel version) {
 
-        String agentFileDir = globalPathProperties.resolveAgentVersionDir(projectId, version.getVersion());
         String deployDir = project.getDeployDir();
-        if (deployDir == null || deployDir.isEmpty()) deployDir = agentFileDir;
+        String agentFileDir;
+        if (deployDir != null && !deployDir.isEmpty()) {
+            // 部署目录已配置：存储路径 = 部署目录/versions/版本名
+            agentFileDir = deployDir + "/versions/" + version.getVersion();
+        } else {
+            // 未配置部署目录：回退到全局 agent 数据路径
+            agentFileDir = globalPathProperties.resolveAgentVersionDir(projectId, version.getVersion());
+            deployDir = agentFileDir;
+        }
         String jarName = version.getJarName() != null ? version.getJarName() : "app.jar";
         String agentFilePath = agentFileDir + "/" + jarName;
         boolean isFrontendDeploy = "frontend".equalsIgnoreCase(version.getPackageType())
@@ -279,6 +235,7 @@ public class DeployController {
                     fileBody.add("file", new FileSystemResource(zipFile));
                     fileBody.add("projectId", String.valueOf(projectId));
                     fileBody.add("versionName", version.getVersion());
+                    fileBody.add("targetDir", agentFileDir);
                     restTemplate.postForEntity(uploadUrl, new HttpEntity<>(fileBody, fileHeaders), String.class);
 
                     String unzipUrl = agentBase + "/api/file/unzip";
@@ -318,6 +275,7 @@ public class DeployController {
                     fileBody.add("file", new FileSystemResource(jarFile));
                     fileBody.add("projectId", String.valueOf(projectId));
                     fileBody.add("versionName", version.getVersion());
+                    fileBody.add("targetDir", agentFileDir);
                     ResponseEntity<String> uploadResp = restTemplate.postForEntity(uploadUrl, new HttpEntity<>(fileBody, fileHeaders), String.class);
                     nodeLog.append("✅ 传输完成: ").append(uploadResp.getStatusCode()).append("\n");
                     pushStep(deployId, nid, node.getName(), "done", "transfer", nodeIdx, "✅ 传输完成 (" + (jarFile.length()/1024) + "KB)");
@@ -345,8 +303,8 @@ public class DeployController {
                     } else {
                         int hcPort = project.getHealthCheckPort() != null ? project.getHealthCheckPort() : 8080;
                         String hcPath = (project.getHealthCheckPath() != null && !project.getHealthCheckPath().isEmpty()) ? project.getHealthCheckPath() : "/hello";
-                        String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "Hello,DEPLOYED";
-                        String healthCmd = "curl -s --max-time 3 http://127.0.0.1:" + hcPort + hcPath;
+                        String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "200";
+                        String healthCmd = "curl -s -w \"\\n%{http_code}\" --max-time 3 http://127.0.0.1:" + hcPort + hcPath;
                         String[] hcKeywords = hcKeywordRaw.split(",");
                         String shellUrl = agentBase + "/api/shell/exec";
 
@@ -358,20 +316,46 @@ public class DeployController {
                                 cmdReq.put("command", healthCmd);
                                 @SuppressWarnings("unchecked")
                                 Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                                String output = "";
+                                String cmdOutput = "";
                                 if (shellResp != null && shellResp.get("data") instanceof Map) {
                                     @SuppressWarnings("unchecked")
                                     Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
-                                    output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                                    cmdOutput = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
                                 }
+                                // 解析：最后一行是HTTP状态码，前面是响应体
+                                String[] parsedLines = cmdOutput.split("\\n");
+                                String statusCode = "";
+                                StringBuilder body = new StringBuilder();
+                                for (int li = 0; li < parsedLines.length; li++) {
+                                    if (li == parsedLines.length - 1) {
+                                        statusCode = parsedLines[li].trim();
+                                    } else {
+                                        if (body.length() > 0) body.append("\n");
+                                        body.append(parsedLines[li]);
+                                    }
+                                }
+                                String bodyOutput = body.toString();
                                 boolean matched = false;
-                                for (String kw : hcKeywords) {
-                                    if (output.contains(kw.trim())) { matched = true; break; }
+                                // 条件1：HTTP返回码为 2xx 视为通过
+                                if (statusCode.startsWith("2")) { matched = true; }
+                                // 条件2：关键字列表中的数字匹配HTTP返回码（如"200"、"302"）
+                                if (!matched) {
+                                    for (String kw : hcKeywords) {
+                                        String t = kw.trim();
+                                        if (t.matches("\\d{3}") && statusCode.equals(t)) { matched = true; break; }
+                                    }
+                                }
+                                // 条件3：关键字列表中的文本匹配响应体（兼容旧配置）
+                                if (!matched) {
+                                    for (String kw : hcKeywords) {
+                                        String t = kw.trim();
+                                        if (!t.matches("\\d{3}") && bodyOutput.contains(t)) { matched = true; break; }
+                                    }
                                 }
                                 if (matched) {
                                     healthy = true;
-                                    nodeLog.append("✅ 第 ").append(i).append(" 次检查通过\n");
-                                    pushStep(deployId, nid, node.getName(), "done", "health", nodeIdx, "✅ 第 " + i + " 次检查通过");
+                                    nodeLog.append("✅ 第 ").append(i).append(" 次检查通过 (HTTP ").append(statusCode).append(")\n");
+                                    pushStep(deployId, nid, node.getName(), "done", "health", nodeIdx, "✅ 第 " + i + " 次检查通过 (HTTP " + statusCode + ")");
                                     break;
                                 }
                             } catch (Exception e) {
@@ -498,21 +482,6 @@ public class DeployController {
         return Result.success(data);
     }
 
-    /**
-     * POST /api/deploy/unlock/{projectId} - 强制释放部署锁（卡住时使用）
-     */
-    @PostMapping("/unlock/{projectId}")
-    public Result<?> forceUnlock(@PathVariable Long projectId) {
-        ReentrantLock lock = deployLocks.get(projectId);
-        if (lock != null && lock.isLocked()) {
-            log.warn("[Deploy] 强制释放锁: projectId={}", projectId);
-            lock.unlock();
-            deployLockTimestamps.remove(projectId);
-            return Result.success("锁已释放: projectId=" + projectId);
-        }
-        return Result.success("该应用没有被锁住: projectId=" + projectId);
-    }
-
     @GetMapping("/{id}")
     public Result<?> getDetail(@PathVariable Long id) {
         DeployModel record = deployRecordMapper.findById(id);
@@ -524,17 +493,8 @@ public class DeployController {
     public Result<?> rollback(@PathVariable Long id) {
         DeployModel record = deployRecordMapper.findById(id);
         if (record == null) return Result.error(500, "部署记录不存在");
-        ReentrantLock lock = deployLocks.computeIfAbsent(record.getProjectId(), k -> new ReentrantLock());
-        boolean acquired = lock.tryLock();
-        if (!acquired) {
-            return Result.error(1009, "该项目正在部署中，请等待当前部署完成后再回滚");
-        }
-        try {
-            auditLog.log("DEPLOY", "ROLLBACK", "回滚部署: 记录ID=" + id + ", 项目ID=" + record.getProjectId());
-            return doRollback(id, record);
-        } finally {
-            lock.unlock();
-        }
+        auditLog.log("DEPLOY", "ROLLBACK", "回滚部署: 记录ID=" + id + ", 项目ID=" + record.getProjectId());
+        return doRollback(id, record);
     }
 
     private Result<?> doRollback(Long id, DeployModel record) {
@@ -621,8 +581,8 @@ public class DeployController {
             } else {
                 int appPort = project.getHealthCheckPort() != null ? project.getHealthCheckPort() : 8080;
                 String hcPath = (project.getHealthCheckPath() != null && !project.getHealthCheckPath().isEmpty()) ? project.getHealthCheckPath() : "/hello";
-                String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "Hello,DEPLOYED";
-                String healthCmd = "curl -s --max-time 3 http://127.0.0.1:" + appPort + hcPath;
+                String hcKeywordRaw = (project.getHealthCheckKeyword() != null && !project.getHealthCheckKeyword().isEmpty()) ? project.getHealthCheckKeyword() : "200";
+                String healthCmd = "curl -s -w \"\\n%{http_code}\" --max-time 3 http://127.0.0.1:" + appPort + hcPath;
                 String[] hcKeywords = hcKeywordRaw.split(",");
                 String shellUrl = agentBase + "/api/shell/exec";
                 for (int i = 1; i <= 5; i++) {
@@ -632,19 +592,41 @@ public class DeployController {
                         cmdReq.put("command", healthCmd);
                         @SuppressWarnings("unchecked")
                         Map<String, Object> shellResp = restTemplate.postForObject(shellUrl, cmdReq, Map.class);
-                        String output = "";
+                                String cmdOutput = "";
                         if (shellResp != null && shellResp.get("data") instanceof Map) {
                             @SuppressWarnings("unchecked")
                             Map<String, Object> dm = (Map<String, Object>) shellResp.get("data");
-                            output = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+                            cmdOutput = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
                         }
+                        String[] parsedLines = cmdOutput.split("\\n");
+                        String statusCode = "";
+                        StringBuilder body = new StringBuilder();
+                        for (int li = 0; li < parsedLines.length; li++) {
+                            if (li == parsedLines.length - 1) {
+                                statusCode = parsedLines[li].trim();
+                            } else {
+                                if (body.length() > 0) body.append("\n");
+                                body.append(parsedLines[li]);
+                            }
+                        }
+                        String bodyOutput = body.toString();
                         boolean matched = false;
-                        for (String kw : hcKeywords) {
-                            if (output.contains(kw.trim())) { matched = true; break; }
+                        if (statusCode.startsWith("2")) { matched = true; }
+                        if (!matched) {
+                            for (String kw : hcKeywords) {
+                                String t = kw.trim();
+                                if (t.matches("\\d{3}") && statusCode.equals(t)) { matched = true; break; }
+                            }
+                        }
+                        if (!matched) {
+                            for (String kw : hcKeywords) {
+                                String t = kw.trim();
+                                if (!t.matches("\\d{3}") && bodyOutput.contains(t)) { matched = true; break; }
+                            }
                         }
                         if (matched) {
                             healthy = true;
-                            healthDetail = "✅ 回滚应用已启动 (第 " + i + " 次检查)";
+                            healthDetail = "✅ 回滚应用已启动 (HTTP " + statusCode + ")";
                             break;
                         }
                     } catch (Exception e) {
