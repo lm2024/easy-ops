@@ -32,6 +32,26 @@ public class NotificationService {
     private NotificationHandler notificationHandler;
 
     /**
+     * 创建广播通知（所有用户可见，不需要确认）
+     * 用于监控告警等场景
+     */
+    public NotificationRecordModel createBroadcastNotification(
+            String type, String level, String title, String content,
+            Long projectId, Long nodeId, String sourceType) {
+        NotificationRecordModel record = new NotificationRecordModel();
+        record.setType(type);
+        record.setLevel(level);
+        record.setTitle(title);
+        record.setContent(content);
+        record.setProjectId(projectId);
+        record.setNodeId(nodeId);
+        record.setSourceType(sourceType);
+        record.setRequireAck(0);
+        record.setBroadcast(1);
+        return create(record);
+    }
+
+    /**
      * 创建通知并可选 WebSocket 广播
      */
     public NotificationRecordModel create(NotificationRecordModel record) {
@@ -50,9 +70,9 @@ public class NotificationService {
         }
         notificationRecordMapper.insert(record);
 
-        if (record.getRequireAck() != null && record.getRequireAck() == 1
-                && "ALERT".equals(record.getType())) {
-            notificationHandler.broadcastAlert(record);
+        // 所有广播通知都通过 WebSocket 推送（不仅限于 requireAck=1）
+        if (record.getBroadcast() != null && record.getBroadcast() == 1) {
+            notificationHandler.broadcastNewNotification(record);
         }
         return record;
     }
@@ -100,6 +120,20 @@ public class NotificationService {
         long now = System.currentTimeMillis();
         userNotificationStateMapper.updateRead(notificationId, userId, 1);
         userNotificationStateMapper.updateAck(notificationId, userId, 1, now);
+    }
+
+    /**
+     * 全部标记已读
+     */
+    public int markAllRead(Long userId) {
+        return userNotificationStateMapper.markAllRead(userId);
+    }
+
+    /**
+     * 清空已读通知（将已读通知标记为过期）
+     */
+    public int clearRead(Long userId) {
+        return userNotificationStateMapper.clearRead(userId, System.currentTimeMillis());
     }
 
     private void ensureState(Long notificationId, Long userId) {

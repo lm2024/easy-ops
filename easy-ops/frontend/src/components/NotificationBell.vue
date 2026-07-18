@@ -7,9 +7,15 @@
     v-model:open="drawerVisible"
     title="通知中心"
     placement="right"
-    :width="400"
+    :width="420"
     @close="onDrawerClose"
   >
+    <template #extra>
+      <a-space>
+        <a-button size="small" @click="handleMarkAllRead" :disabled="unreadCount === 0">全部已读</a-button>
+        <a-button size="small" danger @click="handleClearRead">清空已读</a-button>
+      </a-space>
+    </template>
     <a-spin :spinning="loading">
       <a-list
         :data-source="notifications"
@@ -52,10 +58,12 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
+import { message } from 'ant-design-vue'
 import dayjs from 'dayjs'
 import type { NotificationRecordModel } from '../types'
 import {
-  getUnreadCount, getUnackedAlerts, listNotifications, markNotificationRead, ackNotification
+  getUnreadCount, getUnackedAlerts, listNotifications, markNotificationRead, ackNotification,
+  markAllRead, clearReadNotifications
 } from '../api/notification'
 import { BellOutlined } from '@ant-design/icons-vue'
 
@@ -66,6 +74,7 @@ const drawerVisible = ref(false)
 const loading = ref(false)
 const notifications = ref<NotificationRecordModel[]>([])
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let notifWs: WebSocket | null = null
 
 function levelColor(level: string) {
   const map: Record<string, string> = {
@@ -121,9 +130,73 @@ async function handleAck(item: NotificationRecordModel) {
   fetchUnacked()
 }
 
+async function handleMarkAllRead() {
+  try {
+    await markAllRead()
+    unreadCount.value = 0
+    // 刷新列表
+    if (drawerVisible.value) {
+      const res = await listNotifications(1, 50)
+      notifications.value = res.data.list || []
+    }
+    message.success('已全部标记为已读')
+  } catch {
+    message.error('操作失败')
+  }
+}
+
+async function handleClearRead() {
+  try {
+    await clearReadNotifications()
+    // 刷新列表
+    if (drawerVisible.value) {
+      const res = await listNotifications(1, 50)
+      notifications.value = res.data.list || []
+    }
+    await fetchUnread()
+    message.success('已清空已读通知')
+  } catch {
+    message.error('操作失败')
+  }
+}
+
+function connectWs() {
+  const token = localStorage.getItem('token') || ''
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+  const wsUrl = `${wsProtocol}//${location.host}/api/ws/notification?token=${encodeURIComponent(token)}`
+  notifWs = new WebSocket(wsUrl)
+
+  notifWs.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data)
+      if (msg.action === 'NEW_NOTIFICATION' || msg.action === 'ALERT') {
+        // 实时更新未读数
+        unreadCount.value++
+        // 显示 toast 提示
+        const n = msg.notification
+        if (n) {
+          const levelFn = n.level === 'CRITICAL' ? message.error : n.level === 'WARNING' ? message.warning : message.info
+          levelFn(`🔔 ${n.title}`)
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }
+
+  notifWs.onclose = () => {
+    // 断线重连（5秒后）
+    setTimeout(connectWs, 5000)
+  }
+
+  notifWs.onerror = () => {
+    notifWs?.close()
+  }
+}
+
 onMounted(() => {
   fetchUnread()
   fetchUnacked()
+  connectWs()
+  // 降级轮询（WebSocket 断开时兜底）
   pollTimer = setInterval(() => {
     fetchUnread()
     fetchUnacked()
@@ -132,6 +205,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
+  if (notifWs) { notifWs.close(); notifWs = null }
 })
 </script>
 

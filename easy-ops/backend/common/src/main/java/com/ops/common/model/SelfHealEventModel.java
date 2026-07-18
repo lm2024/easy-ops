@@ -23,4 +23,6 @@ public class SelfHealEventModel implements Serializable {
 
     /** 关联查询：节点名称 */
     private String nodeName;
+    /** 关联查询：项目名称 */
+    private String projectName;
 }

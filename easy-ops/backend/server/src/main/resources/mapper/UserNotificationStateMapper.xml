@@ -32,6 +32,24 @@
           AND COALESCE(s.read_status, 0) = 0
     </select>
 
+    <!-- 全部标记已读：更新已存在的记录 -->
+    <update id="markAllRead">
+        UPDATE user_notification_state SET read_status = 1
+        WHERE user_id = #{userId} AND read_status = 0
+        AND notification_id IN (
+            SELECT id FROM notification_record WHERE expire_time > 0 AND broadcast = 1
+        )
+    </update>
+
+    <!-- 清空已读：将已读通知设为已过期（expire_time = 0） -->
+    <update id="clearRead">
+        UPDATE notification_record SET expire_time = 0
+        WHERE id IN (
+            SELECT notification_id FROM user_notification_state
+            WHERE user_id = #{userId} AND read_status = 1
+        ) AND expire_time > 0
+    </update>
+
     <delete id="deleteByNotificationIds">
         DELETE FROM user_notification_state
         WHERE notification_id IN

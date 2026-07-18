@@ -3,6 +3,7 @@ package com.ops.server.selfheal.controller;
 import com.ops.common.model.NotificationRecordModel;
 import com.ops.common.response.Result;
 import com.ops.server.selfheal.service.NotificationService;
+import com.ops.server.service.AuditLogService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -23,6 +24,9 @@ public class NotificationController {
 
     @Autowired
     private SecurityContext securityContext;
+
+    @Autowired
+    private AuditLogService auditLog;
 
     /**
      * GET /api/notifications - 通知列表
@@ -76,6 +80,7 @@ public class NotificationController {
             return Result.authError();
         }
         notificationService.markRead(id, userId);
+        auditLog.log("ALARM", "READ", "已读告警通知: ID=" + id);
         return Result.success();
     }
 
@@ -89,6 +94,33 @@ public class NotificationController {
             return Result.authError();
         }
         notificationService.ack(id, userId);
+        auditLog.log("ALARM", "ACK", "确认告警通知: ID=" + id);
         return Result.success();
+    }
+
+    /**
+     * POST /api/notifications/read-all - 全部标记已读
+     */
+    @PostMapping("/read-all")
+    public Result<?> markAllRead() {
+        Long userId = securityContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.authError();
+        }
+        int count = notificationService.markAllRead(userId);
+        return Result.success("已标记 " + count + " 条为已读");
+    }
+
+    /**
+     * DELETE /api/notifications/read - 清空已读通知
+     */
+    @DeleteMapping("/read")
+    public Result<?> clearRead() {
+        Long userId = securityContext.getCurrentUserId();
+        if (userId == null) {
+            return Result.authError();
+        }
+        int count = notificationService.clearRead(userId);
+        return Result.success("已清空 " + count + " 条已读通知");
     }
 }

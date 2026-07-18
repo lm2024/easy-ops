@@ -37,7 +37,13 @@
 
       <!-- 批量操作 -->
       <a-space style="margin-bottom: 12px">
-        <a-button type="primary" danger size="small" :disabled="selectedRowKeys.length === 0" @click="batchRestart">
+        <a-button size="small" :disabled="selectedRowKeys.length === 0" @click="batchOperate('start')" style="color: #52c41a">
+          <play-circle-outlined /> 批量启动 ({{ selectedRowKeys.length }})
+        </a-button>
+        <a-button size="small" danger :disabled="selectedRowKeys.length === 0" @click="batchOperate('stop')">
+          <pause-circle-outlined /> 批量停止 ({{ selectedRowKeys.length }})
+        </a-button>
+        <a-button size="small" :disabled="selectedRowKeys.length === 0" @click="batchOperate('restart')" style="color: #faad14">
           <reload-outlined /> 批量重启 ({{ selectedRowKeys.length }})
         </a-button>
         <a-select v-model:value="filterProjectId" allow-clear style="width: 200px" placeholder="筛选应用">
@@ -95,8 +101,14 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-popconfirm :title="`确认重启 ${record.projectName} (${record.nodeName})？`" @confirm="restartNode(record)">
-                <a-button type="link" size="small" danger>重启</a-button>
+              <a-popconfirm :title="`确认启动 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'start')">
+                <a-button type="link" size="small" style="color: #52c41a">启动</a-button>
+              </a-popconfirm>
+              <a-popconfirm :title="`确认停止 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'stop')">
+                <a-button type="link" size="small" danger>停止</a-button>
+              </a-popconfirm>
+              <a-popconfirm :title="`确认重启 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'restart')">
+                <a-button type="link" size="small" style="color: #faad14">重启</a-button>
               </a-popconfirm>
               <a-button type="link" size="small" @click="openProbe(record.projectId)">探针</a-button>
             </a-space>
@@ -129,7 +141,7 @@ import {
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode } from '../api/project'
-import { DashboardOutlined, ReloadOutlined } from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 
 interface MonitorTableRow extends AppMonitorNodeInfo {
@@ -225,36 +237,38 @@ function processLabel(status?: string) {
   return ({ RUNNING: '运行中', STOPPED: '已停止', UNKNOWN: '未知' } as Record<string, string>)[status || ''] || '-'
 }
 
-// ====== 重启 ======
-async function restartNode(record: MonitorTableRow) {
+// ====== 启动/停止/重启 ======
+const actionLabel: Record<string, string> = { start: '启动', stop: '停止', restart: '重启' }
+
+async function operateNode(record: MonitorTableRow, action: 'start' | 'stop' | 'restart') {
   try {
-    await operateProjectNode(String(record.projectId), String(record.nodeId), 'restart')
-    message.success(`重启指令已发送: ${record.projectName} / ${record.nodeName}`)
+    await operateProjectNode(String(record.projectId), String(record.nodeId), action)
+    message.success(`${actionLabel[action]}指令已发送: ${record.projectName} / ${record.nodeName}`)
   } catch (e: any) {
-    message.error('重启失败: ' + (e?.message || '未知错误'))
+    message.error(`${actionLabel[action]}失败: ` + (e?.message || '未知错误'))
   }
 }
 
-function batchRestart() {
+function batchOperate(action: 'start' | 'stop' | 'restart') {
   const rows = tableRows.value.filter(r => selectedRowKeys.value.includes(r.rowKey))
   if (rows.length === 0) return
 
   Modal.confirm({
-    title: `确认批量重启 ${rows.length} 个实例？`,
+    title: `确认批量${actionLabel[action]} ${rows.length} 个实例？`,
     content: rows.map(r => `${r.projectName} / ${r.nodeName}`).join('、'),
-    okText: '确认重启',
-    okType: 'danger',
+    okText: `确认${actionLabel[action]}`,
+    okType: action === 'stop' ? 'danger' : 'primary',
     async onOk() {
       let success = 0, fail = 0
       for (const r of rows) {
         try {
-          await operateProjectNode(String(r.projectId), String(r.nodeId), 'restart')
+          await operateProjectNode(String(r.projectId), String(r.nodeId), action)
           success++
         } catch {
           fail++
         }
       }
-      message.success(`批量重启完成: ${success} 成功, ${fail} 失败`)
+      message.success(`批量${actionLabel[action]}完成: ${success} 成功, ${fail} 失败`)
       selectedRowKeys.value = []
     }
   })

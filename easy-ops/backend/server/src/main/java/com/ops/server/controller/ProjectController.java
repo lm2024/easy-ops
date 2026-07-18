@@ -3,6 +3,7 @@ package com.ops.server.controller;
 import com.ops.common.model.ProjectModel;
 import com.ops.common.response.Result;
 import com.ops.server.service.ProjectService;
+import com.ops.server.service.AuditLogService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -17,6 +18,9 @@ public class ProjectController {
 
     @Autowired
     private ProjectService projectService;
+
+    @Autowired
+    private AuditLogService auditLog;
 
     @Autowired
     private SecurityContext securityContext;
@@ -65,6 +69,7 @@ public class ProjectController {
         project.setCreateTime(System.currentTimeMillis());
         project.setUpdateTime(System.currentTimeMillis());
         projectService.insert(project);
+        auditLog.log("PROJECT", "CREATE", "创建应用: " + project.getName());
         return Result.success();
     }
 
@@ -86,6 +91,7 @@ public class ProjectController {
         project.setCreateTime(existing.getCreateTime());
         project.setUpdateTime(System.currentTimeMillis());
         projectService.update(project);
+        auditLog.log("PROJECT", "UPDATE", "修改应用: " + project.getName() + " (ID=" + id + ")");
         return Result.success();
     }
 
@@ -111,6 +117,7 @@ public class ProjectController {
             return Result.error(403, "无权删除该项目");
         }
         projectService.deleteById(id);
+        auditLog.log("PROJECT", "DELETE", "删除应用: ID=" + id);
         return Result.success();
     }
 }

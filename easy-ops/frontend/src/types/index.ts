@@ -133,9 +133,9 @@ export interface FileAccessLogModel {
 
 /** 告警配置类型 */
 export interface AlarmConfigModel {
-  id: number
-  type: string
-  enabled: boolean
+  id?: number
+  type?: string
+  enabled?: boolean
   smtpHost?: string
   smtpPort?: number
   smtpUser?: string
@@ -143,6 +143,13 @@ export interface AlarmConfigModel {
   smtpSsl?: boolean
   receiveAddress?: string
   createTime?: string
+  healthCheckEnabled?: boolean
+  cpuEnabled?: boolean
+  cpuThreshold?: number
+  responseEnabled?: boolean
+  responseThreshold?: number
+  nodeOfflineEnabled?: boolean
+  cooldownMinutes?: number
   updateTime?: string
 }
 
@@ -482,6 +489,7 @@ export interface SelfHealPolicyModel {
 export interface SelfHealEventModel {
   id: number
   projectId: number
+  projectName?: string
   nodeId?: number
   nodeName?: string
   eventType: string

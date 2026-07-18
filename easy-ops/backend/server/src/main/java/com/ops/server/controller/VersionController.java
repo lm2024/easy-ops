@@ -5,6 +5,7 @@ import com.ops.common.model.ProjectModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.VersionPackageMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +26,9 @@ public class VersionController {
 
     @Autowired
     private ProjectMapper projectMapper;
+
+    @Autowired
+    private AuditLogService auditLog;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -134,6 +138,7 @@ public class VersionController {
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("version", versionName);
         data.put("filePath", filePath);
+        auditLog.log("VERSION", "UPLOAD", "上传版本包: " + originalFilename + ", 项目ID=" + projectId);
         return Result.success(data);
     }
 
@@ -149,6 +154,7 @@ public class VersionController {
         // Delete file from disk
         new File(version.getFilePath()).delete();
         versionPackageMapper.deleteById(id);
+        auditLog.log("VERSION", "DELETE", "删除版本包: " + version.getJarName() + " (ID=" + id + ")");
         return Result.success();
     }
 

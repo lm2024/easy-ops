@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 通知 WebSocket 处理器：向在线用户广播 ALERT
+ * 通知 WebSocket 处理器：向在线用户广播通知
  */
 @Component
 public class NotificationHandler extends TextWebSocketHandler {
@@ -45,11 +45,18 @@ public class NotificationHandler extends TextWebSocketHandler {
     }
 
     /**
-     * 广播 ALERT 通知给所有在线用户
+     * 广播 ALERT 通知给所有在线用户（兼容旧调用）
      */
     public void broadcastAlert(NotificationRecordModel notification) {
+        broadcastNewNotification(notification);
+    }
+
+    /**
+     * 广播新通知给所有在线用户（包括监控告警、自愈告警等所有广播通知）
+     */
+    public void broadcastNewNotification(NotificationRecordModel notification) {
         Map<String, Object> payload = new HashMap<>();
-        payload.put("action", "ALERT");
+        payload.put("action", "NEW_NOTIFICATION");
         payload.put("notification", toWsNotification(notification));
         String message = JSON.toJSONString(payload);
 
@@ -59,7 +66,7 @@ public class NotificationHandler extends TextWebSocketHandler {
                 try {
                     session.sendMessage(new TextMessage(message));
                 } catch (IOException e) {
-                    log.error("Failed to broadcast alert to user {}", entry.getKey(), e);
+                    log.error("Failed to broadcast notification to user {}", entry.getKey(), e);
                     userSessions.remove(entry.getKey());
                 }
             }
