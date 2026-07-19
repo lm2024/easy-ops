@@ -16,7 +16,7 @@
 
     <insert id="insert">
         INSERT INTO user_project_relation (user_id, project_id, create_time)
-        VALUES (#{userId}, #{projectId}, #{createTime})
+        VALUES (#{userId}, #{projectId}, #{createTime, jdbcType=BIGINT})
     </insert>
 
     <delete id="deleteByUserIdAndProjectId">

@@ -33,7 +33,7 @@ class UserProjectRelationMapperTest {
     @Test
     @DisplayName("insert - 插入用户-项目关系")
     void insert_createsRelation() {
-        int rows = userProjectRelationMapper.insert(1L, 10L);
+        int rows = userProjectRelationMapper.insert(1L, 10L, System.currentTimeMillis());
         assertEquals(1, rows);
 
         Long count = userProjectRelationMapper.countByUserIdAndProjectId(1L, 10L);
@@ -43,8 +43,8 @@ class UserProjectRelationMapperTest {
     @Test
     @DisplayName("findProjectIdsByUserId - 查询用户可访问的项目")
     void findProjectIdsByUserId_returnsProjectIds() {
-        userProjectRelationMapper.insert(1L, 100L);
-        userProjectRelationMapper.insert(1L, 200L);
+        userProjectRelationMapper.insert(1L, 100L, System.currentTimeMillis());
+        userProjectRelationMapper.insert(1L, 200L, System.currentTimeMillis());
 
         List<Long> projectIds = userProjectRelationMapper.findProjectIdsByUserId(1L);
         assertEquals(2, projectIds.size());
@@ -57,7 +57,7 @@ class UserProjectRelationMapperTest {
     void countByUserIdAndProjectId_returnsCorrectCount() {
         assertEquals(0L, userProjectRelationMapper.countByUserIdAndProjectId(999L, 999L));
 
-        userProjectRelationMapper.insert(1L, 50L);
+        userProjectRelationMapper.insert(1L, 50L, System.currentTimeMillis());
         assertEquals(1L, userProjectRelationMapper.countByUserIdAndProjectId(1L, 50L));
         assertEquals(0L, userProjectRelationMapper.countByUserIdAndProjectId(2L, 50L));
     }
@@ -73,7 +73,7 @@ class UserProjectRelationMapperTest {
         // After insert, the auto-generated id is set on the project object
         Long insertedProjectId = project.getId();
 
-        userProjectRelationMapper.insert(1L, insertedProjectId);
+        userProjectRelationMapper.insert(1L, insertedProjectId, System.currentTimeMillis());
         List<Long> projectIds = userProjectRelationMapper.findAllProjectIds();
         assertNotNull(projectIds);
         assertTrue(projectIds.contains(insertedProjectId));
@@ -82,7 +82,7 @@ class UserProjectRelationMapperTest {
     @Test
     @DisplayName("deleteByUserIdAndProjectId - 删除关系")
     void deleteByUserIdAndProjectId_removesRelation() {
-        userProjectRelationMapper.insert(1L, 300L);
+        userProjectRelationMapper.insert(1L, 300L, System.currentTimeMillis());
         assertEquals(1, userProjectRelationMapper.deleteByUserIdAndProjectId(1L, 300L));
 
         Long count = userProjectRelationMapper.countByUserIdAndProjectId(1L, 300L);
