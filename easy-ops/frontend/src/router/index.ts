@@ -44,6 +44,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'operations', name: 'Operations', component: () => import('../views/OperationLogView.vue') },
       { path: 'batch-download', name: 'BatchDownload', component: () => import('../views/BatchDownloadView.vue') },
       { path: 'ai-config', name: 'AIConfig', component: () => import('../views/AIConfigView.vue') }
+,{ path: 'db-manage', name: 'DbManage', component: () => import('../views/DbManageView.vue') }
     ]
   }
 ]

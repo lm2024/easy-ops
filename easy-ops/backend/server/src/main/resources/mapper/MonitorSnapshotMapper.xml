@@ -20,6 +20,18 @@
             WHERE project_id = #{projectId} GROUP BY node_id
         ) t ON m.node_id = t.node_id AND m.collect_time = t.max_time AND m.project_id = #{projectId}
     </select>
+    <select id="findLatestByNodeIds" resultType="com.ops.common.model.MonitorSnapshotModel">
+        SELECT s.* FROM monitor_snapshot s
+        INNER JOIN (
+            SELECT node_id, MAX(collect_time) AS max_time
+            FROM monitor_snapshot
+            WHERE node_id IN
+            <foreach collection="nodeIds" item="nid" open="(" separator="," close=")">
+                #{nid}
+            </foreach>
+            GROUP BY node_id
+        ) t ON s.node_id = t.node_id AND s.collect_time = t.max_time
+    </select>
     <select id="findHistory" resultType="com.ops.common.model.MonitorSnapshotModel">
         SELECT * FROM monitor_snapshot
         WHERE project_id = #{projectId}

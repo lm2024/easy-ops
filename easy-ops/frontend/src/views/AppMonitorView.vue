@@ -4,14 +4,14 @@
       <template #title>
         <a-space>
           <dashboard-outlined style="color: #52c41a" />
-          <span style="font-weight: 600">应用监控</span>
-          <a-tag v-if="autoCollectEnabled" color="green">
+          <span style="font-weight: 600">监控中心</span>
+          <a-tag v-if="activeTab === 'app' && autoCollectEnabled" color="green">
             自动采集中 · 每 {{ collectIntervalSec }} 秒
           </a-tag>
         </a-space>
       </template>
       <template #extra>
-        <a-space>
+        <a-space v-if="activeTab === 'app'">
           <span style="color: #8c8c8c; font-size: 13px">采集频率</span>
           <a-select v-model:value="collectIntervalSec" style="width: 120px" @change="onIntervalChange">
             <a-select-option :value="1">1 秒</a-select-option>
@@ -23,10 +23,72 @@
             <reload-outlined /> 立即采集
           </a-button>
         </a-space>
+        <a-space v-if="activeTab === 'agent'">
+          <a-button :loading="agentLoading" @click="fetchAgentStatus">
+            <reload-outlined /> 刷新
+          </a-button>
+        </a-space>
       </template>
 
+      <a-tabs v-model:activeKey="activeTab" type="card" style="margin-bottom: 0">
+        <a-tab-pane key="agent" tab="Agent 状态" />
+        <a-tab-pane key="app" tab="应用监控" />
+      </a-tabs>
+
+      <!-- ===== Agent 状态 ===== -->
+      <div v-if="activeTab === 'agent'" style="margin-top: 16px">
+        <a-row :gutter="16" style="margin-bottom: 16px">
+          <a-col :span="6"><a-statistic title="Agent 总数" :value="agentPagination.total" /></a-col>
+          <a-col :span="6"><a-statistic title="在线" :value="agentOnlineCount" value-style="color: #52c41a" /></a-col>
+          <a-col :span="6"><a-statistic title="离线" :value="agentOfflineCount" value-style="color: #ff4d4f" /></a-col>
+          <a-col :span="6"><a-statistic title="最后刷新" :value="agentLastRefreshLabel" /></a-col>
+        </a-row>
+        <a-table
+          :columns="agentColumns"
+          :data-source="agentList"
+          :loading="agentLoading"
+          row-key="nodeId"
+          :pagination="agentPagination"
+          size="middle"
+          :scroll="{ x: 1000 }"
+          @change="handleAgentTableChange"
+        >
+          <template #bodyCell="{ column, record }">
+            <template v-if="column.key === 'nodeName'">
+              <span style="font-weight:500">{{ record.nodeName }}</span>
+            </template>
+            <template v-if="column.key === 'status'">
+              <a-tag :color="record.status === 1 ? 'green' : 'red'">
+                {{ record.status === 1 ? '在线' : '离线' }}
+              </a-tag>
+            </template>
+            <template v-if="column.key === 'hostCpuPercent'">
+              <span :style="{ color: (record.hostCpuPercent || 0) > 80 ? '#ff4d4f' : '#333', fontWeight: 600 }">
+                {{ formatPercent(record.hostCpuPercent) }}
+              </span>
+            </template>
+            <template v-if="column.key === 'hostMemoryPercent'">
+              <span :style="{ color: (record.hostMemoryPercent || 0) > 80 ? '#ff4d4f' : (record.hostMemoryPercent || 0) > 60 ? '#faad14' : '#333', fontWeight: 600 }">
+                {{ record.hostMemoryPercent != null ? record.hostMemoryPercent + '%' : '-' }}
+              </span>
+            </template>
+            <template v-if="column.key === 'diskUsagePercent'">
+              <span :style="{ color: (record.diskUsagePercent || 0) > 90 ? '#ff4d4f' : '#333' }">
+                {{ record.diskUsagePercent != null ? record.diskUsagePercent + '%' : '-' }}
+              </span>
+            </template>
+            <template v-if="column.key === 'totalMemoryMb'">
+              <span v-if="record.totalMemoryMb">{{ (record.totalMemoryMb / 1024).toFixed(1) }} GB</span>
+              <span v-else>-</span>
+            </template>
+          </template>
+        </a-table>
+      </div>
+
+      <!-- ===== 应用监控 ===== -->
+      <div v-if="activeTab === 'app'">
       <!-- 统计 -->
-      <a-row v-if="dashboard" :gutter="16" style="margin-bottom: 16px">
+      <a-row v-if="dashboard" :gutter="16" style="margin-bottom: 16px; margin-top: 16px">
         <a-col :span="4"><a-statistic title="应用数" :value="dashboard.summary.totalProjects" /></a-col>
         <a-col :span="4"><a-statistic title="部署实例" :value="dashboard.summary.totalInstances" /></a-col>
         <a-col :span="4"><a-statistic title="健康" :value="dashboard.summary.upCount" value-style="color: #52c41a" /></a-col>
@@ -35,6 +97,18 @@
         <a-col :span="4"><a-statistic title="最后采集" :value="lastCollectLabel" /></a-col>
       </a-row>
 
+      <!-- 选择性采集 -->
+      <a-space style="margin-bottom: 8px">
+        <a-button size="small" :loading="filteredCollecting" @click="collectSelected" :disabled="selectedRowKeys.length === 0">
+          <reload-outlined /> 采集选中 ({{ selectedRowKeys.length }})
+        </a-button>
+        <a-button size="small" :loading="filteredCollecting" @click="collectCurrentPage">
+          <reload-outlined /> 采集当前页
+        </a-button>
+        <a-button size="small" :loading="filteredCollecting" @click="collectFilteredProject">
+          <reload-outlined /> 采集筛选应用
+        </a-button>
+      </a-space>
       <!-- 批量操作 -->
       <a-space style="margin-bottom: 12px">
         <a-button size="small" :disabled="selectedRowKeys.length === 0" @click="batchOperate('start')" style="color: #52c41a">
@@ -81,7 +155,15 @@
             </a-tag>
           </template>
           <template v-if="column.key === 'healthStatus'">
-            <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
+            <div>
+              <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
+            </div>
+            <div v-if="record.healthStatus !== 'UP' && record.healthDetail" style="font-size:11px;color:#ff4d4f;margin-top:2px;max-width:220px;line-height:1.3">
+              {{ record.healthDetail }}
+            </div>
+            <div v-else-if="record.healthDetail && !record.healthDetail.includes('全部通过')" style="font-size:11px;color:#888;margin-top:2px;max-width:220px;line-height:1.3">
+              {{ record.healthDetail }}
+            </div>
           </template>
           <template v-if="column.key === 'cpu'">
             <div>总: <b :style="{ color: (record.hostCpuPercent || 0) > 80 ? '#ff4d4f' : '#333' }">{{ formatPercent(record.hostCpuPercent) }}</b></div>
@@ -115,6 +197,7 @@
           </template>
         </template>
       </a-table>
+      </div>
     </a-card>
 
     <!-- 探针配置弹窗 -->
@@ -132,12 +215,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import type { AppMonitorDashboard, AppMonitorNodeInfo, ProjectHealthProbeModel } from '../types'
+import type { AppMonitorDashboard, AppMonitorNodeInfo, ProjectHealthProbeModel, AgentStatusItem } from '../types'
 import {
   getAppDashboard, collectAppMonitor, getHealthProbe, saveHealthProbe,
-  getMonitorCollectConfig, saveMonitorCollectConfig
+  getMonitorCollectConfig, saveMonitorCollectConfig,
+  collectAppMonitorFiltered, getAgentStatus
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode } from '../api/project'
@@ -168,6 +252,44 @@ let autoTimer: ReturnType<typeof setInterval> | null = null
 let collecting = false
 
 // 分页配置
+const activeTab = ref('app')
+
+// Agent 状态
+const agentList = ref<AgentStatusItem[]>([])
+const agentLoading = ref(false)
+const agentPagination = ref({
+  current: 1,
+  pageSize: 20,
+  total: 0,
+  showSizeChanger: true,
+  pageSizeOptions: ['10', '20', '50'],
+  showTotal: (total: number) => `共 ${total} 条`
+})
+
+const agentLastRefreshTime = ref<number>(0)
+
+const agentOnlineCount = computed(() => agentList.value.filter(a => a.status === 1).length)
+const agentOfflineCount = computed(() => agentList.value.filter(a => a.status !== 1).length)
+const agentLastRefreshLabel = computed(() => {
+  if (!agentLastRefreshTime.value) return '未刷新'
+  return dayjs(agentLastRefreshTime.value).format('HH:mm:ss')
+})
+
+const agentColumns = [
+  { title: 'Agent 名称', dataIndex: 'nodeName', key: 'nodeName', width: 140 },
+  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130 },
+  { title: '状态', key: 'status', width: 70 },
+  { title: 'CPU', key: 'hostCpuPercent', width: 80 },
+  { title: '内存', key: 'hostMemoryPercent', width: 80 },
+  { title: '磁盘', key: 'diskUsagePercent', width: 80 },
+  { title: '总内存', key: 'totalMemoryMb', width: 90 },
+  { title: 'CPU 核数', dataIndex: 'cpuCores', key: 'cpuCores', width: 80 },
+  { title: '系统', dataIndex: 'osInfo', key: 'osInfo', width: 160, ellipsis: true },
+  { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80 },
+]
+
+const filteredCollecting = ref(false)
+
 const pagination = ref({
   current: 1,
   pageSize: 50,
@@ -288,6 +410,80 @@ async function fetchDashboard() {
   }
 }
 
+// ====== Agent 状态 ======
+async function fetchAgentStatus() {
+  agentLoading.value = true
+  try {
+    const res = await getAgentStatus(agentPagination.value.current, agentPagination.value.pageSize)
+    agentList.value = res.data?.list || []
+    agentPagination.value.total = res.data?.total || 0
+    agentLastRefreshTime.value = Date.now()
+  } finally {
+    agentLoading.value = false
+  }
+}
+
+function handleAgentTableChange(pag: any) {
+  agentPagination.value.current = pag.current
+  agentPagination.value.pageSize = pag.pageSize
+  fetchAgentStatus()
+}
+
+// ====== 选择性采集 ======
+async function collectSelected() {
+  const rows = tableRows.value.filter(r => selectedRowKeys.value.includes(r.rowKey))
+  if (rows.length === 0) return
+  filteredCollecting.value = true
+  try {
+    const pids = [...new Set(rows.map(r => r.projectId))]
+    const nids = [...new Set(rows.map(r => r.nodeId))]
+    await collectAppMonitorFiltered(pids, nids)
+    lastCollectTime.value = Date.now()
+    await fetchDashboard()
+    message.success(`已采集 ${rows.length} 个实例`)
+  } catch (e: any) {
+    message.error('采集失败: ' + (e?.message || '未知错误'))
+  } finally {
+    filteredCollecting.value = false
+  }
+}
+
+async function collectCurrentPage() {
+  const rows = tableRows.value
+  if (rows.length === 0) return
+  filteredCollecting.value = true
+  try {
+    const pids = [...new Set(rows.map(r => r.projectId))]
+    const nids = [...new Set(rows.map(r => r.nodeId))]
+    await collectAppMonitorFiltered(pids, nids)
+    lastCollectTime.value = Date.now()
+    await fetchDashboard()
+    message.success(`已采集当前页 ${rows.length} 个实例`)
+  } catch (e: any) {
+    message.error('采集失败: ' + (e?.message || '未知错误'))
+  } finally {
+    filteredCollecting.value = false
+  }
+}
+
+async function collectFilteredProject() {
+  if (!filterProjectId.value) {
+    message.warning('请先在上方筛选中选择一个应用')
+    return
+  }
+  filteredCollecting.value = true
+  try {
+    await collectAppMonitorFiltered([filterProjectId.value])
+    lastCollectTime.value = Date.now()
+    await fetchDashboard()
+    message.success('已采集筛选应用的监控数据')
+  } catch (e: any) {
+    message.error('采集失败: ' + (e?.message || '未知错误'))
+  } finally {
+    filteredCollecting.value = false
+  }
+}
+
 async function loadNodeIps() {
   try {
     const res = await getNodes(1, 1000)
@@ -362,6 +558,11 @@ async function saveProbe() {
     probeSaving.value = false
   }
 }
+
+// 切换 Tab 时刷新对应数据
+watch(activeTab, (tab) => {
+  if (tab === 'agent') fetchAgentStatus()
+})
 
 onMounted(async () => {
   try {

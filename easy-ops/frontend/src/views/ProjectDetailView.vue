@@ -51,6 +51,20 @@
         </a-descriptions-item>
       </a-descriptions>
 
+      <!-- 路径说明 -->
+      <a-card title="📂 路径说明" size="small" style="margin-bottom: 16px; border-left: 4px solid #722ed1">
+        <div style="font-size:13px;line-height:2">
+          <div><b>部署目录</b>：<code>{{ project.deployDir || '未配置（将使用全局默认路径）' }}</code></div>
+          <div style="margin-top:6px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
+            <div style="font-weight:500;margin-bottom:4px">以此为基础自动派生的路径：</div>
+            <div>📦 <b>版本包存档</b> → <code>{{ project.deployDir || '{deployDir}' }}/versions/{版本名}/</code></div>
+            <div>🌐 <b>前端静态资源</b> → <code>{{ project.frontendDeployDir || (project.deployDir ? project.deployDir + '/frontend/' : '{deployDir}/frontend/') }}</code></div>
+            <div>📝 <b>日志目录</b> → <code>{{ project.deployDir || '{deployDir}' }}/logs/</code></div>
+            <div style="margin-top:4px;font-size:12px;color:#888">💡 版本包目录由部署流程自动管理，无需手动干预。</div>
+          </div>
+        </div>
+      </a-card>
+
       <!-- 节点操作 -->
       <a-card title="🖥️ 节点操作" size="small" style="margin-bottom: 16px">
         <a-table

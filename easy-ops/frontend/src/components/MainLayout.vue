@@ -74,6 +74,7 @@
             <bulb-outlined />
             <span>系统设置</span>
           </template>
+          <a-menu-item key="db-manage"><database-outlined /><span>H2 表结构维护</span></a-menu-item>
           <a-menu-item key="ai-config"><bulb-outlined /><span>AI 配置</span></a-menu-item>
           <a-menu-item key="users"><team-outlined /><span>用户管理</span></a-menu-item>
           <a-menu-item key="operations"><audit-outlined /><span>操作审计</span></a-menu-item>
@@ -197,7 +198,7 @@ import {
   ClusterOutlined, FolderOpenOutlined, TagOutlined, RocketOutlined,
   CodeOutlined, FileTextOutlined, SettingOutlined,
   DashboardOutlined, AlertOutlined,
-  BulbOutlined, TeamOutlined, AuditOutlined,
+  DatabaseOutlined, BulbOutlined, TeamOutlined, AuditOutlined,
   FundOutlined, MedicineBoxOutlined, BookOutlined,
   SkinOutlined
 } from '@ant-design/icons-vue'
@@ -216,7 +217,7 @@ const validMenuKeys = new Set([
   'console', 'config-manage', 'log-manage',
   'monitor', 'app-monitor', 'alarms', 'alarm-config', 'self-heal',
   'knowledge',
-  'ai-config', 'users', 'operations', 'batch-download'
+  'db-manage', 'ai-config', 'users', 'operations', 'batch-download'
 ])
 
 const unackedAlerts = ref<NotificationRecordModel[]>([])
@@ -230,7 +231,7 @@ const pathPrefixMap: Record<string, string> = {
   'console': 'console', 'config-manage': 'config-manage', 'log-manage': 'log-manage',
   'monitor': 'monitor', 'app-monitor': 'app-monitor', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
   'self-heal': 'self-heal', 'knowledge': 'knowledge',
-  'ai-config': 'ai-config', 'users': 'users', 'operations': 'operations',
+  'db-manage': 'db-manage', 'ai-config': 'ai-config', 'users': 'users', 'operations': 'operations',
   'batch-download': 'batch-download'
 }
 
@@ -241,7 +242,7 @@ const prefixToSub: Record<string, string> = {
   monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
   'self-heal': 'sub-monitor',
   knowledge: 'sub-knowledge',
-  'ai-config': 'sub-system', users: 'sub-system', operations: 'sub-system'
+  'db-manage': 'sub-system', 'ai-config': 'sub-system', users: 'sub-system', operations: 'sub-system'
 }
 
 const selectedKeys = ref<string[]>([])
@@ -306,6 +307,7 @@ const knowledgeItems = [
   { key: 'knowledge', title: '运维文档', icon: BookOutlined },
 ]
 const systemItems = [
+  { key: 'db-manage', title: 'H2 表结构维护', icon: DatabaseOutlined },
   { key: 'ai-config', title: 'AI 配置', icon: BulbOutlined },
   { key: 'users', title: '用户管理', icon: TeamOutlined },
   { key: 'operations', title: '操作审计', icon: AuditOutlined },

@@ -31,13 +31,26 @@
 
       <!-- 已选择应用 -->
       <template v-else>
-        <!-- 配置文件列表为空 -->
-        <a-empty v-if="!loading && configFiles.length === 0" description="该应用下暂无配置文件，点击「新建配置」添加" style="margin: 80px 0">
-          <a-button type="primary" @click="showAddModal"><plus-outlined /> 新建配置</a-button>
+        <!-- 扫描中 -->
+        <div v-if="scanning" style="text-align:center;margin:80px 0">
+          <a-spin size="large" />
+          <div style="margin-top:16px;color:#888">正在扫描 Agent 节点上的配置文件...</div>
+        </div>
+
+        <!-- 配置文件列表为空（无扫描结果） -->
+        <a-empty v-else-if="!loading && configFiles.length === 0" description="未在该应用的 Agent 节点上发现配置文件" style="margin: 80px 0">
+          <div style="font-size:12px;color:#888;margin-bottom:12px;line-height:1.6">
+            <div>扫描完成，Agent 节点 <code>{{ deployDirText }}/config/</code> 下未发现配置文件。</div>
+            <div>请先将配置文件放置到节点对应目录，或点击下方按钮手动新建。</div>
+          </div>
+          <a-space>
+            <a-button type="primary" @click="showAddModal"><plus-outlined /> 新建配置</a-button>
+            <a-button @click="handleScan" :loading="scanning"><reload-outlined /> 重新扫描</a-button>
+          </a-space>
         </a-empty>
 
         <!-- 左右分栏 -->
-        <a-row v-else :gutter="16" style="min-height: 500px">
+        <a-row v-else-if="!scanning" :gutter="16" style="min-height: 500px">
           <!-- 左侧：配置文件列表 -->
           <a-col :span="6">
             <div style="border-right: 1px solid #f0f0f0; padding-right: 12px">
@@ -199,7 +212,8 @@ import { message } from 'ant-design-vue'
 import type { ProjectConfigFileModel } from '../types'
 import {
   listConfigFiles, createConfigFile, deleteConfigFile,
-  getConfigSnapshot, getConfigContent, getConfigContentAuto, distributeConfig
+  getConfigSnapshot, getConfigContent, getConfigContentAuto, distributeConfig,
+  scanConfigFiles
 } from '../api/configMgmt'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
@@ -213,6 +227,7 @@ const projects = ref<any[]>([])
 const selectedProjectId = ref<number>()
 const configFiles = ref<ProjectConfigFileModel[]>([])
 const loading = ref(false)
+const scanning = ref(false)
 
 // 文件同步状态
 const fileSyncStatus = ref<Record<number, { allSame: boolean; syncLabel: string; totalNodes: number; sameCount: number }>>({})
@@ -312,16 +327,39 @@ async function loadFileSyncStatus(fileId: number) {
   }
 }
 
+const deployDirText = computed(() => {
+  const p = projects.value.find((p: any) => p.id === selectedProjectId.value)
+  return (p as any)?.deployDir || '{deployDir}'
+})
+
 async function onProjectChange() {
   selectedFile.value = undefined
   editContent.value = ''
   contentError.value = ''
   distributeResult.value = undefined
   await loadProjectNodes()
-  await loadConfigFiles()
+  // 选择项目时自动扫描节点上的配置文件（Spring Boot 优先级：config/ 目录 + 根目录）
+  await handleScan()
   // 自动选中第一个文件
   if (configFiles.value.length > 0) {
     selectFile(configFiles.value[0])
+  }
+}
+
+async function handleScan() {
+  if (!selectedProjectId.value) return
+  scanning.value = true
+  try {
+    const res = await scanConfigFiles(selectedProjectId.value)
+    configFiles.value = res.data || []
+    if (configFiles.value.length > 0) {
+      message.success('扫描到 ' + configFiles.value.length + ' 个配置文件')
+      selectFile(configFiles.value[0])
+    }
+  } catch (e: any) {
+    message.error('扫描失败: ' + (e?.response?.data?.message || e?.message || '未知错误'))
+  } finally {
+    scanning.value = false
   }
 }
 

@@ -36,13 +36,19 @@ public class FileController {
     @PostMapping("/receive")
     public Result<Map<String, Object>> receiveFile(@RequestParam String projectId,
                                                     @RequestParam String versionName,
-                                                    @RequestParam MultipartFile file) {
+                                                    @RequestParam MultipartFile file,
+                                                    @RequestParam(required = false) String targetDir) {
         try {
             String originalFilename = file.getOriginalFilename();
             if (originalFilename == null || originalFilename.isEmpty()) {
                 originalFilename = "app.jar";
             }
-            String dirPath = dataPath + "/versions/" + projectId + "/" + versionName;
+            String dirPath;
+            if (targetDir != null && !targetDir.trim().isEmpty()) {
+                dirPath = targetDir.trim();
+            } else {
+                dirPath = dataPath + "/versions/" + projectId + "/" + versionName;
+            }
             File dir = new File(dirPath);
             if (!dir.exists()) {
                 dir.mkdirs();
