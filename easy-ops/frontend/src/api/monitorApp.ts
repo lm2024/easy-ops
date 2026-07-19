@@ -2,7 +2,7 @@ import request from '../utils/request'
 import type {
   Result, AppMonitorOverview, AppMonitorDashboard, AppMonitorNodeInfo,
   MonitorSnapshotModel, ProjectHealthProbeModel, AIDiagnosisRecordModel,
-  MonitorCollectConfig
+  MonitorCollectConfig, AgentStatusResult
 } from '../types'
 
 /** 获取监控采集配置 */
@@ -86,4 +86,17 @@ export function triggerDiagnose(params: {
 /** 获取诊断报告 */
 export function getDiagnosis(id: number) {
   return request.get<any, Result<AIDiagnosisRecordModel>>(`/ai/diagnose/${id}`)
+}
+
+
+/** 选择性采集监控数据 */
+export function collectAppMonitorFiltered(projectIds?: number[], nodeIds?: number[]) {
+  return request.post<any, Result<string>>('/monitor/app/collect-filtered', { projectIds, nodeIds })
+}
+
+/** Agent 状态列表（分页，含系统资源信息） */
+export function getAgentStatus(page = 1, pageSize = 20, keyword?: string) {
+  return request.get<any, Result<AgentStatusResult>>('/monitor/agent/status', {
+    params: { page, pageSize, keyword }
+  })
 }

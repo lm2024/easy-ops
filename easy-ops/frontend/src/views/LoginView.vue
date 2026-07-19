@@ -88,21 +88,18 @@
       <a-config-provider :theme="formTheme">
         <a-form :model="formState" @finish="handleLogin" layout="vertical" class="auth-form">
           <a-form-item name="username" :rules="[{ required: true, message: '请输入用户名' }]">
-            <label class="field-label">用户名</label>
-            <a-input v-model:value="formState.username" placeholder="请输入用户名" size="large" autocomplete="username">
+            <a-input v-model:value="formState.username" placeholder="用户名" size="large" autocomplete="username">
               <template #prefix><svg class="field-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></template>
             </a-input>
           </a-form-item>
           <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
-            <label class="field-label">密码</label>
-            <a-input-password v-model:value="formState.password" placeholder="请输入密码" size="large" autocomplete="current-password">
+            <a-input-password v-model:value="formState.password" placeholder="密码" size="large" autocomplete="current-password">
               <template #prefix><svg class="field-icon" viewBox="0 0 16 16" fill="none"><rect x="3.5" y="7" width="9" height="6.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></template>
             </a-input-password>
           </a-form-item>
           <a-form-item name="captchaCode" :rules="[{ required: true, message: '请输入验证码' }]">
-            <label class="field-label">验证码</label>
             <div class="captcha-row">
-              <a-input v-model:value="formState.captchaCode" placeholder="请输入验证码" size="large" maxlength="6" />
+              <a-input v-model:value="formState.captchaCode" placeholder="验证码" size="large" maxlength="6" />
               <img v-if="captchaImage" :src="captchaImage" class="captcha-img" alt="验证码" title="点击刷新" @click="loadCaptcha" />
               <a-button size="large" @click="loadCaptcha">刷新</a-button>
             </div>
@@ -244,17 +241,16 @@ async function handleLogin() {
 }
 
 async function handleReset() {
-async function handleReset() {
   Modal.confirm({
     title: "确认重置管理员密码?",
-    content: "密码将恢复为默认值 Admin123!",
+    content: "密码将恢复为系统默认值（可在 app.admin.default-password 中配置）",
     okText: "确认重置",
     cancelText: "取消",
     okButtonProps: { danger: true },
     onOk: async () => {
       try {
         await resetAdminPassword()
-        message.success("管理员密码已重置为 Admin123!")
+        message.success("管理员密码已重置为默认密码")
         loadCaptcha()
       } catch {
         message.error("重置失败，请联系管理员")
@@ -262,10 +258,6 @@ async function handleReset() {
     }
   })
 }
-
-  }
-}
-
 
 function alignSunWithButton() {
   const shell = shellRef.value
