@@ -12,6 +12,8 @@ import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectConfigFileMapper;
 import com.ops.server.mapper.ProjectMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,6 +34,8 @@ import java.util.concurrent.TimeUnit;
  */
 @Service
 public class ConfigMgmtService {
+
+    private static final Logger log = LoggerFactory.getLogger(ConfigMgmtService.class);
 
     private static final int FETCH_TIMEOUT_SEC = 10;
     private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(10);
@@ -247,6 +251,78 @@ public class ConfigMgmtService {
         }
         return distributeService.distribute(projectId, configFileId, content, targetNodeIds,
                 distributeType, restartAfter, operatorId, file);
+    }
+
+    /**
+     * 扫描项目所有在线节点的 config/ 目录，发现未注册的配置文件并自动导入。
+     */
+    public List<ProjectConfigFileModel> scanAndImport(Long projectId) {
+        ProjectModel project = requireProject(projectId);
+        List<Long> nodeIds = parseNodeIds(project);
+        if (nodeIds.isEmpty()) {
+            return configFileMapper.findByProjectId(projectId);
+        }
+        String deployDir = project.getDeployDir();
+        if (deployDir == null || deployDir.isEmpty()) {
+            throw new BusinessException(ErrorCode.PARAM_ERROR, "项目未配置部署目录，无法扫描");
+        }
+
+        // 收集所有在线节点的扫描结果（去重）
+        Map<String, ProjectConfigFileModel> discovered = new LinkedHashMap<>();
+        for (Long nodeId : nodeIds) {
+            NodeModel node = nodeMapper.findById(nodeId);
+            if (node == null || node.getStatus() == null || node.getStatus() != 1) continue;
+            try {
+                Map<String, String> params = new HashMap<>();
+                params.put("deployDir", deployDir);
+                Object raw = agentClient.getForMap(node, "/file/config/discover", params);
+                if (raw == null) continue;
+                if (!(raw instanceof Map)) continue;
+                Object dataObj = ((Map<?,?>) raw).get("data");
+                if (!(dataObj instanceof List)) continue;
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> files = (List<Map<String, Object>>) dataObj;
+                for (Map<String, Object> f : files) {
+                    String relativePath = f.get("relativePath") != null ? f.get("relativePath").toString() : "";
+                    if (relativePath.isEmpty()) continue;
+                    String fileKey = relativePath; // dedup by relativePath
+                    if (!discovered.containsKey(fileKey)) {
+                        ProjectConfigFileModel model = new ProjectConfigFileModel();
+                        model.setProjectId(projectId);
+                        model.setFileName(f.get("fileName") != null ? f.get("fileName").toString() : "");
+                        model.setRelativePath(relativePath);
+                        model.setIsPrimary(0);
+                        discovered.put(fileKey, model);
+                    }
+                }
+            } catch (Exception e) {
+                // 单节点失败跳过
+                log.warn("[ConfigScan] 节点 {} 扫描失败: {}", nodeId, e.getMessage());
+            }
+        }
+
+        // 查询已有 DB 记录
+        List<ProjectConfigFileModel> existing = configFileMapper.findByProjectId(projectId);
+        Set<String> existingPaths = new HashSet<>();
+        for (ProjectConfigFileModel e : existing) {
+            existingPaths.add(e.getRelativePath());
+        }
+
+        // 自动导入新发现的文件
+        List<ProjectConfigFileModel> imported = new ArrayList<>();
+        long now = System.currentTimeMillis();
+        for (ProjectConfigFileModel model : discovered.values()) {
+            if (!existingPaths.contains(model.getRelativePath())) {
+                model.setCreateTime(now);
+                model.setUpdateTime(now);
+                configFileMapper.insert(model);
+                imported.add(model);
+                log.info("[ConfigScan] 自动导入配置文件: projectId={}, path={}", projectId, model.getRelativePath());
+            }
+        }
+
+        // 返回完整列表
+        return configFileMapper.findByProjectId(projectId);
     }
 
     private Map<Long, String> fetchNodeHashes(List<Long> nodeIds, String configPath) {

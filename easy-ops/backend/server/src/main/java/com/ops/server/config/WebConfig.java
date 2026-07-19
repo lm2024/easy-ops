@@ -55,6 +55,7 @@ public class WebConfig implements WebMvcConfigurer {
                         "/nodes/heartbeat",
                         "/ws/**",
                         "/h2-console/**",
+						"/db/**",
                         "/error"
                 );
     }
