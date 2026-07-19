@@ -13,3 +13,6 @@ backend/common/target/
 easy-ops/frontend/nginx/
 easy-ops/backend/local-repo/
 easy-ops/frontend/dist/
+
+# 环境变量配置文件（包含敏感信息）
+easyops.env
