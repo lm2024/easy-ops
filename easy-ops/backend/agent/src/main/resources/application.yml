@@ -33,9 +33,9 @@ agent:
   restart-script: ${AGENT_RESTART_SCRIPT:}
   java-bin: ${AGENT_JAVA_BIN:}
   check-interval: 30
-  # 【可选】上报给 Server 的外部 IP（多网卡时填写）
-  host-ip: ${AGENT_HOST_IP:}
-  # 【可选】上报给 Server 的外部端口（留空则用 server.port）
+  # 上报给 Server 的外部 IP（多网卡时填写，留空则自动检测；本地调试/Docker 环境填 127.0.0.1）
+  host-ip: ${AGENT_HOST_IP:127.0.0.1}
+  # 上报给 Server 的外部端口（留空或 0 则用 server.port）
   host-port: ${AGENT_HOST_PORT:0}
 
 logging:

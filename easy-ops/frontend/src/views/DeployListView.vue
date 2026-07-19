@@ -56,11 +56,6 @@
           </a-button>
         </a-form-item>
 
-        <a-form-item>
-          <a-popconfirm title="强制释放部署锁？仅在部署卡住时使用" ok-text="释放" cancel-text="取消" @confirm="handleForceUnlock">
-            <a-button size="small" danger :disabled="!form.projectId">🔓 解除锁定</a-button>
-          </a-popconfirm>
-        </a-form-item>
       </a-form>
     </a-card>
 
@@ -216,7 +211,7 @@ import type { Dayjs } from 'dayjs'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
 import { getVersions } from '../api/version'
-import { getDeployRecords, createDeploy, cancelScheduledDeploy, forceUnlockDeploy } from '../api/deploy'
+import { getDeployRecords, createDeploy, cancelScheduledDeploy } from '../api/deploy'
 import {
   RocketOutlined, CheckCircleOutlined, CloseCircleOutlined, LoadingOutlined,
   ClockCircleOutlined, HistoryOutlined, StopOutlined
@@ -479,16 +474,6 @@ async function cancelSchedule(id: number) {
   }
 }
 
-async function handleForceUnlock() {
-  if (!form.value.projectId) return
-  try {
-    await forceUnlockDeploy(form.value.projectId)
-    message.success('🔓 部署锁已释放，可以重新部署了')
-  } catch (e: any) {
-    message.error('释放失败: ' + (e.message || ''))
-  }
-}
-
 async function loadProjects() {
   const res = await getProjects()
   projects.value = res.data.list
@@ -605,21 +590,16 @@ async function startDeploy() {
     deploying.value = false
     if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null }
     const errMsg = e?.response?.data?.message || e.message || '未知错误'
-    const isConflict = e?.response?.data?.code === 1009 || errMsg.includes('正在部署中')
     lastResult.value = {
       status: 2,
-      message: isConflict ? '⚠️ 部署冲突' : '❌ 部署请求失败',
+      message: '❌ 部署请求失败',
       nodeResults: [{ nodeId: '?', nodeName: '?', success: false, message: errMsg }],
       log: errMsg
     }
     nodeProgressList.value.forEach(np => {
       if (np.phase === 'running') np.phase = 'failed'
     })
-    if (isConflict) {
-      Modal.warning({ title: '⚠️ 部署冲突', content: errMsg, okText: '我知道了' })
-    } else {
-      message.error('❌ 部署失败: ' + errMsg)
-    }
+    message.error('❌ 部署失败: ' + errMsg)
   }
 }
 

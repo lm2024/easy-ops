@@ -82,6 +82,37 @@ public class MonitorCollectorService {
             }
         }
     }
+    /**
+     * 按筛选条件采集指定项目和节点的监控数据。
+     * 只采集在线的节点，降低网络开销。
+     */
+    public void collectFiltered(List<Long> projectIds, List<Long> nodeIds) {
+        if ((projectIds == null || projectIds.isEmpty()) && (nodeIds == null || nodeIds.isEmpty())) {
+            collectAll();
+            return;
+        }
+        List<ProjectModel> projects;
+        if (projectIds != null && !projectIds.isEmpty()) {
+            projects = new ArrayList<ProjectModel>();
+            for (Long pid : projectIds) {
+                ProjectModel p = projectMapper.findById(pid);
+                if (p != null) projects.add(p);
+            }
+        } else {
+            projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        }
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || project.getNodeIds() == null) continue;
+            for (String nodeIdStr : project.getNodeIds().split(",")) {
+                try {
+                    Long nid = Long.parseLong(nodeIdStr.trim());
+                    if (nodeIds != null && !nodeIds.isEmpty() && !nodeIds.contains(nid)) continue;
+                    NodeModel node = nodeMapper.findById(nid);
+                    if (node != null) collectOne(project, node);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+    }
 
     /**
      * 采集单个项目-节点监控快照
@@ -114,10 +145,12 @@ public class MonitorCollectorService {
         List<String> checkMethods = new ArrayList<String>();
         checkMethods.add("PS_GREP");
 
+        // 进程在运行 → 健康；进程不在 → 异常
         String healthStatus = alive ? "UP" : "DOWN";
         String healthDetail = alive ? "Shell检测: 进程运行中" : "Shell检测: 进程未运行";
         Integer responseMs = null;
 
+        // HTTP 探针：只补充信息，不改变健康状态（进程活着就是健康）
         ProjectHealthProbeModel probe = resolveProbe(project);
         if (alive && probe != null && probe.getEnabled() != null && probe.getEnabled() == 1
                 && StringUtils.hasText(probe.getUrl())) {
@@ -137,17 +170,14 @@ public class MonitorCollectorService {
                 probeData = new HashMap<String, Object>();
             }
             String probeStatus = probeData.get("status") != null ? probeData.get("status").toString() : "UNKNOWN";
+            String probeDetail = probeData.get("detail") != null ? probeData.get("detail").toString() : "";
             responseMs = toInt(probeData.get("responseMs"));
             snap.setResponseMs(responseMs);
             if ("UP".equals(probeStatus)) {
-                healthStatus = "UP";
                 healthDetail = "Shell+HTTP探针: 全部通过";
-            } else if ("DOWN".equals(probeStatus)) {
-                healthStatus = "DOWN";
-                healthDetail = "Shell检测通过，但 HTTP 探针失败";
             } else {
-                healthStatus = "DEGRADED";
-                healthDetail = "Shell检测通过，HTTP 探针异常";
+                // 探针失败不影响健康状态，但记录原因供排查
+                healthDetail = "进程运行中，HTTP探针未通过: " + diagnoseProbeFailure(probeDetail, probe);
             }
         }
 
@@ -288,6 +318,56 @@ public class MonitorCollectorService {
     private boolean isTrue(Map<String, Object> config, String key) {
         Object val = config.get(key);
         return val instanceof Boolean ? (Boolean) val : Boolean.parseBoolean(String.valueOf(val));
+    }
+
+    /**
+     * 将探针原始错误信息转换为用户可读的诊断描述
+     */
+    private String diagnoseProbeFailure(String rawDetail, ProjectHealthProbeModel probe) {
+        if (rawDetail == null || rawDetail.isEmpty()) {
+            return "未知原因";
+        }
+        String lower = rawDetail.toLowerCase();
+        String probeUrl = (probe != null && probe.getUrl() != null) ? probe.getUrl() : "";
+
+        // 连接被拒绝 — 应用未监听该端口
+        if (lower.contains("connection refused") || lower.contains("connectexception")) {
+            return "连接被拒绝 — 应用可能未监听该端口 (" + probeUrl + ")";
+        }
+        // 连接超时
+        if (lower.contains("connect timed out") || lower.contains("sockettimeoutexception") && lower.contains("connect")) {
+            return "连接超时 — 网络不通或防火墙拦截 (" + probeUrl + ")";
+        }
+        // 读取超时
+        if (lower.contains("read timed out") || (lower.contains("sockettimeoutexception") && lower.contains("read"))) {
+            return "读取超时 — 应用响应过慢 (>3s)";
+        }
+        // HTTP 状态码不匹配
+        if (lower.contains("期望状态码") || lower.contains("expectedstatus")) {
+            return rawDetail;
+        }
+        // 关键字不匹配
+        if (lower.contains("bodycontains") || lower.contains("关键字")) {
+            return "响应内容未匹配预期关键字";
+        }
+        // 主机不可达
+        if (lower.contains("no route to host") || lower.contains("unreachable")) {
+            return "主机不可达 — 网络不通";
+        }
+        // DNS 解析失败
+        if (lower.contains("unknownhostexception")) {
+            return "域名解析失败 — 请检查 URL 配置";
+        }
+        // URL 格式错误
+        if (lower.contains("malformedurlexception") || lower.contains("invalid url")) {
+            return "URL 格式错误 (" + probeUrl + ")";
+        }
+        // SSL/TLS 错误
+        if (lower.contains("ssl") || lower.contains("certificate") || lower.contains("handshake")) {
+            return "SSL/TLS 握手失败 — 证书问题";
+        }
+        // 其他
+        return rawDetail.length() > 80 ? rawDetail.substring(0, 80) + "..." : rawDetail;
     }
 
     /** 检查是否在冷却期内，避免重复告警 */

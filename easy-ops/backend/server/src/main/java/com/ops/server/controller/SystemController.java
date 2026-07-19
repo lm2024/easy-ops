@@ -7,8 +7,10 @@ import com.ops.common.model.OperationLogModel;
 import com.ops.common.util.PasswordValidator;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.OperationLogMapper;
+import com.ops.server.mapper.SysConfigMapper;
 import com.ops.server.mapper.UserMapper;
 import com.ops.server.service.CaptchaService;
+import com.ops.server.config.AdminConfig;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +26,9 @@ import java.util.Base64;
 public class SystemController {
 
     @Autowired
+    private SysConfigMapper sysConfigMapper;
+
+    @Autowired
     private UserMapper userMapper;
 
     @Autowired
@@ -34,6 +39,9 @@ public class SystemController {
 
     @Autowired
     private CaptchaService captchaService;
+
+    @Autowired
+    private AdminConfig adminConfig;
 
     /**
      * GET /api/auth/captcha - 获取登录验证码
@@ -105,6 +113,44 @@ public class SystemController {
         }
 
         return Result.success(data);
+    }
+
+    /**
+     * POST /api/auth/reset - 将管理员密码重置为默认密码
+     */
+    @PostMapping("/reset")
+    public Result<?> resetAdminPassword() {
+        UserModel admin = userMapper.findByUsername("admin");
+        if (admin == null) {
+            return Result.error(ErrorCode.SERVER_ERROR, "管理员用户不存在");
+        }
+        String defaultPwd = adminConfig.getDefaultPassword();
+        String hashed = BCrypt.hashpw(defaultPwd, BCrypt.gensalt(10));
+        admin.setPassword(hashed);
+        admin.setUpdateTime(System.currentTimeMillis());
+        userMapper.update(admin);
+
+        try {
+            OperationLogModel logModel = new OperationLogModel();
+            logModel.setUserId(admin.getId());
+            logModel.setModule("AUTH");
+            logModel.setAction("RESET_PASSWORD");
+            logModel.setContent("管理员密码已重置为默认密码 " + defaultPwd);
+            logModel.setCreateTime(System.currentTimeMillis());
+            operationLogMapper.insert(logModel);
+        } catch (Exception e) {
+            System.err.println("[Auth] Failed to write reset log: " + e.getMessage());
+        }
+
+        // 标记为默认密码
+        try {
+            sysConfigMapper.upsert("admin_password_is_default", "true",
+                "管理员使用默认密码", System.currentTimeMillis());
+        } catch (Exception e) {
+            // ignore
+        }
+
+        return Result.success("密码已重置为默认密码 " + defaultPwd + "（可通过 app.admin.default-password 配置）");
     }
 
     private boolean bcryptCheck(String input, String hashed) {
@@ -202,6 +248,13 @@ public class SystemController {
                 return Result.paramError(pwdError);
             }
             user.setPassword(hashPassword(newPassword));
+            // 标记密码已被用户手动修改（DataInitializer 据此判断是否覆盖）
+            try {
+                sysConfigMapper.upsert("admin_password_is_default", "false",
+                    "管理员密码已被用户修改", System.currentTimeMillis());
+            } catch (Exception e) {
+                // ignore
+            }
         } else {
             user.setPassword(existing.getPassword());
         }
