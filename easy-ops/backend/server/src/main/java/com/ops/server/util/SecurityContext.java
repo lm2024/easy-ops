@@ -56,7 +56,7 @@ public class SecurityContext {
      */
     public List<Long> getAccessibleProjectIds() {
         String role = getCurrentRole();
-        if (role != null && role.equals("admin")) {
+        if (role != null && role.equalsIgnoreCase("admin")) {
             return userProjectRelationMapper.findAllProjectIds();
         }
         Long userId = getCurrentUserId();
@@ -71,7 +71,7 @@ public class SecurityContext {
      */
     public boolean isAdmin() {
         String role = getCurrentRole();
-        return role != null && role.equals("admin");
+        return role != null && role.equalsIgnoreCase("admin");
     }
 
     /**
@@ -81,7 +81,7 @@ public class SecurityContext {
     public boolean hasProjectPermission(Long projectId) {
         if (projectId == null) return true;
         String role = getCurrentRole();
-        if (role != null && role.equals("admin")) {
+        if (role != null && role.equalsIgnoreCase("admin")) {
             return true;
         }
         Long userId = getCurrentUserId();

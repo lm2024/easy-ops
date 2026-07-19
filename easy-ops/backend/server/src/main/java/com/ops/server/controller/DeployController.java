@@ -500,14 +500,15 @@ public class DeployController {
 
     /**
      * POST /api/deploy/unlock/{projectId} - 强制释放部署锁（卡住时使用）
+     * 注意：不能在HTTP线程直接调用 lock.unlock()，因为 ReentrantLock 要求由持有锁的线程释放，
+     * 否则会抛出 IllegalMonitorStateException。这里通过替换锁实例来实现强制释放。
      */
     @PostMapping("/unlock/{projectId}")
     public Result<?> forceUnlock(@PathVariable Long projectId) {
-        ReentrantLock lock = deployLocks.get(projectId);
-        if (lock != null && lock.isLocked()) {
-            log.warn("[Deploy] 强制释放锁: projectId={}", projectId);
-            lock.unlock();
-            deployLockTimestamps.remove(projectId);
+        ReentrantLock oldLock = deployLocks.remove(projectId);
+        deployLockTimestamps.remove(projectId);
+        if (oldLock != null && oldLock.isLocked()) {
+            log.warn("[Deploy] 强制释放锁(替换实例): projectId={}", projectId);
             return Result.success("锁已释放: projectId=" + projectId);
         }
         return Result.success("该应用没有被锁住: projectId=" + projectId);

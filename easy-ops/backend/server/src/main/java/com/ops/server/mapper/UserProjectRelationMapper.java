@@ -26,7 +26,7 @@ public interface UserProjectRelationMapper {
     /**
      * 插入用户-项目关系
      */
-    int insert(@Param("userId") Long userId, @Param("projectId") Long projectId);
+    int insert(@Param("userId") Long userId, @Param("projectId") Long projectId, @Param("createTime") Long createTime);
 
     /**
      * 删除用户-项目关系
