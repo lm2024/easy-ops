@@ -24,6 +24,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @RestController
 @RequestMapping("/deploy")
@@ -56,6 +57,16 @@ public class DeployController {
     private String serverPath;
 
     private final RestTemplate restTemplate = new RestTemplate();
+
+    /**
+     * 部署锁：projectId -> lock
+     * 同一项目同一时刻只允许一个部署请求
+     */
+    private final ConcurrentHashMap<Long, ReentrantLock> deployLocks = new ConcurrentHashMap<>();
+    /** 锁获取时间戳，用于超时自动释放 */
+    private final ConcurrentHashMap<Long, Long> deployLockTimestamps = new ConcurrentHashMap<>();
+    /** 锁最大持有时间 2 分钟，超时自动释放 */
+    private static final long LOCK_TIMEOUT_MS = 2 * 60 * 1000;
 
     // ======================== 步骤定义 ========================
     private static final String[] STEP_NAMES = {"stop", "transfer", "start", "health"};
