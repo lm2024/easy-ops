@@ -159,10 +159,7 @@ CREATE TABLE IF NOT EXISTS sys_config (
     update_time BIGINT
 );
 
--- 初始化默认管理员 (密码: Admin123!) — 仅首次插入，不覆盖已有密码
-INSERT INTO sys_user (id, username, password, role, status, create_time, update_time)
-SELECT 1, 'admin', '$2a$10$DhLqo3JVRZR0c55Jo1vOI.znHBpG/d5qdgzIj/XuVC4F4T1muA6xm', 'admin', 1, 1781833996000, 1781833996000
-WHERE NOT EXISTS (SELECT 1 FROM sys_user WHERE id = 1);
+-- 管理员初始化已移至 DataInitializer.java（由 app.admin.default-password 控制）
 
 -- 初始化默认告警配置 — 使用 MERGE INTO 避免重复
 MERGE INTO alarm_config (id, enabled, smtp_host, smtp_port, smtp_ssl, receivers, update_time)

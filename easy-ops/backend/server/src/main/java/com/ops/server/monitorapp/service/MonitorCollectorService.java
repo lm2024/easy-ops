@@ -82,6 +82,37 @@ public class MonitorCollectorService {
             }
         }
     }
+    /**
+     * 按筛选条件采集指定项目和节点的监控数据。
+     * 只采集在线的节点，降低网络开销。
+     */
+    public void collectFiltered(List<Long> projectIds, List<Long> nodeIds) {
+        if ((projectIds == null || projectIds.isEmpty()) && (nodeIds == null || nodeIds.isEmpty())) {
+            collectAll();
+            return;
+        }
+        List<ProjectModel> projects;
+        if (projectIds != null && !projectIds.isEmpty()) {
+            projects = new ArrayList<ProjectModel>();
+            for (Long pid : projectIds) {
+                ProjectModel p = projectMapper.findById(pid);
+                if (p != null) projects.add(p);
+            }
+        } else {
+            projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        }
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || project.getNodeIds() == null) continue;
+            for (String nodeIdStr : project.getNodeIds().split(",")) {
+                try {
+                    Long nid = Long.parseLong(nodeIdStr.trim());
+                    if (nodeIds != null && !nodeIds.isEmpty() && !nodeIds.contains(nid)) continue;
+                    NodeModel node = nodeMapper.findById(nid);
+                    if (node != null) collectOne(project, node);
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+    }
 
     /**
      * 采集单个项目-节点监控快照

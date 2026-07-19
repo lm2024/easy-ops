@@ -11,6 +11,8 @@ import com.ops.server.mapper.ProjectMapper;
 import com.ops.server.monitorapp.service.HealthProbeService;
 import com.ops.server.monitorapp.service.MonitorCollectConfigService;
 import com.ops.server.monitorapp.service.MonitorCollectorService;
+import com.ops.server.service.NodeService;
+import com.ops.server.client.AgentClient;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +43,13 @@ public class AppMonitorController {
     private MonitorCollectorService collectorService;
     @Autowired
     private MonitorCollectConfigService collectConfigService;
+
+    @Autowired
+    private NodeService nodeService;
+
+    @Autowired
+    private com.ops.server.client.AgentClient agentClient;
+
 
     /**
      * GET /api/monitor/app/config - 获取监控采集配置
@@ -121,6 +130,26 @@ public class AppMonitorController {
     public Result<?> collectNow() {
         collectorService.collectAll();
         return Result.success("采集完成");
+    }
+
+    /**
+     * POST /api/monitor/app/collect-filtered - 选择性采集监控数据
+     * Body: { projectIds: [1,2], nodeIds: [3,4] }（两者都传取交集；都为空时退回全量采集）
+     */
+    @PostMapping("/app/collect-filtered")
+    public Result<?> collectFiltered(@RequestBody Map<String, Object> body) {
+        List<Long> projectIds = null;
+        List<Long> nodeIds = null;
+        if (body.containsKey("projectIds") && body.get("projectIds") != null) {
+            projectIds = ((List<Integer>) body.get("projectIds")).stream()
+                .map(Long::valueOf).collect(java.util.stream.Collectors.toList());
+        }
+        if (body.containsKey("nodeIds") && body.get("nodeIds") != null) {
+            nodeIds = ((List<Integer>) body.get("nodeIds")).stream()
+                .map(Long::valueOf).collect(java.util.stream.Collectors.toList());
+        }
+        collectorService.collectFiltered(projectIds, nodeIds);
+        return Result.success("选择性采集完成");
     }
 
     /**
@@ -306,6 +335,77 @@ public class AppMonitorController {
             info.put("extraJson", snap.getExtraJson());
         }
         return info;
+    }
+
+    /**
+     * GET /api/monitor/agent/status - Agent 状态列表（分页，实时查询）
+     * 对在线节点实时调 /sys/info 获取最新资源数据；离线节点直接标记。
+     */
+    @GetMapping("/agent/status")
+    public Result<?> agentStatus(
+            @RequestParam(required = false, defaultValue = "1") Integer page,
+            @RequestParam(required = false, defaultValue = "20") Integer pageSize,
+            @RequestParam(required = false) String keyword) {
+        List<NodeModel> nodes = nodeService.findByStatus(null, page, pageSize, keyword);
+        Long total = nodeService.countByStatus(null, keyword);
+
+        List<Map<String, Object>> agentList = new ArrayList<>();
+        if (nodes != null && !nodes.isEmpty()) {
+            for (NodeModel n : nodes) {
+                Map<String, Object> item = new HashMap<>();
+                item.put("nodeId", n.getId());
+                item.put("nodeName", n.getName());
+                item.put("ip", n.getIp());
+                item.put("port", n.getPort());
+                item.put("osInfo", n.getOsInfo());
+                item.put("cpuCores", n.getCpuCores());
+                item.put("totalMemoryMb", n.getTotalMemoryMb());
+                item.put("totalDiskMb", n.getTotalDiskMb());
+                item.put("agentVersion", n.getAgentVersion());
+
+                // 实时查询在线 Agent
+                if (n.getStatus() != null && n.getStatus() == 1) {
+                    try {
+                        Map<String, Object> sysInfo = agentClient.get(n.getId(), "/sys/info", null);
+                        if (sysInfo != null && !sysInfo.isEmpty()) {
+                            // Agent 在线且有回应
+                            item.put("status", 1);
+                            item.put("lastHeartbeat", n.getLastHeartbeat());
+                            item.put("hostCpuPercent", sysInfo.get("cpuUsagePercent"));
+                            item.put("hostMemoryPercent", sysInfo.get("memoryUsagePercent"));
+                            Object disks = sysInfo.get("disks");
+                            if (disks instanceof java.util.List) {
+                                for (Object d : (java.util.List<?>) disks) {
+                                    if (d instanceof Map) {
+                                        Object mount = ((Map<?, ?>) d).get("mountPoint");
+                                        if ("/".equals(mount)) {
+                                            item.put("diskUsagePercent", ((Map<?, ?>) d).get("usagePercent"));
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        } else {
+                            // Agent 在线但 API 无响应
+                            item.put("status", 0);
+                            item.put("lastHeartbeat", n.getLastHeartbeat());
+                        }
+                    } catch (Exception e) {
+                        // Agent 连接失败
+                        item.put("status", 0);
+                        item.put("lastHeartbeat", n.getLastHeartbeat());
+                    }
+                } else {
+                    item.put("status", 0);
+                    item.put("lastHeartbeat", n.getLastHeartbeat());
+                }
+                agentList.add(item);
+            }
+        }
+        Map<String, Object> data = new HashMap<>();
+        data.put("list", agentList);
+        data.put("total", total);
+        return Result.success(data);
     }
 
     private int calcStabilityScore(Long projectId, Long nodeId) {

@@ -586,3 +586,28 @@ export interface NotificationRecordModel {
   readStatus?: number
   ackStatus?: number
 }
+
+
+/** Agent 状态项（监控页专用） */
+export interface AgentStatusItem {
+  nodeId: number
+  nodeName: string
+  ip: string
+  port: number
+  status: number
+  lastHeartbeat?: string
+  osInfo?: string
+  cpuCores?: number
+  totalMemoryMb?: number
+  totalDiskMb?: number
+  agentVersion?: string
+  hostCpuPercent?: number
+  hostMemoryPercent?: number
+  diskUsagePercent?: number
+}
+
+/** Agent 状态列表响应 */
+export interface AgentStatusResult {
+  list: AgentStatusItem[]
+  total: number
+}
