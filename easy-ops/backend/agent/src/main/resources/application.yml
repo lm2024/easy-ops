@@ -1,18 +1,11 @@
 # =============================================================================
 # EasyOps Agent 配置
-# -----------------------------------------------------------------------------
-# 【私有化部署怎么改】
-#   推荐方式：只改本机 scripts/easyops.env + 用 scripts/start.sh 启动。
-#   启动脚本会注入 AGENT_DATA_PATH、AGENT_SERVER_URL 等，本文件默认值可不动。
-#
-#   若不用脚本、直接 java -jar 启动，需设置环境变量：
-#     AGENT_TOKEN、AGENT_SERVER_URL、AGENT_DATA_PATH
-#
-#   端口：改 server.port 或在 easyops.env 里改 AGENT_PORT。
+# =============================================================================
+# 生产部署：直接用 scripts/start.sh 启动，无需修改本文件
+# 所有生产配置通过环境变量或 start.sh 顶部的变量覆盖
 # =============================================================================
 
 server:
-  # Agent HTTP 监听端口（Server 通过此端口调用 Agent API）
   port: ${AGENT_PORT:2123}
   servlet:
     context-path: /api
@@ -20,34 +13,29 @@ server:
 spring:
   servlet:
     multipart:
-      # Jar 包接收大小上限
       max-file-size: 500MB
       max-request-size: 500MB
 
-# Agent 核心配置（优先读环境变量，启动脚本会自动 export）
+# Agent 核心配置（start.sh 会自动 export 这些环境变量）
 agent:
-  # Server API 根地址，如 http://192.168.1.10:8081/api
+  # 【必须】Server API 地址，如 http://192.168.1.10:8081/api
   server-url: ${AGENT_SERVER_URL:http://localhost:8081/api}
-  # 节点 Token（留空则启动时自动生成并打印到日志）
+  # 【必须】节点 Token（任意非空字符串，Server 按此自动注册节点）
   token: ${AGENT_TOKEN:}
-  # 节点名称（在 Server 节点列表中显示）
+  # 【必须】节点名称（在 Server 节点列表中显示）
   node-name: ${AGENT_NODE_NAME:default-node}
-  # Agent 本地数据根目录：版本包、日志、pid、升级暂存等
-  # 启动脚本通过 -Dagent.data-path 覆盖
+  # Agent 本地数据目录（版本包、日志、pid 等）
   data-path: ${AGENT_DATA_PATH:/app/data}
   version: ${AGENT_VERSION:1.0.0-SNAPSHOT}
   jar-path: ${AGENT_JAR_PATH:/app/agent.jar}
-  # 重启模式：auto=自动检测 Docker；shell=裸机生产；docker=强制容器模式
+  # 重启模式：auto=自动检测；shell=裸机；docker=容器
   restart-mode: ${AGENT_RESTART_MODE:auto}
-  # 裸机自升级时调用的外置重启脚本（指向本机 scripts/start.sh）
   restart-script: ${AGENT_RESTART_SCRIPT:}
-  # ARM 内网可显式指定 java 路径
   java-bin: ${AGENT_JAVA_BIN:}
-  # 心跳间隔（秒）
   check-interval: 30
-  # 上报给 Server 的外部 IP（多网卡时填写，留空则自动检测）
+  # 【可选】上报给 Server 的外部 IP（多网卡时填写）
   host-ip: ${AGENT_HOST_IP:}
-  # 上报给 Server 的外部端口（留空或 0 则用 server.port）
+  # 【可选】上报给 Server 的外部端口（留空则用 server.port）
   host-port: ${AGENT_HOST_PORT:0}
 
 logging:

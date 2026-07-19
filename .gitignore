@@ -1,5 +1,6 @@
 .codegraph/
 *.DS_Store
+*.class
 agent-rules/
 *node_modules/
 *target/

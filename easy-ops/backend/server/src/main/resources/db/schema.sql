@@ -159,10 +159,10 @@ CREATE TABLE IF NOT EXISTS sys_config (
     update_time BIGINT
 );
 
--- 初始化默认管理员 (密码: admin123) — 使用 MERGE INTO 避免重复
+-- 初始化默认管理员 (密码: Admin123!) — 使用 MERGE INTO 避免重复
 MERGE INTO sys_user (id, username, password, role, status, create_time, update_time)
 KEY (id)
-VALUES (1, 'admin', '$2a$10$NatUJE6J35F/fGMeUFFQ/Op7rJeZsK3c9kUD4AwoWXBDphKFHXxri', 'admin', 1, 1781833996000, 1781833996000);
+VALUES (1, 'admin', '$2a$10$.Dmr0bIszzujqyiGH9rPjO8BubMQOcuvAYDXLQs.M5MpOiuaZF0ie', 'admin', 1, 1781833996000, 1781833996000);
 
 -- 初始化默认告警配置 — 使用 MERGE INTO 避免重复
 MERGE INTO alarm_config (id, enabled, smtp_host, smtp_port, smtp_ssl, receivers, update_time)

@@ -5,6 +5,7 @@ import com.ops.common.response.Result;
 import com.ops.server.service.ProjectService;
 import com.ops.server.service.AuditLogService;
 import com.ops.server.util.SecurityContext;
+import com.ops.server.mapper.UserProjectRelationMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -24,6 +25,9 @@ public class ProjectController {
 
     @Autowired
     private SecurityContext securityContext;
+
+    @Autowired
+    private UserProjectRelationMapper userProjectRelationMapper;
 
     /**
      * GET /api/projects - 项目列表 (SEC-004: 增加用户项目范围过滤)
@@ -69,6 +73,11 @@ public class ProjectController {
         project.setCreateTime(System.currentTimeMillis());
         project.setUpdateTime(System.currentTimeMillis());
         projectService.insert(project);
+        // 创建项目后，建立当前用户和项目的关联关系（SEC-004）
+        Long currentUserId = securityContext.getCurrentUserId();
+        if (currentUserId != null && project.getId() != null) {
+            userProjectRelationMapper.insert(currentUserId, project.getId(), System.currentTimeMillis());
+        }
         auditLog.log("PROJECT", "CREATE", "创建应用: " + project.getName());
         return Result.success();
     }

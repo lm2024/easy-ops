@@ -50,7 +50,7 @@ java -cp "$CLASSPATH" com.ops.server.ServerApplication
 Server 启动后：
 - API 地址: `http://localhost:8081/api/`
 - H2 控制台: `http://localhost:8081/h2-console`（JDBC URL: `jdbc:h2:./data/ops`，密码空）
-- 默认管理员: `admin / admin123`
+- 默认管理员: `admin / Admin123!`
 - 数据库文件: `backend/server/data/ops.mv.db`
 
 ### Step 3: 启动 Agent

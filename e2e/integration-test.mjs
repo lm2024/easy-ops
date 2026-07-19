@@ -197,7 +197,7 @@ try {
   await step('登录(admin)', async () => {
     await page.goto(BASE + '/login', { waitUntil: 'load' });
     await page.getByPlaceholder('请输入用户名').fill('admin');
-    await page.getByPlaceholder('请输入密码').fill('admin123');
+    await page.getByPlaceholder('请输入密码').fill('Admin123!');
     await page.locator('button.cta').click();
     await page.waitForURL('**/nodes**', { timeout: 8000 });
     await sleep(800);

@@ -12,7 +12,7 @@
 - 必须设置 JWT_SECRET 环境变量，否则 Server 启动失败
 - 启动命令示例（Git Bash）：`JWT_SECRET=easyops-jwt-secret-key-2026-opsplatform java -jar backend/server/target/ops-platform-server-1.0.0-SNAPSHOT.jar`
 - 前端启动：`cd frontend && npm run dev`
-- 默认管理员：admin / admin123
+- 默认管理员：admin / Admin123!
 - H2 数据库文件在 backend/server/data/ 目录，启动失败时可删除重建
 
 ## Docker Agent 部署

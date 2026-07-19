@@ -85,7 +85,7 @@
     <div class="auth-inner">
       <h2 class="auth-title">登录 EasyOps 控制台</h2>
       <p class="auth-sub">欢迎回来，请输入您的账号</p>
-      <p class="auth-hint mono">默认账号 admin · 密码 admin123（区分大小写）</p>
+      <p class="auth-hint mono">默认账号 admin · 密码 Admin123!（区分大小写）</p>
 
       <a-config-provider :theme="formTheme">
         <a-form :model="formState" @finish="handleLogin" layout="vertical" class="auth-form">
@@ -228,7 +228,7 @@ async function handleLogin() {
     authStore.setUser({
       id: 0,
       username: res.data.username,
-      role: res.data.role === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
+      role: res.data.role?.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
       status: 1
     })
     await router.push('/')
