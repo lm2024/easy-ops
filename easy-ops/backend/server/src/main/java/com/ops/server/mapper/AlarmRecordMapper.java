@@ -13,4 +13,6 @@ public interface AlarmRecordMapper {
     Long countByFilters(@Param("projectId") Long projectId, @Param("type") String type);
     int insert(AlarmModel alarm);
     int deleteAll();
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

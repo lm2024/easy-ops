@@ -126,7 +126,11 @@ public class NotificationService {
      * 全部标记已读
      */
     public int markAllRead(Long userId) {
-        return userNotificationStateMapper.markAllRead(userId);
+        // 为没有 state 记录的广播通知创建已读记录
+        int inserted = userNotificationStateMapper.markAllRead(userId);
+        // 将已有未读记录标记为已读
+        int updated = userNotificationStateMapper.markAllReadUpdate(userId);
+        return inserted + updated;
     }
 
     /**

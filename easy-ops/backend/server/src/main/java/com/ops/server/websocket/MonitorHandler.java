@@ -67,6 +67,21 @@ public class MonitorHandler extends TextWebSocketHandler {
         }
     }
 
+    /**
+     * 广播消息给所有连接的客户端
+     */
+    public void broadcast(String topic, String message) {
+        for (WebSocketSession session : monitorSessions.values()) {
+            if (session.isOpen()) {
+                try {
+                    session.sendMessage(new org.springframework.web.socket.TextMessage(message));
+                } catch (IOException e) {
+                    log.error("Failed to broadcast monitor message", e);
+                }
+            }
+        }
+    }
+
     public Map<String, WebSocketSession> getMonitorSessions() {
         return monitorSessions;
     }

@@ -13,4 +13,6 @@ public interface OperationLogMapper {
                                          @Param("page") Integer page, @Param("pageSize") Integer pageSize);
     Long countByModule(@Param("module") String module, @Param("userId") Long userId);
     int insert(OperationLogModel log);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

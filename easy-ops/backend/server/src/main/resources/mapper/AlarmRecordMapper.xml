@@ -32,4 +32,8 @@
     <delete id="deleteAll">
         DELETE FROM alarm_record
     </delete>
+
+    <delete id="deleteBefore">
+        DELETE FROM alarm_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

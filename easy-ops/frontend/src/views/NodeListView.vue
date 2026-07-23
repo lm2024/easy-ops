@@ -30,14 +30,6 @@
             <a-select-option value="0">🔴 离线</a-select-option>
           </a-select>
           <a-button @click="fetchNodes"><search-outlined /> 搜索</a-button>
-          <a-button @click="handleExport"><download-outlined /> 导出CSV</a-button>
-          <a-button @click="handleImportClick"><upload-outlined /> 导入CSV</a-button>
-          <input ref="fileInputRef" type="file" accept=".csv" style="display:none" @change="handleImportFile" />
-          <a-button @click="agentPkgInputRef?.click()"><cloud-upload-outlined /> 上传Agent包</a-button>
-          <input ref="agentPkgInputRef" type="file" accept=".jar" style="display:none" @change="handleAgentPackageUpload" />
-          <a-button type="primary" ghost :loading="upgrading" @click="handleBatchUpgrade">
-            <rocket-outlined /> 批量升级Agent
-          </a-button>
           <a-tooltip title="新增一个 Agent 节点。如果 Agent 已启动并通过心跳注册，会自动显示在这里。">
             <a-button type="primary" @click="$router.push('/nodes/add')">
               <plus-outlined /> 新增节点
@@ -288,12 +280,11 @@ import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { message } from 'ant-design-vue'
 import type { NodeModel } from '../types'
-import { getNodes, deleteNode, updateNodeTags, exportNodesCsv, importNodesCsv, uploadAgentPackage, batchUpgradeAgents } from '../api/node'
+import { getNodes, deleteNode, updateNodeTags } from '../api/node'
 import { getNodeSysInfo } from '../api/agent'
 import {
   SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ClusterOutlined,
-  DownloadOutlined, UploadOutlined, EyeOutlined, InfoCircleOutlined, CloseOutlined,
-  CloudUploadOutlined, RocketOutlined
+  EyeOutlined, InfoCircleOutlined, CloseOutlined
 } from '@ant-design/icons-vue'
 
 /** Agent 向 Server 上报心跳间隔（秒），与 backend agent.check-interval 一致 */
@@ -316,9 +307,6 @@ const loading = ref(false)
 const keyword = ref('')
 const filterStatus = ref<string | undefined>(undefined)
 const pagination = ref({ current: 1, pageSize: 20, total: 0 })
-const fileInputRef = ref<HTMLInputElement>()
-const agentPkgInputRef = ref<HTMLInputElement>()
-const upgrading = ref(false)
 const selectedRowKeys = ref<string[]>([])
 const rowSelection = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
@@ -470,42 +458,6 @@ async function fetchNodes() {
 function handleTableChange(pag: any) { pagination.value.current = pag.current; pagination.value.pageSize = pag.pageSize; fetchNodes() }
 function editNode(r: NodeModel) { router.push(`/nodes/${r.id}/edit`) }
 async function deleteNodeAction(id: string) { await deleteNode(id); fetchNodes(); message.success('节点已删除') }
-async function handleExport() { try { await exportNodesCsv(); message.success('导出成功') } catch { message.error('导出失败') } }
-function handleImportClick() { fileInputRef.value?.click() }
-async function handleImportFile(e: Event) {
-  const t = e.target as HTMLInputElement; const f = t.files?.[0]; if (!f) return
-  try { const r = await importNodesCsv(f); message.success(`成功导入 ${r.data.imported} 个节点`); fetchNodes() }
-  catch { message.error('导入失败，请检查CSV格式') } finally { t.value = '' }
-}
-
-async function handleAgentPackageUpload(e: Event) {
-  const t = e.target as HTMLInputElement
-  const f = t.files?.[0]
-  if (!f) return
-  try {
-    const r = await uploadAgentPackage(f)
-    const sizeMb = ((r.data.size || 0) / 1024 / 1024).toFixed(1)
-    message.success('Agent 升级包已上传 (' + sizeMb + ' MB)')
-  } catch {
-    message.error('Agent 升级包上传失败')
-  } finally {
-    t.value = ''
-  }
-}
-
-async function handleBatchUpgrade() {
-  try {
-    upgrading.value = true
-    const ids = selectedRowKeys.value.length > 0 ? selectedRowKeys.value : undefined
-    const r = await batchUpgradeAgents(ids)
-    message.success(`升级完成：成功 ${r.data.success}，失败 ${r.data.failed}`)
-    fetchNodes()
-  } catch (e: any) {
-    message.error(e?.message || '批量升级失败，请先上传 Agent 升级包')
-  } finally {
-    upgrading.value = false
-  }
-}
 
 onMounted(fetchNodes)
 

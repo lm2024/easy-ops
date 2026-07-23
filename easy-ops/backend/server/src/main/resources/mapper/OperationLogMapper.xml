@@ -33,4 +33,8 @@
         INSERT INTO operation_log (user_id, module, action, content, ip, create_time)
         VALUES (#{userId}, #{module}, #{action}, #{content}, #{ip}, #{createTime})
     </insert>
+
+    <delete id="deleteBefore">
+        DELETE FROM operation_log WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

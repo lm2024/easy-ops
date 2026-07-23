@@ -15,6 +15,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
@@ -36,7 +37,14 @@ public class AgentClient {
     @Autowired
     private NodeMapper nodeMapper;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public AgentClient() {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(5000);  // 连接超时 5 秒
+        factory.setReadTimeout(10000);    // 读取超时 10 秒
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     /**
      * 按节点 ID 发起 GET 请求，返回 data 部分

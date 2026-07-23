@@ -26,4 +26,8 @@
     <delete id="deleteByUserIdAndDocumentId">
         DELETE FROM kb_recent_access WHERE user_id = #{userId} AND document_id = #{documentId}
     </delete>
+
+    <delete id="deleteBefore">
+        DELETE FROM kb_recent_access WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>
