@@ -116,6 +116,14 @@ public class AgentClient {
      */
     @SuppressWarnings("unchecked")
     public Map<String, Object> postMultipart(NodeModel node, String path, File file, String sha256) {
+        return postMultipart(node, path, file, sha256, null);
+    }
+
+    /**
+     * POST multipart 文件到 Agent，支持附加参数。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> postMultipart(NodeModel node, String path, File file, String sha256, String targetVersion) {
         String url = buildUrl(node, path);
         try {
             HttpHeaders headers = new HttpHeaders();
@@ -124,6 +132,9 @@ public class AgentClient {
             body.add("file", new FileSystemResource(file));
             if (sha256 != null && !sha256.isEmpty()) {
                 body.add("sha256", sha256);
+            }
+            if (targetVersion != null && !targetVersion.isEmpty()) {
+                body.add("targetVersion", targetVersion);
             }
             HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
             return restTemplate.exchange(url, HttpMethod.POST, entity, Map.class).getBody();

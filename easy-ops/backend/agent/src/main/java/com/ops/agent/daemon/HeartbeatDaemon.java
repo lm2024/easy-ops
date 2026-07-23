@@ -1,20 +1,26 @@
 package com.ops.agent.daemon;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ops.agent.process.ProcessMetricsHelper;
+import com.ops.agent.process.ProcessStatusChecker;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.http.*;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
+import java.io.File;
 import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryUsage;
 import java.lang.management.OperatingSystemMXBean;
 import java.lang.management.ThreadMXBean;
 import java.net.InetAddress;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,7 +52,53 @@ public class HeartbeatDaemon implements CommandLineRunner {
     @Value("${agent.version:1.0.0-SNAPSHOT}")
     private String agentVersion;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${agent.data-path:/app/data}")
+    private String agentDataPath;
+
+    private final ProcessStatusChecker processStatusChecker = new ProcessStatusChecker();
+    private final ProcessMetricsHelper processMetricsHelper = new ProcessMetricsHelper(processStatusChecker);
+
+    /**
+     * 从版本文件读取升级后的版本号，文件不存在则返回编译时版本
+     */
+    private String getEffectiveVersion() {
+        try {
+            java.io.File versionFile = new java.io.File(agentDataPath, "agent-version.txt");
+            if (versionFile.exists()) {
+                String v = new String(java.nio.file.Files.readAllBytes(versionFile.toPath()), "UTF-8").trim();
+                if (!v.isEmpty()) return v;
+            }
+        } catch (Exception ignored) {
+        }
+        return agentVersion;
+    }
+
+    /**
+     * 获取 Agent 自身的 PID
+     */
+    private long getAgentPid() {
+        try {
+            String name = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+            int at = name.indexOf('@');
+            if (at > 0) {
+                return Long.parseLong(name.substring(0, at));
+            }
+        } catch (Exception ignored) {
+        }
+        return -1;
+    }
+
+    /**
+     * 带超时的 RestTemplate，防止 Server 不可达时心跳阻塞
+     * Spring @Scheduled 默认单线程调度器，心堵会导致所有定时任务停止
+     */
+    private final RestTemplate restTemplate;
+    {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000);   // 连接超时 3 秒
+        factory.setReadTimeout(5000);      // 读取超时 5 秒
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     /**
      * 启动时：未配置 Token 则自动生成（内网简化部署），并打印到控制台供 Server 注册节点使用
@@ -105,7 +157,8 @@ public class HeartbeatDaemon implements CommandLineRunner {
             headers.set("X-CPU-Info", String.valueOf(cpuCores));
             headers.set("X-Mem-Info", String.valueOf(totalMemMb));
             headers.set("X-OS-Arch", osArch);
-            headers.set("X-Agent-Version", agentVersion);
+            headers.set("X-Agent-Version", getEffectiveVersion());
+            headers.set("X-Agent-PID", String.valueOf(getAgentPid()));
 
             // 添加监控数据到Header（Base64编码避免特殊字符问题）
             String metricsJson = new ObjectMapper().writeValueAsString(metrics);
@@ -164,6 +217,9 @@ public class HeartbeatDaemon implements CommandLineRunner {
             // 进程运行时间（毫秒）
             long uptime = ManagementFactory.getRuntimeMXBean().getUptime();
             metrics.put("processUptimeMs", uptime);
+
+            // 扫描本地部署的应用进程并采集指标
+            metrics.put("processes", collectProcessMetrics());
 
         } catch (Exception e) {
             System.err.println("[Agent Metrics] Failed to collect metrics: " + e.getMessage());
@@ -240,5 +296,72 @@ public class HeartbeatDaemon implements CommandLineRunner {
 
     String hashNodeId(String ip) {
         return Integer.toHexString(ip.hashCode());
+    }
+
+    /**
+     * 扫描本地部署目录，查找应用进程并采集指标。
+     * 扫描 {agentDataPath}/apps/ 下的每个子目录，查找 jar 文件对应的进程。
+     */
+    private List<Map<String, Object>> collectProcessMetrics() {
+        List<Map<String, Object>> processes = new ArrayList<>();
+        File appsDir = new File(agentDataPath, "apps");
+        if (!appsDir.isDirectory()) {
+            return processes;
+        }
+        File[] appDirs = appsDir.listFiles(File::isDirectory);
+        if (appDirs == null) {
+            return processes;
+        }
+        for (File appDir : appDirs) {
+            try {
+                // 查找目录下的 jar 文件
+                File[] jars = appDir.listFiles((dir, name) -> name.endsWith(".jar"));
+                if (jars == null || jars.length == 0) continue;
+
+                String deployDir = appDir.getAbsolutePath();
+                String jarName = jars[0].getName(); // 取第一个 jar
+
+                // 查找进程 PID
+                Long pid = processStatusChecker.findPid(deployDir, jarName);
+                if (pid == null) continue;
+
+                Map<String, Object> proc = new HashMap<>();
+                proc.put("deployDir", deployDir);
+                proc.put("jarName", jarName);
+                proc.put("pid", pid.intValue());
+                proc.put("alive", true);
+
+                // 采集进程 CPU/内存
+                Map<String, Object> metricsResult = processMetricsHelper.getProcessMetrics(deployDir, jarName);
+                if (Boolean.TRUE.equals(metricsResult.get("found"))) {
+                    Object cpu = metricsResult.get("cpuPercent");
+                    if (cpu instanceof Number) proc.put("cpuPercent", ((Number) cpu).doubleValue());
+                    Object mem = metricsResult.get("memoryMb");
+                    if (mem instanceof Number) proc.put("memoryMb", ((Number) mem).intValue());
+                    Object rss = metricsResult.get("rssKb");
+                    if (rss instanceof Number) proc.put("rssKb", ((Number) rss).longValue());
+                    Object memPct = metricsResult.get("memPercent");
+                    if (memPct instanceof Number) proc.put("memPercent", ((Number) memPct).doubleValue());
+                }
+
+                // 采集 JVM 指标
+                Map<String, Object> jvmResult = processMetricsHelper.getJvmMetrics(pid);
+                if (Boolean.TRUE.equals(jvmResult.get("available"))) {
+                    Object heapUsed = jvmResult.get("heapUsedMb");
+                    if (heapUsed instanceof Number) proc.put("heapUsedMb", ((Number) heapUsed).intValue());
+                    Object heapMax = jvmResult.get("heapMaxMb");
+                    if (heapMax instanceof Number) proc.put("heapMaxMb", ((Number) heapMax).intValue());
+                    Object gcCount = jvmResult.get("gcYoungCount");
+                    if (gcCount instanceof Number) proc.put("gcCount", ((Number) gcCount).intValue());
+                    Object gcTime = jvmResult.get("gcTimeMs");
+                    if (gcTime instanceof Number) proc.put("gcTimeMs", ((Number) gcTime).intValue());
+                }
+
+                processes.add(proc);
+            } catch (Exception e) {
+                System.err.println("[Agent Heartbeat] Failed to collect process metrics for " + appDir.getName() + ": " + e.getMessage());
+            }
+        }
+        return processes;
     }
 }

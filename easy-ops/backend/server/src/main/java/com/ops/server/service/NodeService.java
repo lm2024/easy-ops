@@ -16,8 +16,12 @@ public class NodeService {
 
     public NodeModel findById(Long id) { return nodeMapper.findById(id); }
     public NodeModel findByName(String name) { return nodeMapper.findByName(name); }
+    public List<NodeModel> findByStatus(String status, Integer page, Integer pageSize, String keyword,
+                                         String sortField, String sortOrder) {
+        return nodeMapper.findByStatus(status, page, pageSize, keyword, sortField, sortOrder);
+    }
     public List<NodeModel> findByStatus(String status, Integer page, Integer pageSize, String keyword) {
-        return nodeMapper.findByStatus(status, page, pageSize, keyword);
+        return nodeMapper.findByStatus(status, page, pageSize, keyword, null, null);
     }
     public Long countByStatus(String status, String keyword) { return nodeMapper.countByStatus(status, keyword); }
     public int insert(NodeModel node) { return nodeMapper.insert(node); }
@@ -26,9 +30,9 @@ public class NodeService {
     public int countByNodeId(Long nodeId) { return nodeMapper.countByNodeId(nodeId); }
     public void updateHeartbeat(Long id, Long lastHeartbeat, String ip, String osInfo, String javaVersion,
                                 Integer cpuCores, Integer totalMemoryMb, Long totalDiskMb, String osArch,
-                                String agentVersion) {
+                                String agentVersion, Long agentPid) {
         nodeMapper.updateHeartbeat(id, lastHeartbeat, ip, osInfo, javaVersion,
-                cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion);
+                cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion, agentPid);
     }
     public void updateTags(Long id, String tags) {
         nodeMapper.updateTags(id, tags, System.currentTimeMillis());

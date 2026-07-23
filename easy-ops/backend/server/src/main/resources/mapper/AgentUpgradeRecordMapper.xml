@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.AgentUpgradeRecordMapper">
+
+    <select id="findById" resultType="com.ops.common.model.AgentUpgradeRecordModel">
+        SELECT * FROM agent_upgrade_record WHERE id = #{id}
+    </select>
+
+    <select id="findByBatchId" resultType="com.ops.common.model.AgentUpgradeRecordModel">
+        SELECT * FROM agent_upgrade_record WHERE upgrade_batch_id = #{batchId} ORDER BY create_time DESC
+    </select>
+
+    <select id="findByNodeId" resultType="com.ops.common.model.AgentUpgradeRecordModel">
+        SELECT * FROM agent_upgrade_record WHERE node_id = #{nodeId} ORDER BY create_time DESC
+    </select>
+
+    <select id="findAll" resultType="com.ops.common.model.AgentUpgradeRecordModel">
+        SELECT * FROM agent_upgrade_record ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM agent_upgrade_record
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO agent_upgrade_record (upgrade_batch_id, target_version, node_id, node_name,
+            old_version, status, error_message, start_time, end_time, create_time)
+        VALUES (#{upgradeBatchId}, #{targetVersion}, #{nodeId}, #{nodeName},
+            #{oldVersion}, #{status}, #{errorMessage}, #{startTime}, #{endTime}, #{createTime})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE agent_upgrade_record
+        SET status = #{status}, error_message = #{errorMessage}, end_time = #{endTime}
+        WHERE id = #{id}
+    </update>
+
+    <update id="updateStatusByBatchId">
+        UPDATE agent_upgrade_record SET status = #{status}
+        WHERE upgrade_batch_id = #{batchId} AND status = 1
+    </update>
+
+    <select id="findLatestByNodeId" resultType="com.ops.common.model.AgentUpgradeRecordModel">
+        SELECT a.* FROM agent_upgrade_record a
+        INNER JOIN (
+            SELECT node_id, MAX(create_time) AS max_time
+            FROM agent_upgrade_record GROUP BY node_id
+        ) b ON a.node_id = b.node_id AND a.create_time = b.max_time
+        ORDER BY a.create_time DESC
+        LIMIT #{limit}
+    </select>
+</mapper>

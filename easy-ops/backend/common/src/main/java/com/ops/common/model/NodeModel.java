@@ -40,4 +40,7 @@ public class NodeModel implements Serializable {
 
     /** Agent 版本号（心跳上报） */
     private String agentVersion;
+
+    /** Agent 进程 PID */
+    private Long agentPid;
 }

@@ -25,7 +25,20 @@
                      OR tags LIKE '%' || #{keyword} || '%')
             </if>
         </where>
-        ORDER BY create_time DESC
+        <choose>
+            <when test="sortField == 'tags'">
+                ORDER BY tags <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>
+            </when>
+            <when test="sortField == 'ip'">
+                ORDER BY ip <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>
+            </when>
+            <when test="sortField == 'status'">
+                ORDER BY status <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>, last_heartbeat DESC
+            </when>
+            <otherwise>
+                ORDER BY create_time DESC
+            </otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
     <select id="countByStatus" resultType="long">
@@ -67,6 +80,7 @@
         UPDATE node_info SET status = 1, ip = #{ip}, os_info = #{osInfo}, java_version = #{javaVersion},
         cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
         total_disk_mb = #{totalDiskMb}, os_arch = #{osArch}, agent_version = #{agentVersion},
+        agent_pid = #{agentPid},
         last_heartbeat = #{lastHeartbeat}, update_time = #{lastHeartbeat} WHERE id = #{id}
     </update>
     <update id="updatePort">

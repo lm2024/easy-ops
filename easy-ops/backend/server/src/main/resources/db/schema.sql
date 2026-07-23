@@ -25,6 +25,7 @@ ALTER TABLE node_info ADD COLUMN IF NOT EXISTS total_memory_mb INT DEFAULT 0;
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS total_disk_mb BIGINT DEFAULT 0;
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS os_arch VARCHAR(50) DEFAULT '';
 ALTER TABLE node_info ADD COLUMN IF NOT EXISTS agent_version VARCHAR(50) DEFAULT '';
+ALTER TABLE node_info ADD COLUMN IF NOT EXISTS agent_pid BIGINT DEFAULT 0;
 
 -- 项目管理表
 CREATE TABLE IF NOT EXISTS project_info (
@@ -44,6 +45,13 @@ CREATE INDEX IF NOT EXISTS idx_project_status ON project_info(status);
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS jar_name VARCHAR(200) DEFAULT '';
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS deploy_dir VARCHAR(500) DEFAULT '';
 ALTER TABLE project_info ADD COLUMN IF NOT EXISTS frontend_deploy_dir VARCHAR(500) DEFAULT '';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS project_type VARCHAR(20) DEFAULT 'backend';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS frontend_dir_name VARCHAR(200) DEFAULT '';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_enabled TINYINT DEFAULT 1;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_port INT DEFAULT 8080;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_path VARCHAR(200) DEFAULT '/hello';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS health_check_keyword VARCHAR(500) DEFAULT 'Hello,DEPLOYED';
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS monitor_interval_sec INT DEFAULT 60;
 
 -- 版本包表
 CREATE TABLE IF NOT EXISTS version_package (
@@ -565,3 +573,66 @@ VALUES (4, '配置变更记录', '配置变更审批记录', '# 配置变更记�
 MERGE INTO kb_template (id, name, description, content, icon, category, user_id, is_system, create_time, update_time)
 KEY (id)
 VALUES (5, 'FAQ', '运维常见问题汇总', '# FAQ\n\n## Q1: 微服务启动失败？\n\n**A:** 常见原因：\n- OOM\n- 端口占用\n- 配置错误\n\n## Q2: 如何查看日志？\n\n**A:** ...\n\n> 相关文档：[链接]\n\n', 'question', '常见问题', 1, 1, 1781833996000, 1781833996000);
+
+-- M6 全局脚本文件管理（管理所有 Agent 节点的脚本/配置文件，不绑定项目）
+CREATE TABLE IF NOT EXISTS global_script_file (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    file_name VARCHAR(200) NOT NULL,
+    file_path VARCHAR(500) NOT NULL COMMENT '文件路径（Agent 节点上的绝对路径）',
+    file_type VARCHAR(50) DEFAULT '' COMMENT '文件类型：sh/conf/cron/service/yaml/yml/properties/other',
+    description VARCHAR(500) DEFAULT '' COMMENT '文件描述/用途说明',
+    is_executable TINYINT DEFAULT 0 COMMENT '是否需要可执行权限：0-否 1-是',
+    auto_backup TINYINT DEFAULT 1 COMMENT '分发前是否自动备份：0-否 1-是',
+    create_time BIGINT,
+    update_time BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_global_script_path ON global_script_file(file_path);
+CREATE INDEX IF NOT EXISTS idx_global_script_type ON global_script_file(file_type);
+
+CREATE TABLE IF NOT EXISTS global_script_snapshot (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    node_id BIGINT NOT NULL,
+    script_file_id BIGINT NOT NULL,
+    content_hash VARCHAR(64) NOT NULL COMMENT '文件内容SHA256哈希',
+    content_size BIGINT DEFAULT 0 COMMENT '文件大小（字节）',
+    file_mode INT DEFAULT 0 COMMENT '文件权限（八进制，如 755）',
+    sync_status TINYINT DEFAULT 0 COMMENT '同步状态：0-未知 1-一致 2-差异 3-定制',
+    last_sync_time BIGINT,
+    update_time BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_global_node_script_file ON global_script_snapshot(node_id, script_file_id);
+CREATE INDEX IF NOT EXISTS idx_global_script_snap_node ON global_script_snapshot(node_id);
+CREATE INDEX IF NOT EXISTS idx_global_script_snap_file ON global_script_snapshot(script_file_id);
+
+CREATE TABLE IF NOT EXISTS global_script_distribute_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    script_file_id BIGINT NOT NULL,
+    operator_id BIGINT NOT NULL,
+    target_node_ids VARCHAR(2000) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    set_executable TINYINT DEFAULT 0,
+    auto_backup TINYINT DEFAULT 1,
+    status TINYINT DEFAULT 0 COMMENT '0-进行中 1-成功 2-部分失败 3-失败',
+    result_detail TEXT,
+    create_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_global_script_dist_file ON global_script_distribute_record(script_file_id);
+CREATE INDEX IF NOT EXISTS idx_global_script_dist_time ON global_script_distribute_record(create_time);
+
+-- Agent 升级记录表
+CREATE TABLE IF NOT EXISTS agent_upgrade_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    upgrade_batch_id VARCHAR(32) NOT NULL,
+    target_version VARCHAR(64) NOT NULL,
+    node_id BIGINT NOT NULL,
+    node_name VARCHAR(100),
+    old_version VARCHAR(64),
+    status TINYINT DEFAULT 0 COMMENT '0-待升级 1-升级中 2-成功 3-失败 4-已回滚',
+    error_message TEXT,
+    start_time BIGINT,
+    end_time BIGINT,
+    create_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_upgrade_batch ON agent_upgrade_record(upgrade_batch_id);
+CREATE INDEX IF NOT EXISTS idx_upgrade_node ON agent_upgrade_record(node_id);
+CREATE INDEX IF NOT EXISTS idx_upgrade_time ON agent_upgrade_record(create_time);
