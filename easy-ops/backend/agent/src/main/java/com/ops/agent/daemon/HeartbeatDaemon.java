@@ -8,6 +8,11 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
+import java.lang.management.OperatingSystemMXBean;
+import java.lang.management.ThreadMXBean;
 import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
@@ -62,6 +67,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
 
     /**
      * 每 N 秒发送一次心跳（从配置读取）
+     * 心跳中包含监控数据：CPU、内存、磁盘使用率
      */
     @Scheduled(fixedRateString = "${agent.check-interval:30}000")
     public void sendHeartbeat() {
@@ -82,6 +88,9 @@ public class HeartbeatDaemon implements CommandLineRunner {
             int jvmMaxMb = maxMem > 0 && maxMem < Long.MAX_VALUE ? (int)(maxMem / (1024 * 1024)) : 0;
             long totalMemMb = getTotalMemoryMB();
 
+            // 收集监控数据
+            Map<String, Object> metrics = collectMetrics();
+
             // 上报外部可访问的端口（Docker 映射端口）
             String url = serverUrl + "/nodes/heartbeat?nodeIp=" + ip;
             if (hostPort > 0) {
@@ -98,17 +107,107 @@ public class HeartbeatDaemon implements CommandLineRunner {
             headers.set("X-OS-Arch", osArch);
             headers.set("X-Agent-Version", agentVersion);
 
+            // 添加监控数据到Header（Base64编码避免特殊字符问题）
+            String metricsJson = new ObjectMapper().writeValueAsString(metrics);
+            String metricsBase64 = java.util.Base64.getEncoder().encodeToString(metricsJson.getBytes("UTF-8"));
+            headers.set("X-Metrics", metricsBase64);
+
             System.out.println("[Agent Heartbeat] Sending headers: X-Node-Name=" + nodeName + ", X-Token=" + agentToken);
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("[Agent Heartbeat] Sent OK for " + nodeName + " (" + ip + ")");
+                System.out.println("[Agent Heartbeat] Sent OK for " + nodeName + " (" + ip + "), CPU=" + metrics.get("cpuUsagePercent") + "%, Memory=" + metrics.get("memoryUsagePercent") + "%");
             }
         } catch (Exception e) {
             System.err.println("[Agent Heartbeat] Failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * 收集系统监控数据
+     */
+    private Map<String, Object> collectMetrics() {
+        Map<String, Object> metrics = new HashMap<>();
+
+        try {
+            // CPU使用率
+            OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+            double cpuUsage = osBean.getSystemLoadAverage();
+            // 转换为百分比（0-100）
+            int cpuCores = Runtime.getRuntime().availableProcessors();
+            double cpuUsagePercent = cpuUsage >= 0 ? (cpuUsage / cpuCores) * 100 : 0;
+            metrics.put("cpuUsagePercent", Math.round(cpuUsagePercent * 10.0) / 10.0);
+
+            // 内存使用率
+            MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
+            MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
+            MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
+            long totalMemory = heapUsage.getUsed() + nonHeapUsage.getUsed();
+            long maxMemory = Runtime.getRuntime().maxMemory();
+            double memoryUsagePercent = (totalMemory * 100.0) / maxMemory;
+            metrics.put("memoryUsagePercent", Math.round(memoryUsagePercent * 10.0) / 10.0);
+            metrics.put("heapUsedMB", heapUsage.getUsed() / (1024 * 1024));
+            metrics.put("heapMaxMB", heapUsage.getMax() / (1024 * 1024));
+
+            // 线程数
+            ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+            metrics.put("threadCount", threadBean.getThreadCount());
+
+            // 磁盘使用率（根分区）
+            metrics.put("diskUsagePercent", getRootDiskUsagePercent());
+
+            // 系统负载
+            metrics.put("systemLoadAverage", cpuUsage);
+
+            // 进程运行时间（毫秒）
+            long uptime = ManagementFactory.getRuntimeMXBean().getUptime();
+            metrics.put("processUptimeMs", uptime);
+
+        } catch (Exception e) {
+            System.err.println("[Agent Metrics] Failed to collect metrics: " + e.getMessage());
+        }
+
+        return metrics;
+    }
+
+    /**
+     * 获取根分区磁盘使用率
+     */
+    private double getRootDiskUsagePercent() {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            Process p;
+            if (os.contains("linux")) {
+                p = Runtime.getRuntime().exec("df -h /");
+            } else if (os.contains("mac") || os.contains("darwin")) {
+                p = Runtime.getRuntime().exec("df -h /");
+            } else {
+                return 0;
+            }
+
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            String line;
+            boolean firstLine = true;
+            while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    firstLine = false;
+                    continue;
+                }
+                // 格式：Filesystem Size Used Avail Use% Mounted
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 5) {
+                    String usePercent = parts[4].replace("%", "");
+                    reader.close();
+                    return Double.parseDouble(usePercent);
+                }
+            }
+            reader.close();
+        } catch (Exception e) {
+            // 忽略错误，返回0
+        }
+        return 0;
     }
 
     private long getTotalMemoryMB() {

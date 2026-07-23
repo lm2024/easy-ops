@@ -26,6 +26,10 @@
         UPDATE deploy_record SET status = #{status}, log = #{log}, end_time = #{endTime}
         WHERE id = #{id}
     </update>
+
+    <delete id="deleteBefore">
+        DELETE FROM deploy_record WHERE create_time &lt; #{cutoff}
+    </delete>
     <select id="findScheduledReady" resultType="com.ops.common.model.DeployModel">
         SELECT * FROM deploy_record WHERE status = 5 AND schedule_time > 0 AND schedule_time &lt;= #{cutoff}
         ORDER BY schedule_time ASC LIMIT 20

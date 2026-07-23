@@ -5,7 +5,7 @@ import { message } from 'ant-design-vue'
 
 const service: AxiosInstance = axios.create({
   baseURL: '/api',
-  timeout: 30000
+  timeout: 60000
 })
 
 // 请求拦截器

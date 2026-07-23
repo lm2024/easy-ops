@@ -29,6 +29,9 @@ public interface UserNotificationStateMapper {
     /** 全部标记已读（插入或更新所有未读通知的状态） */
     int markAllRead(@Param("userId") Long userId);
 
+    /** 全部标记已读（更新已有记录） */
+    int markAllReadUpdate(@Param("userId") Long userId);
+
     /** 清空已读通知（将已读通知设为过期） */
     int clearRead(@Param("userId") Long userId, @Param("now") Long now);
 

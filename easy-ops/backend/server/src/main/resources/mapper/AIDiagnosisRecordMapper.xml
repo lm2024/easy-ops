@@ -14,4 +14,8 @@
         UPDATE ai_diagnosis_record SET kb_document_id = #{kbDocumentId}, saved_to_kb = #{savedToKb}
         WHERE id = #{id}
     </update>
+
+    <delete id="deleteBefore">
+        DELETE FROM ai_diagnosis_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

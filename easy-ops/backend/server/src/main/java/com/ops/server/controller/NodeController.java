@@ -8,10 +8,12 @@ import com.ops.common.response.Result;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
+import com.ops.server.mapper.MonitorSnapshotMapper;
 import com.ops.server.service.AlarmService;
 import com.ops.server.service.AgentUpgradeService;
 import com.ops.server.util.SecurityContext;
 import com.ops.server.service.NodeService;
+import com.ops.server.websocket.MonitorHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +49,12 @@ public class NodeController {
 
     @Autowired
     private AuthInterceptor authInterceptor;
+
+    @Autowired
+    private MonitorHandler monitorHandler;
+
+    @Autowired
+    private MonitorSnapshotMapper snapshotMapper;
 
     @Autowired
     private SecurityContext securityContext;
@@ -273,6 +281,7 @@ public class NodeController {
     /**
      * GET /api/nodes/heartbeat - 心跳接口 (Agent侧)
      * 自动注册：如果 token 不存在，自动创建节点记录
+     * 接收Agent上报的监控数据（X-Metrics header）
      */
     @GetMapping("/heartbeat")
     public Result<?> heartbeat(HttpServletRequest request,
@@ -315,6 +324,7 @@ public class NodeController {
         String diskInfo = request.getHeader("X-Disk-Info");
         String osArch = request.getHeader("X-OS-Arch");
         String agentVersion = request.getHeader("X-Agent-Version");
+        String metricsBase64 = request.getHeader("X-Metrics");
 
         // 解析硬件信息
         Integer cpuCores = null;
@@ -338,6 +348,23 @@ public class NodeController {
         Map<String, String> agentCache = authInterceptor.getAgentTokenCache();
         agentCache.put(nodeId, token);
 
+        // 解析并存储监控数据
+        if (metricsBase64 != null && !metricsBase64.isEmpty()) {
+            try {
+                String metricsJson = new String(java.util.Base64.getDecoder().decode(metricsBase64), "UTF-8");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> metrics = com.alibaba.fastjson2.JSON.parseObject(metricsJson, Map.class);
+                if (metrics != null && !metrics.isEmpty()) {
+                    // 存储到MonitorSnapshot表
+                    saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
+                    // 通过WebSocket广播给前端
+                    broadcastMonitorUpdate(Long.parseLong(nodeId), metrics);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse metrics from node {}: {}", nodeId, e.getMessage());
+            }
+        }
+
         // Get projects bound to this node
         List<String> projectNames = nodeMapper.getProjectNamesByNodeId(Long.parseLong(nodeId));
 
@@ -345,6 +372,87 @@ public class NodeController {
         data.put("nodeId", nodeId);
         data.put("projects", projectNames);
         return Result.success(data);
+    }
+
+    /**
+     * 保存监控快照到数据库
+     */
+    private void saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
+        try {
+            com.ops.common.model.MonitorSnapshotModel snap = new com.ops.common.model.MonitorSnapshotModel();
+            snap.setNodeId(nodeId);
+            snap.setCollectTime(System.currentTimeMillis());
+
+            // 获取该节点关联的项目ID（取第一个）
+            List<Long> projectIds = nodeMapper.getProjectIdsByNodeId(nodeId);
+            if (projectIds != null && !projectIds.isEmpty()) {
+                snap.setProjectId(projectIds.get(0));
+            } else {
+                snap.setProjectId(0L); // 默认值
+            }
+
+            // 解析CPU使用率
+            Object cpuUsage = metrics.get("cpuUsagePercent");
+            if (cpuUsage instanceof Number) {
+                snap.setHostCpuPercent(new java.math.BigDecimal(((Number) cpuUsage).doubleValue()));
+            }
+
+            // 解析内存使用率
+            Object memUsage = metrics.get("memoryUsagePercent");
+            if (memUsage instanceof Number) {
+                snap.setHostMemoryPercent(((Number) memUsage).intValue());
+            }
+
+            // 解析堆内存
+            Object heapUsed = metrics.get("heapUsedMB");
+            Object heapMax = metrics.get("heapMaxMB");
+            if (heapUsed instanceof Number) snap.setHeapUsedMb(((Number) heapUsed).intValue());
+            if (heapMax instanceof Number) snap.setHeapMaxMb(((Number) heapMax).intValue());
+
+            // 解析磁盘使用率
+            Object diskUsage = metrics.get("diskUsagePercent");
+            if (diskUsage instanceof Number) {
+                snap.setDiskUsagePercent(((Number) diskUsage).intValue());
+            }
+
+            // 设置健康状态（基于CPU和内存）
+            double cpuPercent = snap.getHostCpuPercent() != null ? snap.getHostCpuPercent().doubleValue() : 0;
+            int memPercent = snap.getHostMemoryPercent() != null ? snap.getHostMemoryPercent() : 0;
+            if (cpuPercent > 90 || memPercent > 90) {
+                snap.setHealthStatus("DEGRADED");
+                snap.setHealthDetail("CPU=" + cpuPercent + "%, Memory=" + memPercent + "%");
+            } else {
+                snap.setHealthStatus("UP");
+                snap.setHealthDetail("Agent主动上报");
+            }
+
+            // 设置进程状态（Agent在线即表示进程运行中）
+            snap.setProcessStatus("RUNNING");
+
+            // 存储到数据库
+            snapshotMapper.insert(snap);
+            log.debug("Saved monitor snapshot for node {}: CPU={}%, Memory={}%", nodeId, cpuPercent, memPercent);
+        } catch (Exception e) {
+            log.warn("Failed to save monitor snapshot for node {}: {}", nodeId, e.getMessage());
+        }
+    }
+
+    /**
+     * 通过WebSocket广播监控数据更新
+     */
+    private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics) {
+        try {
+            Map<String, Object> message = new java.util.HashMap<>();
+            message.put("type", "monitor_update");
+            message.put("nodeId", nodeId);
+            message.put("metrics", metrics);
+            message.put("timestamp", System.currentTimeMillis());
+
+            String json = com.alibaba.fastjson2.JSON.toJSONString(message);
+            monitorHandler.broadcast("monitor", json);
+        } catch (Exception e) {
+            log.warn("Failed to broadcast monitor update for node {}: {}", nodeId, e.getMessage());
+        }
     }
 
     private String[] parseCsvLine(String line) {

@@ -26,6 +26,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 
 /**
  * 从 Agent 采集应用监控数据并写入快照表。
@@ -54,6 +58,174 @@ public class MonitorCollectorService {
 
     /** 告警去重：projectId-nodeId-condition → 上次告警时间 */
     private final ConcurrentHashMap<String, Long> alarmCooldown = new ConcurrentHashMap<>();
+
+    /** 采集线程池：并发度限制为 CPU 核心数，避免压垮 Agent */
+    private final ExecutorService collectExecutor = Executors.newFixedThreadPool(
+            Math.min(Runtime.getRuntime().availableProcessors(), 8));
+
+    /** 外层调度线程池：使用 ForkJoinPool 避免与内层任务死锁 */
+    private static final ForkJoinPool schedulePool = ForkJoinPool.commonPool();
+
+    /** 异步采集任务状态：taskId → {status, startTime, totalNodes, completedNodes, error} */
+    private final ConcurrentHashMap<String, Map<String, Object>> collectTasks = new ConcurrentHashMap<>();
+
+    /**
+     * 异步采集全部数据，立即返回 taskId
+     */
+    public String collectAllAsync() {
+        String taskId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        List<ProjectModel> projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        if (projects == null) {
+            projects = new ArrayList<>();
+        }
+
+        // 统计总节点数
+        int totalNodes = 0;
+        List<Object[]> tasks = new ArrayList<>(); // [project, node]
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || project.getNodeIds() == null) continue;
+            for (String nodeIdStr : project.getNodeIds().split(",")) {
+                try {
+                    Long nodeId = Long.parseLong(nodeIdStr.trim());
+                    NodeModel node = nodeMapper.findById(nodeId);
+                    if (node != null) {
+                        tasks.add(new Object[]{project, node});
+                        totalNodes++;
+                    }
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        // 初始化任务状态
+        Map<String, Object> taskStatus = new ConcurrentHashMap<>();
+        taskStatus.put("status", "RUNNING");
+        taskStatus.put("startTime", System.currentTimeMillis());
+        taskStatus.put("totalNodes", totalNodes);
+        taskStatus.put("completedNodes", 0);
+        taskStatus.put("error", "");
+        collectTasks.put(taskId, taskStatus);
+
+        // 异步并行采集：外层用 schedulePool，内层用 collectExecutor，避免死锁
+        final int total = totalNodes;
+        CompletableFuture.runAsync(() -> {
+            try {
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+                for (Object[] task : tasks) {
+                    ProjectModel project = (ProjectModel) task[0];
+                    NodeModel node = (NodeModel) task[1];
+                    futures.add(CompletableFuture.runAsync(() -> {
+                        try {
+                            collectOne(project, node);
+                        } catch (Exception e) {
+                            log.warn("Collect failed for project={}, node={}: {}", project.getId(), node.getId(), e.getMessage());
+                        } finally {
+                            // 原子递增完成数
+                            collectTasks.computeIfPresent(taskId, (k, v) -> {
+                                v.put("completedNodes", ((Number) v.get("completedNodes")).intValue() + 1);
+                                return v;
+                            });
+                        }
+                    }, collectExecutor));
+                }
+                // 等待所有节点采集完成
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                taskStatus.put("status", "DONE");
+            } catch (Exception e) {
+                taskStatus.put("status", "ERROR");
+                taskStatus.put("error", e.getMessage());
+            }
+        }, schedulePool);
+
+        return taskId;
+    }
+
+    /**
+     * 异步采集指定项目/节点，立即返回 taskId
+     */
+    public String collectFilteredAsync(List<Long> projectIds, List<Long> nodeIds) {
+        String taskId = java.util.UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+
+        List<ProjectModel> projects;
+        if (projectIds != null && !projectIds.isEmpty()) {
+            projects = new ArrayList<>();
+            for (Long pid : projectIds) {
+                ProjectModel p = projectMapper.findById(pid);
+                if (p != null) projects.add(p);
+            }
+        } else {
+            projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        }
+
+        List<Object[]> tasks = new ArrayList<>();
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || project.getNodeIds() == null) continue;
+            for (String nodeIdStr : project.getNodeIds().split(",")) {
+                try {
+                    Long nid = Long.parseLong(nodeIdStr.trim());
+                    if (nodeIds != null && !nodeIds.isEmpty() && !nodeIds.contains(nid)) continue;
+                    NodeModel node = nodeMapper.findById(nid);
+                    if (node != null) tasks.add(new Object[]{project, node});
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+
+        Map<String, Object> taskStatus = new ConcurrentHashMap<>();
+        taskStatus.put("status", "RUNNING");
+        taskStatus.put("startTime", System.currentTimeMillis());
+        taskStatus.put("totalNodes", tasks.size());
+        taskStatus.put("completedNodes", 0);
+        taskStatus.put("error", "");
+        collectTasks.put(taskId, taskStatus);
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                List<CompletableFuture<Void>> futures = new ArrayList<>();
+                for (Object[] task : tasks) {
+                    ProjectModel project = (ProjectModel) task[0];
+                    NodeModel node = (NodeModel) task[1];
+                    futures.add(CompletableFuture.runAsync(() -> {
+                        try {
+                            collectOne(project, node);
+                        } catch (Exception e) {
+                            log.warn("Collect failed for project={}, node={}: {}", project.getId(), node.getId(), e.getMessage());
+                        } finally {
+                            collectTasks.computeIfPresent(taskId, (k, v) -> {
+                                v.put("completedNodes", ((Number) v.get("completedNodes")).intValue() + 1);
+                                return v;
+                            });
+                        }
+                    }, collectExecutor));
+                }
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+                taskStatus.put("status", "DONE");
+            } catch (Exception e) {
+                taskStatus.put("status", "ERROR");
+                taskStatus.put("error", e.getMessage());
+            }
+        }, schedulePool);
+
+        return taskId;
+    }
+
+    /**
+     * 查询异步采集任务状态
+     */
+    public Map<String, Object> getCollectTaskStatus(String taskId) {
+        // 每次查询时顺便清理 10 分钟前的旧任务，防止内存泄漏
+        cleanupOldTasks();
+        return collectTasks.get(taskId);
+    }
+
+    /**
+     * 清理过期的任务状态（保留最近 10 分钟）
+     */
+    private void cleanupOldTasks() {
+        long cutoff = System.currentTimeMillis() - 10 * 60 * 1000;
+        collectTasks.entrySet().removeIf(entry -> {
+            Long startTime = (Long) entry.getValue().get("startTime");
+            return startTime != null && startTime < cutoff;
+        });
+    }
 
     /**
      * 采集所有在线节点上的项目监控数据
