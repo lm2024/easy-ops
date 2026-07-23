@@ -284,6 +284,59 @@ public class FileController {
         zis.close();
     }
 
+    /**
+     * 删除版本目录（由 Server 指挥调用）
+     * DELETE /file/version?projectId=1&versionName=xxx
+     */
+    @DeleteMapping("/version")
+    public Result<Map<String, Object>> deleteVersion(@RequestParam String projectId,
+                                                      @RequestParam String versionName) {
+        try {
+            String dirPath = dataPath + "/versions/" + projectId + "/" + versionName;
+            File dir = new File(dirPath);
+            Map<String, Object> data = new HashMap<>();
+            if (dir.exists() && dir.isDirectory()) {
+                long size = dirSize(dir);
+                deleteRecursively(dir);
+                data.put("deleted", true);
+                data.put("freedBytes", size);
+                data.put("path", dirPath);
+            } else {
+                data.put("deleted", false);
+                data.put("reason", "目录不存在");
+                data.put("path", dirPath);
+            }
+            return Result.success(data);
+        } catch (Exception e) {
+            return Result.error(500, "删除版本失败: " + e.getMessage());
+        }
+    }
+
+    private void deleteRecursively(File file) {
+        if (file.isDirectory()) {
+            File[] children = file.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    deleteRecursively(child);
+                }
+            }
+        }
+        file.delete();
+    }
+
+    private long dirSize(File dir) {
+        long size = 0;
+        if (dir.isDirectory()) {
+            File[] children = dir.listFiles();
+            if (children != null) {
+                for (File child : children) {
+                    size += child.isDirectory() ? dirSize(child) : child.length();
+                }
+            }
+        }
+        return size;
+    }
+
     private String bytesToHex(byte[] bytes) {
         StringBuilder sb = new StringBuilder();
         for (byte b : bytes) {

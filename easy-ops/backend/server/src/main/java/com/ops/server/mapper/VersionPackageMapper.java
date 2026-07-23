@@ -16,4 +16,6 @@ public interface VersionPackageMapper {
     int insert(VersionModel version);
     int deleteById(@Param("id") Long id);
     Long getLastId();
+    List<VersionModel> findOldVersions(@Param("projectId") Long projectId, @Param("keepCount") int keepCount);
+    VersionModel findByProjectIdAndVersion(@Param("projectId") Long projectId, @Param("version") String version);
 }

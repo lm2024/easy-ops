@@ -394,7 +394,10 @@ public class NodeController {
             // 解析CPU使用率
             Object cpuUsage = metrics.get("cpuUsagePercent");
             if (cpuUsage instanceof Number) {
-                snap.setHostCpuPercent(new java.math.BigDecimal(((Number) cpuUsage).doubleValue()));
+                double val = ((Number) cpuUsage).doubleValue();
+                snap.setHostCpuPercent(new java.math.BigDecimal(val));
+                // 心跳上报时，Agent自身CPU也作为进程CPU显示
+                snap.setCpuPercent(new java.math.BigDecimal(val));
             }
 
             // 解析内存使用率

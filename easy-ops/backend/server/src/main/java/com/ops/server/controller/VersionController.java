@@ -5,6 +5,7 @@ import com.ops.common.model.ProjectModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.VersionPackageMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.monitorapp.service.VersionCleanupService;
 import com.ops.server.service.AuditLogService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -14,6 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.security.MessageDigest;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -29,6 +31,9 @@ public class VersionController {
 
     @Autowired
     private AuditLogService auditLog;
+
+    @Autowired
+    private VersionCleanupService versionCleanupService;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -135,6 +140,14 @@ public class VersionController {
         version.setCreateTime(System.currentTimeMillis());
         versionPackageMapper.insert(version);
 
+        // 自动清理旧版本（保留最新 3 个）
+        try {
+            versionCleanupService.autoCleanup(projectId);
+        } catch (Exception e) {
+            // 清理失败不影响上传结果
+            System.err.println("[VersionUpload] 自动清理旧版本失败: " + e.getMessage());
+        }
+
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("version", versionName);
         data.put("filePath", filePath);
@@ -147,15 +160,15 @@ public class VersionController {
      */
     @DeleteMapping("/{id}")
     public Result<?> deleteVersion(@PathVariable Long id) {
-        VersionModel version = versionPackageMapper.findById(id);
-        if (version == null) {
-            return Result.error(1004, "版本不存在");
+        try {
+            versionCleanupService.deleteVersion(id);
+            auditLog.log("VERSION", "DELETE", "删除版本包 ID=" + id);
+            return Result.success();
+        } catch (IllegalArgumentException e) {
+            return Result.error(1004, e.getMessage());
+        } catch (Exception e) {
+            return Result.error(500, "删除版本失败: " + e.getMessage());
         }
-        // Delete file from disk
-        new File(version.getFilePath()).delete();
-        versionPackageMapper.deleteById(id);
-        auditLog.log("VERSION", "DELETE", "删除版本包: " + version.getJarName() + " (ID=" + id + ")");
-        return Result.success();
     }
 
     private String bytesToHex(byte[] bytes) {
