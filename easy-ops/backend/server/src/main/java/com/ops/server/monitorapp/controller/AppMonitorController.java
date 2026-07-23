@@ -414,6 +414,8 @@ public class AppMonitorController {
         info.put("hostCpuPercent", snap.getHostCpuPercent());
         info.put("hostMemoryPercent", snap.getHostMemoryPercent());
         info.put("diskUsagePercent", snap.getDiskUsagePercent());
+        info.put("gcCount", snap.getGcCount());
+        info.put("gcTimeMs", snap.getGcTimeMs());
         info.put("responseMs", snap.getResponseMs());
         info.put("collectTime", snap.getCollectTime());
         if ("DOWN".equals(snap.getHealthStatus()) || "DEGRADED".equals(snap.getHealthStatus())) {
@@ -436,7 +438,7 @@ public class AppMonitorController {
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        List<NodeModel> nodes = nodeService.findByStatus(null, page, pageSize, keyword);
+        List<NodeModel> nodes = nodeService.findByStatus(null, page, pageSize, keyword, null, null);
         Long total = nodeService.countByStatus(null, keyword);
 
         // 批量查询所有节点的最新快照（Agent 主动上报数据）
@@ -469,6 +471,7 @@ public class AppMonitorController {
                 item.put("totalMemoryMb", n.getTotalMemoryMb());
                 item.put("totalDiskMb", n.getTotalDiskMb());
                 item.put("agentVersion", n.getAgentVersion());
+                item.put("agentPid", n.getAgentPid());
                 item.put("status", n.getStatus() != null ? n.getStatus() : 0);
                 item.put("lastHeartbeat", n.getLastHeartbeat());
 

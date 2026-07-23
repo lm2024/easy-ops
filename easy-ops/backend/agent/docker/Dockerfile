@@ -3,6 +3,8 @@ FROM eclipse-temurin:8-jdk
 WORKDIR /app
 
 COPY easy-ops-agent-*.jar agent.jar
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 ENV AGENT_TOKEN=agent-token-1
 ENV AGENT_NODE_NAME=agent-1
@@ -11,4 +13,4 @@ ENV JAVA_TOOL_OPTIONS=-Djava.net.preferIPv4Stack=true
 
 EXPOSE 2123
 
-ENTRYPOINT ["java", "-jar", "agent.jar"]
+ENTRYPOINT ["/entrypoint.sh"]

@@ -14,7 +14,8 @@ public interface NodeMapper {
     String getNodeIdByToken(@Param("token") String token);
     String getTokenByToken(@Param("token") String token);
     List<NodeModel> findByStatus(@Param("status") String status, @Param("page") Integer page,
-                                  @Param("pageSize") Integer pageSize, @Param("keyword") String keyword);
+                                  @Param("pageSize") Integer pageSize, @Param("keyword") String keyword,
+                                  @Param("sortField") String sortField, @Param("sortOrder") String sortOrder);
     Long countByStatus(@Param("status") String status, @Param("keyword") String keyword);
     int insert(NodeModel node);
     int update(NodeModel node);
@@ -26,7 +27,8 @@ public interface NodeMapper {
                          @Param("totalMemoryMb") Integer totalMemoryMb,
                          @Param("totalDiskMb") Long totalDiskMb,
                          @Param("osArch") String osArch,
-                         @Param("agentVersion") String agentVersion);
+                         @Param("agentVersion") String agentVersion,
+                         @Param("agentPid") Long agentPid);
     void updateStatusOffline(@Param("id") Long id);
     void updateTags(@Param("id") Long id, @Param("tags") String tags, @Param("updateTime") Long updateTime);
     void updatePort(@Param("id") Long id, @Param("port") Integer port, @Param("updateTime") Long updateTime);

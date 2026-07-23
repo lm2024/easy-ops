@@ -60,7 +60,7 @@ public class AgentUpgradeService {
      */
     public Map<String, Object> versionInfo() {
         Map<String, Object> info = new HashMap<String, Object>();
-        info.put("version", agentVersion);
+        info.put("version", readVersionFile(agentVersion));
         info.put("jarPath", jarPath);
         info.put("javaVersion", System.getProperty("java.version"));
         info.put("osArch", System.getProperty("os.arch"));
@@ -69,6 +69,36 @@ public class AgentUpgradeService {
         info.put("deploymentType", isDockerRestartMode() ? "docker" : "bare-metal");
         info.put("upgradeLogPath", AgentUpgradeLog.resolveLogFile(dataPath).getAbsolutePath());
         return info;
+    }
+
+    /**
+     * 写入目标版本号到文件
+     */
+    private void writeVersionFile(String version) {
+        try {
+            File versionFile = new File(dataPath, "agent-version.txt");
+            Files.write(versionFile.toPath(), version.getBytes("UTF-8"));
+            AgentUpgradeLog.info(dataPath, "写入目标版本号: " + version);
+        } catch (Exception e) {
+            AgentUpgradeLog.fail(dataPath, "写入版本文件失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 从文件读取版本号，文件不存在则返回默认值
+     */
+    private String readVersionFile(String defaultVersion) {
+        try {
+            File versionFile = new File(dataPath, "agent-version.txt");
+            if (versionFile.exists()) {
+                String version = new String(Files.readAllBytes(versionFile.toPath()), "UTF-8").trim();
+                if (!version.isEmpty()) {
+                    return version;
+                }
+            }
+        } catch (Exception ignored) {
+        }
+        return defaultVersion;
     }
 
     private long currentPid() {
@@ -87,7 +117,7 @@ public class AgentUpgradeService {
     /**
      * 接收升级包并异步重启。
      */
-    public Map<String, Object> upgrade(MultipartFile file, String expectedSha256) throws IOException {
+    public Map<String, Object> upgrade(MultipartFile file, String expectedSha256, String targetVersion) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new IOException("升级包不能为空");
         }
@@ -106,6 +136,11 @@ public class AgentUpgradeService {
                 && !expectedSha256.trim().equalsIgnoreCase(sha256)) {
             stagingJar.delete();
             throw new IOException("SHA-256 校验失败");
+        }
+
+        // 保存目标版本号到文件，重启后读取
+        if (targetVersion != null && !targetVersion.trim().isEmpty()) {
+            writeVersionFile(targetVersion.trim());
         }
 
         File targetJar = new File(jarPath);
