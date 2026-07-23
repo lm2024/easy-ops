@@ -57,7 +57,7 @@ public class MonitorCollectorScheduler implements SchedulingConfigurer {
             return;
         }
         try {
-            int deleted = collectorService.purgeOldSnapshots(30);
+            int deleted = collectorService.purgeOldSnapshots(7);
             log.info("Purged {} old monitor snapshots", deleted);
         } finally {
             distributedLock.releaseLock(LOCK_NAME + "_purge");

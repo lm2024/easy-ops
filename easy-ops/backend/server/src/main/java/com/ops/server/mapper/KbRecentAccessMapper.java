@@ -19,4 +19,7 @@ public interface KbRecentAccessMapper {
 
     /** 删除特定用户-文档记录 */
     int deleteByUserIdAndDocumentId(@Param("userId") Long userId, @Param("documentId") Long documentId);
+
+    /** 删除指定时间之前的记录 */
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

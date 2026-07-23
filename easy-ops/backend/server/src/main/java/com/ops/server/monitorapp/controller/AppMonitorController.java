@@ -12,15 +12,18 @@ import com.ops.server.monitorapp.service.HealthProbeService;
 import com.ops.server.monitorapp.service.MonitorCollectConfigService;
 import com.ops.server.monitorapp.service.MonitorCollectorService;
 import com.ops.server.service.NodeService;
-import com.ops.server.client.AgentClient;
+
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 应用级监控接口
@@ -47,8 +50,6 @@ public class AppMonitorController {
     @Autowired
     private NodeService nodeService;
 
-    @Autowired
-    private com.ops.server.client.AgentClient agentClient;
 
 
     /**
@@ -85,56 +86,131 @@ public class AppMonitorController {
     }
 
     /**
-     * GET /api/monitor/app/dashboard - 全部应用监控总览（应用管理中的每个项目）
+     * GET /api/monitor/app/dashboard - 全部应用监控总览（优化：批量查询避免N+1）
      */
     @GetMapping("/app/dashboard")
     public Result<?> dashboard() {
         List<ProjectModel> projects = projectMapper.findByFilters(null, null, null, 1, 1000);
-        List<Map<String, Object>> projectList = new ArrayList<Map<String, Object>>();
-        int totalApps = 0, totalUp = 0, totalDown = 0, totalDegraded = 0;
+        if (projects == null) projects = new ArrayList<>();
 
-        if (projects != null) {
-            for (ProjectModel project : projects) {
-                if (project.getId() == null || !securityContext.hasProjectPermission(project.getId())) {
-                    continue;
+        // 收集所有需要查询的节点ID
+        Set<Long> allNodeIds = new HashSet<>();
+        Map<Long, List<Long>> projectNodeMap = new HashMap<>();
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || !securityContext.hasProjectPermission(project.getId())) continue;
+            List<Long> nodeIds = parseNodeIds(project);
+            projectNodeMap.put(project.getId(), nodeIds);
+            allNodeIds.addAll(nodeIds);
+        }
+
+        // 批量查询所有节点
+        Map<Long, NodeModel> nodeMap = new HashMap<>();
+        for (Long nodeId : allNodeIds) {
+            NodeModel node = nodeMapper.findById(nodeId);
+            if (node != null) nodeMap.put(nodeId, node);
+        }
+
+        // 批量查询所有最新快照（一次查询代替N次）
+        Map<Long, MonitorSnapshotModel> snapMap = new HashMap<>();
+        if (!allNodeIds.isEmpty()) {
+            List<MonitorSnapshotModel> snapshots = snapshotMapper.findLatestByNodeIds(new ArrayList<>(allNodeIds));
+            if (snapshots != null) {
+                for (MonitorSnapshotModel snap : snapshots) {
+                    snapMap.put(snap.getNodeId(), snap);
                 }
-                Map<String, Object> item = buildProjectOverview(project);
-                projectList.add(item);
-                @SuppressWarnings("unchecked")
-                Map<String, Object> summary = (Map<String, Object>) item.get("summary");
-                totalApps += ((Number) summary.get("totalNodes")).intValue();
-                totalUp += ((Number) summary.get("upCount")).intValue();
-                totalDown += ((Number) summary.get("downCount")).intValue();
-                totalDegraded += ((Number) summary.get("degradedCount")).intValue();
             }
         }
 
-        Map<String, Object> globalSummary = new HashMap<String, Object>();
+        // 组装结果
+        List<Map<String, Object>> projectList = new ArrayList<>();
+        int totalApps = 0, totalUp = 0, totalDown = 0, totalDegraded = 0;
+
+        for (ProjectModel project : projects) {
+            if (project.getId() == null || !securityContext.hasProjectPermission(project.getId())) continue;
+            List<Long> nodeIds = projectNodeMap.getOrDefault(project.getId(), Collections.emptyList());
+
+            int up = 0, down = 0, degraded = 0;
+            List<Map<String, Object>> nodes = new ArrayList<>();
+            for (Long nodeId : nodeIds) {
+                NodeModel node = nodeMap.get(nodeId);
+                MonitorSnapshotModel snap = snapMap.get(nodeId);
+                if (snap != null) {
+                    if ("UP".equals(snap.getHealthStatus())) up++;
+                    else if ("DOWN".equals(snap.getHealthStatus())) down++;
+                    else if ("DEGRADED".equals(snap.getHealthStatus())) degraded++;
+                    nodes.add(buildNodeInfo(snap, node));
+                } else {
+                    Map<String, Object> placeholder = new HashMap<>();
+                    placeholder.put("nodeId", nodeId);
+                    placeholder.put("nodeName", node != null ? node.getName() : "");
+                    placeholder.put("healthStatus", "UNKNOWN");
+                    placeholder.put("processStatus", "UNKNOWN");
+                    nodes.add(placeholder);
+                }
+            }
+
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("totalNodes", nodes.size());
+            summary.put("upCount", up);
+            summary.put("downCount", down);
+            summary.put("degradedCount", degraded);
+
+            Map<String, Object> item = new HashMap<>();
+            item.put("projectId", project.getId());
+            item.put("projectName", project.getName());
+            item.put("jarName", project.getJarName());
+            item.put("summary", summary);
+            item.put("nodes", nodes);
+            projectList.add(item);
+
+            totalApps += nodes.size();
+            totalUp += up;
+            totalDown += down;
+            totalDegraded += degraded;
+        }
+
+        Map<String, Object> globalSummary = new HashMap<>();
         globalSummary.put("totalProjects", projectList.size());
         globalSummary.put("totalInstances", totalApps);
         globalSummary.put("upCount", totalUp);
         globalSummary.put("downCount", totalDown);
         globalSummary.put("degradedCount", totalDegraded);
 
-        Map<String, Object> data = new HashMap<String, Object>();
+        Map<String, Object> data = new HashMap<>();
         data.put("summary", globalSummary);
         data.put("projects", projectList);
         data.put("collectIntervalSec", collectConfigService.getIntervalSec());
         return Result.success(data);
     }
 
-    /**
-     * POST /api/monitor/app/collect - 立即采集全部应用监控数据
-     */
-    @PostMapping("/app/collect")
-    public Result<?> collectNow() {
-        collectorService.collectAll();
-        return Result.success("采集完成");
+    private List<Long> parseNodeIds(ProjectModel project) {
+        List<Long> ids = new ArrayList<>();
+        if (project.getNodeIds() != null && !project.getNodeIds().trim().isEmpty()) {
+            for (String s : project.getNodeIds().split(",")) {
+                String trimmed = s.trim();
+                if (!trimmed.isEmpty()) {
+                    try { ids.add(Long.parseLong(trimmed)); } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return ids;
     }
 
     /**
-     * POST /api/monitor/app/collect-filtered - 选择性采集监控数据
-     * Body: { projectIds: [1,2], nodeIds: [3,4] }（两者都传取交集；都为空时退回全量采集）
+     * POST /api/monitor/app/collect - 立即采集全部应用监控数据（异步）
+     * 返回 taskId，前端轮询 /api/monitor/app/collect/status 查询进度
+     */
+    @PostMapping("/app/collect")
+    public Result<?> collectNow() {
+        String taskId = collectorService.collectAllAsync();
+        Map<String, Object> data = new HashMap<>();
+        data.put("taskId", taskId);
+        return Result.success(data);
+    }
+
+    /**
+     * POST /api/monitor/app/collect-filtered - 选择性采集监控数据（异步）
+     * Body: { projectIds: [1,2], nodeIds: [3,4] }
      */
     @PostMapping("/app/collect-filtered")
     public Result<?> collectFiltered(@RequestBody Map<String, Object> body) {
@@ -148,8 +224,22 @@ public class AppMonitorController {
             nodeIds = ((List<Integer>) body.get("nodeIds")).stream()
                 .map(Long::valueOf).collect(java.util.stream.Collectors.toList());
         }
-        collectorService.collectFiltered(projectIds, nodeIds);
-        return Result.success("选择性采集完成");
+        String taskId = collectorService.collectFilteredAsync(projectIds, nodeIds);
+        Map<String, Object> data = new HashMap<>();
+        data.put("taskId", taskId);
+        return Result.success(data);
+    }
+
+    /**
+     * GET /api/monitor/app/collect/status - 查询采集任务进度
+     */
+    @GetMapping("/app/collect/status")
+    public Result<?> collectStatus(@RequestParam String taskId) {
+        Map<String, Object> status = collectorService.getCollectTaskStatus(taskId);
+        if (status == null) {
+            return Result.error(404, "任务不存在或已过期");
+        }
+        return Result.success(status);
     }
 
     /**
@@ -338,8 +428,8 @@ public class AppMonitorController {
     }
 
     /**
-     * GET /api/monitor/agent/status - Agent 状态列表（分页，实时查询）
-     * 对在线节点实时调 /sys/info 获取最新资源数据；离线节点直接标记。
+     * GET /api/monitor/agent/status - Agent 状态列表（分页，从 DB 读取 Agent 上报的快照数据）
+     * 不再逐个 HTTP 拉取 Agent，而是读取心跳上报时存入 monitor_snapshot 的最新数据。
      */
     @GetMapping("/agent/status")
     public Result<?> agentStatus(
@@ -348,6 +438,23 @@ public class AppMonitorController {
             @RequestParam(required = false) String keyword) {
         List<NodeModel> nodes = nodeService.findByStatus(null, page, pageSize, keyword);
         Long total = nodeService.countByStatus(null, keyword);
+
+        // 批量查询所有节点的最新快照（Agent 主动上报数据）
+        Map<Long, MonitorSnapshotModel> snapMap = new HashMap<>();
+        if (nodes != null && !nodes.isEmpty()) {
+            List<Long> nodeIds = new ArrayList<>();
+            for (NodeModel n : nodes) {
+                if (n.getId() != null) nodeIds.add(n.getId());
+            }
+            if (!nodeIds.isEmpty()) {
+                List<MonitorSnapshotModel> snapshots = snapshotMapper.findLatestByNodeIds(nodeIds);
+                if (snapshots != null) {
+                    for (MonitorSnapshotModel snap : snapshots) {
+                        snapMap.put(snap.getNodeId(), snap);
+                    }
+                }
+            }
+        }
 
         List<Map<String, Object>> agentList = new ArrayList<>();
         if (nodes != null && !nodes.isEmpty()) {
@@ -362,42 +469,16 @@ public class AppMonitorController {
                 item.put("totalMemoryMb", n.getTotalMemoryMb());
                 item.put("totalDiskMb", n.getTotalDiskMb());
                 item.put("agentVersion", n.getAgentVersion());
+                item.put("status", n.getStatus() != null ? n.getStatus() : 0);
+                item.put("lastHeartbeat", n.getLastHeartbeat());
 
-                // 实时查询在线 Agent
-                if (n.getStatus() != null && n.getStatus() == 1) {
-                    try {
-                        Map<String, Object> sysInfo = agentClient.get(n.getId(), "/sys/info", null);
-                        if (sysInfo != null && !sysInfo.isEmpty()) {
-                            // Agent 在线且有回应
-                            item.put("status", 1);
-                            item.put("lastHeartbeat", n.getLastHeartbeat());
-                            item.put("hostCpuPercent", sysInfo.get("cpuUsagePercent"));
-                            item.put("hostMemoryPercent", sysInfo.get("memoryUsagePercent"));
-                            Object disks = sysInfo.get("disks");
-                            if (disks instanceof java.util.List) {
-                                for (Object d : (java.util.List<?>) disks) {
-                                    if (d instanceof Map) {
-                                        Object mount = ((Map<?, ?>) d).get("mountPoint");
-                                        if ("/".equals(mount)) {
-                                            item.put("diskUsagePercent", ((Map<?, ?>) d).get("usagePercent"));
-                                            break;
-                                        }
-                                    }
-                                }
-                            }
-                        } else {
-                            // Agent 在线但 API 无响应
-                            item.put("status", 0);
-                            item.put("lastHeartbeat", n.getLastHeartbeat());
-                        }
-                    } catch (Exception e) {
-                        // Agent 连接失败
-                        item.put("status", 0);
-                        item.put("lastHeartbeat", n.getLastHeartbeat());
-                    }
-                } else {
-                    item.put("status", 0);
-                    item.put("lastHeartbeat", n.getLastHeartbeat());
+                // 从 Agent 上报的快照中读取实时指标
+                MonitorSnapshotModel snap = snapMap.get(n.getId());
+                if (snap != null) {
+                    item.put("hostCpuPercent", snap.getHostCpuPercent());
+                    item.put("hostMemoryPercent", snap.getHostMemoryPercent());
+                    item.put("diskUsagePercent", snap.getDiskUsagePercent());
+                    item.put("collectTime", snap.getCollectTime());
                 }
                 agentList.add(item);
             }

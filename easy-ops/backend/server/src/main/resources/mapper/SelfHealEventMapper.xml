@@ -38,4 +38,8 @@
         VALUES (#{projectId}, #{nodeId}, #{eventType}, #{retryCount}, #{maxRetries},
             #{detail}, #{processPid}, #{createTime})
     </insert>
+
+    <delete id="deleteBefore">
+        DELETE FROM self_heal_event WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

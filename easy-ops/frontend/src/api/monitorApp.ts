@@ -20,9 +20,20 @@ export function getAppDashboard() {
   return request.get<any, Result<AppMonitorDashboard>>('/monitor/app/dashboard')
 }
 
-/** 立即采集全部应用监控数据 */
+/** 立即采集全部应用监控数据（异步，返回 taskId） */
 export function collectAppMonitor() {
-  return request.post<any, Result<string>>('/monitor/app/collect')
+  return request.post<any, Result<{ taskId: string }>>('/monitor/app/collect')
+}
+
+/** 查询采集任务进度 */
+export function getCollectStatus(taskId: string) {
+  return request.get<any, Result<{
+    status: string
+    startTime: number
+    totalNodes: number
+    completedNodes: number
+    error: string | null
+  }>>('/monitor/app/collect/status', { params: { taskId } })
 }
 
 /** 项目应用监控总览 */
@@ -89,9 +100,9 @@ export function getDiagnosis(id: number) {
 }
 
 
-/** 选择性采集监控数据 */
+/** 选择性采集监控数据（异步，返回 taskId） */
 export function collectAppMonitorFiltered(projectIds?: number[], nodeIds?: number[]) {
-  return request.post<any, Result<string>>('/monitor/app/collect-filtered', { projectIds, nodeIds })
+  return request.post<any, Result<{ taskId: string }>>('/monitor/app/collect-filtered', { projectIds, nodeIds })
 }
 
 /** Agent 状态列表（分页，含系统资源信息） */

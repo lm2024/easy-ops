@@ -22,4 +22,6 @@ public interface SelfHealEventMapper {
                                   @Param("nodeId") Long nodeId);
 
     int insert(SelfHealEventModel event);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

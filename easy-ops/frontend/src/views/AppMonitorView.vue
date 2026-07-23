@@ -12,15 +12,20 @@
       </template>
       <template #extra>
         <a-space v-if="activeTab === 'app'">
-          <span style="color: #8c8c8c; font-size: 13px">采集频率</span>
-          <a-select v-model:value="collectIntervalSec" style="width: 120px" @change="onIntervalChange">
-            <a-select-option :value="1">1 秒</a-select-option>
-            <a-select-option :value="3">3 秒</a-select-option>
-            <a-select-option :value="5">5 秒</a-select-option>
-            <a-select-option :value="60">1 分钟</a-select-option>
-          </a-select>
-          <a-button :loading="refreshing" @click="handleManualRefresh">
-            <reload-outlined /> 立即采集
+          <a-tag :color="wsConnected ? 'green' : 'red'" style="font-size: 12px">
+            {{ wsConnected ? '🟢 WebSocket已连接' : '🔴 WebSocket未连接' }}
+          </a-tag>
+          <a-tag color="blue" style="font-size: 12px">
+            WS消息: {{ wsMsgCount }}
+          </a-tag>
+          <a-tag style="font-size: 12px">
+            ⏱ {{ nextRefreshSec }}s后自动刷新
+          </a-tag>
+          <span style="color: #8c8c8c; font-size: 12px">
+            最后更新: {{ lastUpdateTime ? fmtTime(lastUpdateTime) : '-' }}
+          </span>
+          <a-button :loading="refreshing" @click="handleManualRefresh" :disabled="refreshing">
+            <reload-outlined /> 刷新
           </a-button>
         </a-space>
         <a-space v-if="activeTab === 'agent'">
@@ -97,18 +102,6 @@
         <a-col :span="4"><a-statistic title="最后采集" :value="lastCollectLabel" /></a-col>
       </a-row>
 
-      <!-- 选择性采集 -->
-      <a-space style="margin-bottom: 8px">
-        <a-button size="small" :loading="filteredCollecting" @click="collectSelected" :disabled="selectedRowKeys.length === 0">
-          <reload-outlined /> 采集选中 ({{ selectedRowKeys.length }})
-        </a-button>
-        <a-button size="small" :loading="filteredCollecting" @click="collectCurrentPage">
-          <reload-outlined /> 采集当前页
-        </a-button>
-        <a-button size="small" :loading="filteredCollecting" @click="collectFilteredProject">
-          <reload-outlined /> 采集筛选应用
-        </a-button>
-      </a-space>
       <!-- 批量操作 -->
       <a-space style="margin-bottom: 12px">
         <a-button size="small" :disabled="selectedRowKeys.length === 0" @click="batchOperate('start')" style="color: #52c41a">
@@ -220,11 +213,11 @@ import { message, Modal } from 'ant-design-vue'
 import type { AppMonitorDashboard, AppMonitorNodeInfo, ProjectHealthProbeModel, AgentStatusItem } from '../types'
 import {
   getAppDashboard, collectAppMonitor, getHealthProbe, saveHealthProbe,
-  getMonitorCollectConfig, saveMonitorCollectConfig,
-  collectAppMonitorFiltered, getAgentStatus
+  getMonitorCollectConfig,
+  getAgentStatus, getCollectStatus
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
-import { operateProjectNode } from '../api/project'
+import { operateProjectNode, getProcessTaskStatus } from '../api/project'
 import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 
@@ -248,8 +241,27 @@ const probeSaving = ref(false)
 const probeProjectId = ref<number>()
 const selectedRowKeys = ref<string[]>([])
 const nodeIpMap = ref<Record<string, string>>({})
-let autoTimer: ReturnType<typeof setInterval> | null = null
 let collecting = false
+
+// nodeId → { node, rowKey } 索引，用于 O(1) 查找
+const nodeIndexMap = new Map<number, { node: any; rowKey: string }>()
+function rebuildNodeIndex() {
+  nodeIndexMap.clear()
+  for (const project of dashboard.value?.projects || []) {
+    for (const node of project.nodes || []) {
+      nodeIndexMap.set(node.nodeId, {
+        node,
+        rowKey: project.projectId + '-' + node.nodeId
+      })
+    }
+  }
+}
+
+// 自动刷新倒计时
+const nextRefreshSec = ref(0)
+let refreshCountdownTimer: ReturnType<typeof setInterval> | null = null
+let autoRefreshTimer: ReturnType<typeof setTimeout> | null = null
+const wsMsgCount = ref(0)
 
 // 分页配置
 const activeTab = ref('app')
@@ -288,7 +300,14 @@ const agentColumns = [
   { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80 },
 ]
 
-const filteredCollecting = ref(false)
+// WebSocket状态
+const wsConnected = ref(false)
+const lastUpdateTime = ref<number | null>(null)
+
+// 采集任务状态
+const collectTaskId = ref<string | null>(null)
+const collectTaskStatus = ref<{ status: string; totalNodes: number; completedNodes: number } | null>(null)
+let collectPollTimer: ReturnType<typeof setInterval> | null = null
 
 const pagination = ref({
   current: 1,
@@ -315,6 +334,7 @@ const columns = [
   { title: '操作', key: 'action', width: 130, fixed: 'right' as const }
 ]
 
+// 实时数据直接 patch 到 dashboard 源数据，无需独立缓存层
 const tableRows = computed(() => {
   const rows: MonitorTableRow[] = []
   for (const project of dashboard.value?.projects || []) {
@@ -332,9 +352,13 @@ const tableRows = computed(() => {
   }
   // 默认按响应时间降序
   rows.sort((a, b) => (b.responseMs || 0) - (a.responseMs || 0))
-  pagination.value.total = rows.length
   return rows
 })
+
+const tableTotal = computed(() => tableRows.value.length)
+
+// 表格总数变化时同步更新分页
+watch(tableTotal, (val) => { pagination.value.total = val }, { immediate: true })
 
 const lastCollectLabel = computed(() => {
   if (!lastCollectTime.value) return '-'
@@ -364,11 +388,42 @@ const actionLabel: Record<string, string> = { start: '启动', stop: '停止', r
 
 async function operateNode(record: MonitorTableRow, action: 'start' | 'stop' | 'restart') {
   try {
-    await operateProjectNode(String(record.projectId), String(record.nodeId), action)
-    message.success(`${actionLabel[action]}指令已发送: ${record.projectName} / ${record.nodeName}`)
+    const res = await operateProjectNode(String(record.projectId), String(record.nodeId), action)
+    const taskId = res.data?.taskId
+    if (taskId) {
+      // 异步操作：轮询任务状态
+      message.loading(`${actionLabel[action]}指令已发送: ${record.projectName} / ${record.nodeName}，执行中...`)
+      await pollProcessTask(taskId, action, record.projectName || '', record.nodeName || '')
+    }
   } catch (e: any) {
     message.error(`${actionLabel[action]}失败: ` + (e?.message || '未知错误'))
   }
+}
+
+async function pollProcessTask(taskId: string, action: string, projectName: string, nodeName: string) {
+  let retries = 0
+  const maxRetries = 30 // 最多轮询 30 次（30 秒）
+
+  while (retries < maxRetries) {
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    try {
+      const res = await getProcessTaskStatus(taskId)
+      const status = res.data
+      if (status.status === 'DONE') {
+        message.success(`${actionLabel[action]}完成: ${projectName} / ${nodeName}`)
+        return
+      } else if (status.status === 'ERROR') {
+        message.error(`${actionLabel[action]}失败: ${status.error || '未知错误'}`)
+        return
+      }
+      // RUNNING 状态继续轮询
+      retries++
+    } catch {
+      retries++
+    }
+  }
+  // 超时但不一定失败（agent 可能还在执行）
+  message.info(`${actionLabel[action]}指令已发送，正在执行中: ${projectName} / ${nodeName}`)
 }
 
 function batchOperate(action: 'start' | 'stop' | 'restart') {
@@ -382,15 +437,54 @@ function batchOperate(action: 'start' | 'stop' | 'restart') {
     okType: action === 'stop' ? 'danger' : 'primary',
     async onOk() {
       let success = 0, fail = 0
-      for (const r of rows) {
-        try {
-          await operateProjectNode(String(r.projectId), String(r.nodeId), action)
+      const taskIds: { taskId: string; action: string; projectName: string; nodeName: string }[] = []
+
+      // 并发发送所有指令（Promise.all）
+      const results = await Promise.allSettled(
+        rows.map(r => operateProjectNode(String(r.projectId), String(r.nodeId), action))
+      )
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i]
+        if (result.status === 'fulfilled' && result.value.data?.taskId) {
+          taskIds.push({
+            taskId: result.value.data.taskId,
+            action,
+            projectName: rows[i].projectName || '',
+            nodeName: rows[i].nodeName || ''
+          })
           success++
-        } catch {
+        } else {
           fail++
         }
       }
-      message.success(`批量${actionLabel[action]}完成: ${success} 成功, ${fail} 失败`)
+
+      if (taskIds.length > 0) {
+        message.loading(`批量${actionLabel[action]}指令已发送 ${taskIds.length} 个，执行中...`)
+
+        // 并发轮询所有任务状态
+        const completed = new Set<string>()
+        let retries = 0
+        while (completed.size < taskIds.length && retries < 30) {
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          const pollResults = await Promise.allSettled(
+            taskIds.filter(t => !completed.has(t.taskId)).map(t => getProcessTaskStatus(t.taskId))
+          )
+          for (const pr of pollResults) {
+            if (pr.status === 'fulfilled' && (pr.value.data.status === 'DONE' || pr.value.data.status === 'ERROR')) {
+              // 找到对应的 taskId（通过顺序对应）
+              const idx = pollResults.indexOf(pr)
+              const filteredTasks = taskIds.filter(t => !completed.has(t.taskId))
+              if (filteredTasks[idx]) completed.add(filteredTasks[idx].taskId)
+            }
+          }
+          retries++
+        }
+
+        message.success(`批量${actionLabel[action]}完成: ${success} 成功, ${fail} 失败`)
+      } else {
+        message.success(`批量${actionLabel[action]}完成: ${success} 成功, ${fail} 失败`)
+      }
+
       selectedRowKeys.value = []
     }
   })
@@ -405,6 +499,8 @@ async function fetchDashboard() {
     if (res.data?.collectIntervalSec) {
       collectIntervalSec.value = res.data.collectIntervalSec
     }
+    // 重建 nodeId 索引
+    rebuildNodeIndex()
   } finally {
     loading.value = false
   }
@@ -429,61 +525,6 @@ function handleAgentTableChange(pag: any) {
   fetchAgentStatus()
 }
 
-// ====== 选择性采集 ======
-async function collectSelected() {
-  const rows = tableRows.value.filter(r => selectedRowKeys.value.includes(r.rowKey))
-  if (rows.length === 0) return
-  filteredCollecting.value = true
-  try {
-    const pids = [...new Set(rows.map(r => r.projectId))]
-    const nids = [...new Set(rows.map(r => r.nodeId))]
-    await collectAppMonitorFiltered(pids, nids)
-    lastCollectTime.value = Date.now()
-    await fetchDashboard()
-    message.success(`已采集 ${rows.length} 个实例`)
-  } catch (e: any) {
-    message.error('采集失败: ' + (e?.message || '未知错误'))
-  } finally {
-    filteredCollecting.value = false
-  }
-}
-
-async function collectCurrentPage() {
-  const rows = tableRows.value
-  if (rows.length === 0) return
-  filteredCollecting.value = true
-  try {
-    const pids = [...new Set(rows.map(r => r.projectId))]
-    const nids = [...new Set(rows.map(r => r.nodeId))]
-    await collectAppMonitorFiltered(pids, nids)
-    lastCollectTime.value = Date.now()
-    await fetchDashboard()
-    message.success(`已采集当前页 ${rows.length} 个实例`)
-  } catch (e: any) {
-    message.error('采集失败: ' + (e?.message || '未知错误'))
-  } finally {
-    filteredCollecting.value = false
-  }
-}
-
-async function collectFilteredProject() {
-  if (!filterProjectId.value) {
-    message.warning('请先在上方筛选中选择一个应用')
-    return
-  }
-  filteredCollecting.value = true
-  try {
-    await collectAppMonitorFiltered([filterProjectId.value])
-    lastCollectTime.value = Date.now()
-    await fetchDashboard()
-    message.success('已采集筛选应用的监控数据')
-  } catch (e: any) {
-    message.error('采集失败: ' + (e?.message || '未知错误'))
-  } finally {
-    filteredCollecting.value = false
-  }
-}
-
 async function loadNodeIps() {
   try {
     const res = await getNodes(1, 1000)
@@ -493,23 +534,102 @@ async function loadNodeIps() {
   } catch { /* ignore */ }
 }
 
+// 轮询采集任务状态
+async function pollCollectStatus(taskId: string) {
+  // 防止重复轮询
+  if (collectPollTimer) { clearInterval(collectPollTimer); collectPollTimer = null }
+
+  collectTaskId.value = taskId
+  collectTaskStatus.value = { status: 'RUNNING', totalNodes: 0, completedNodes: 0 }
+  refreshing.value = true
+
+  collectPollTimer = setInterval(async () => {
+    try {
+      const res = await getCollectStatus(taskId)
+      const status = res.data
+      if (!status) {
+        // 任务不存在或已过期，停止轮询
+        clearInterval(collectPollTimer!)
+        collectPollTimer = null
+        refreshing.value = false
+        collecting = false
+        collectTaskId.value = null
+        collectTaskStatus.value = null
+        return
+      }
+
+      collectTaskStatus.value = status
+
+      if (status.status === 'DONE' || status.status === 'ERROR') {
+        // 采集完成
+        clearInterval(collectPollTimer!)
+        collectPollTimer = null
+        refreshing.value = false
+        collecting = false
+        lastCollectTime.value = Date.now()
+        await fetchDashboard()
+
+        if (status.status === 'DONE') {
+          const pct = status.totalNodes > 0 ? Math.round(status.completedNodes / status.totalNodes * 100) : 100
+          message.success(`监控数据已更新 (${status.completedNodes}/${status.totalNodes} 节点, ${pct}%)`)
+        } else {
+          message.error('采集异常: ' + (status.error || '未知错误'))
+        }
+
+        collectTaskId.value = null
+        collectTaskStatus.value = null
+      }
+    } catch {
+      // 轮询出错，停止轮询
+      clearInterval(collectPollTimer!)
+      collectPollTimer = null
+      refreshing.value = false
+      collecting = false
+      collectTaskId.value = null
+      collectTaskStatus.value = null
+      message.error('查询采集状态失败')
+    }
+  }, 1000) // 每秒轮询一次
+}
+
 async function runCollectCycle(showToast = false) {
   if (collecting) return
   collecting = true
   refreshing.value = true
   try {
-    await collectAppMonitor()
-    lastCollectTime.value = Date.now()
-    await fetchDashboard()
-    if (showToast) message.success('监控数据已更新')
-  } finally {
+    const res = await collectAppMonitor()
+    const taskId = res.data?.taskId
+    if (taskId) {
+      await pollCollectStatus(taskId)
+    } else {
+      // 兼容旧接口（不应发生）
+      lastCollectTime.value = Date.now()
+      await fetchDashboard()
+      if (showToast) message.success('监控数据已更新')
+      collecting = false
+      refreshing.value = false
+    }
+  } catch (e: any) {
+    message.error('采集失败: ' + (e?.message || '未知错误'))
     collecting = false
     refreshing.value = false
   }
 }
 
 async function handleManualRefresh() {
-  await runCollectCycle(true)
+  refreshing.value = true
+  try {
+    await fetchDashboard()
+    lastCollectTime.value = Date.now()
+    lastUpdateTime.value = Date.now()
+    // 重置倒计时
+    nextRefreshSec.value = collectIntervalSec.value
+    if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null }
+    scheduleNextRefresh()
+    message.success('数据已刷新')
+  } finally {
+    refreshing.value = false
+  }
 }
 
 function handleTableChange(pag: any) {
@@ -518,23 +638,89 @@ function handleTableChange(pag: any) {
 }
 
 function stopAutoCollect() {
-  if (autoTimer) { clearInterval(autoTimer); autoTimer = null }
+  // 已废弃，保留兼容
 }
 
-function startAutoCollect() {
-  stopAutoCollect()
-  autoTimer = setInterval(() => runCollectCycle(false), collectIntervalSec.value * 1000)
-  autoCollectEnabled.value = true
-}
+// ====== WebSocket实时更新 ======
+let ws: WebSocket | null = null
+let wsReconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-async function onIntervalChange(sec: number) {
+function connectWebSocket() {
   try {
-    const res = await saveMonitorCollectConfig(sec)
-    collectIntervalSec.value = res.data?.collectIntervalSec ?? sec
-    startAutoCollect()
-    message.success(`已切换为每 ${collectIntervalSec.value} 秒自动采集`)
-  } catch {
-    message.error('保存采集频率失败')
+    // 构建WebSocket URL，带上token参数
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const token = localStorage.getItem('token') || ''
+    const wsUrl = `${protocol}//${window.location.host}/api/ws/monitor?token=${encodeURIComponent(token)}`
+
+    ws = new WebSocket(wsUrl)
+
+    ws.onopen = () => {
+      console.log('[Monitor WebSocket] Connected')
+      wsConnected.value = true
+    }
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (data.type === 'monitor_update' && data.nodeId && data.metrics) {
+          wsMsgCount.value++
+          // 实时更新监控数据
+          updateMonitorData(data.nodeId, data.metrics)
+          lastUpdateTime.value = Date.now()
+          console.log('[Monitor WebSocket] Received update #' + wsMsgCount.value + ' for node', data.nodeId, 'CPU:', data.metrics.cpuUsagePercent)
+        }
+      } catch (e) {
+        console.warn('[Monitor WebSocket] Parse error:', e)
+      }
+    }
+
+    ws.onclose = () => {
+      console.log('[Monitor WebSocket] Disconnected, reconnecting in 5s...')
+      wsConnected.value = false
+      // 自动重连
+      wsReconnectTimer = setTimeout(connectWebSocket, 5000)
+    }
+
+    ws.onerror = (error) => {
+      console.error('[Monitor WebSocket] Error:', error)
+      wsConnected.value = false
+    }
+  } catch (e) {
+    console.error('[Monitor WebSocket] Connect failed:', e)
+    wsConnected.value = false
+    // 重试
+    wsReconnectTimer = setTimeout(connectWebSocket, 5000)
+  }
+}
+
+function disconnectWebSocket() {
+  if (ws) {
+    ws.close()
+    ws = null
+  }
+  if (wsReconnectTimer) {
+    clearTimeout(wsReconnectTimer)
+    wsReconnectTimer = null
+  }
+}
+
+function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
+  // O(1) 查找：通过索引直接定位节点
+  const entry = nodeIndexMap.get(nodeId)
+  if (entry) {
+    const { node } = entry
+    // 直接 patch 源数据，触发 Vue 响应式更新
+    node.hostCpuPercent = metrics.cpuUsagePercent
+    node.hostMemoryPercent = metrics.memoryUsagePercent
+    node.diskUsagePercent = metrics.diskUsagePercent
+    node.heapUsedMb = metrics.heapUsedMB
+    node.heapMaxMb = metrics.heapMaxMB
+    node.collectTime = Date.now()
+    lastCollectTime.value = Date.now()
+    lastUpdateTime.value = Date.now()
+    console.log('[Monitor] Patched node', nodeId, 'CPU:', metrics.cpuUsagePercent, 'Memory:', metrics.memoryUsagePercent)
+  } else {
+    console.warn('[Monitor] Node not found in index:', nodeId)
   }
 }
 
@@ -570,11 +756,60 @@ onMounted(async () => {
     if (cfg.data?.collectIntervalSec) collectIntervalSec.value = cfg.data.collectIntervalSec
   } catch { /* 默认 60 秒 */ }
   await loadNodeIps()
-  await runCollectCycle(false)
-  startAutoCollect()
+  // 直接从数据库读取最新数据（Agent已主动上报）
+  await fetchDashboard()
+  // 连接WebSocket，接收实时更新
+  connectWebSocket()
+  // 启动兜底自动刷新（每 collectIntervalSec 秒轮询一次）
+  startAutoRefreshCycle()
 })
 
-onUnmounted(() => { stopAutoCollect() })
+onUnmounted(() => {
+  stopAutoCollect()
+  stopAutoRefreshCycle()
+  if (collectPollTimer) { clearInterval(collectPollTimer); collectPollTimer = null }
+  // 断开WebSocket
+  disconnectWebSocket()
+})
+
+// ====== 兜底自动刷新 + 倒计时 ======
+function startAutoRefreshCycle() {
+  stopAutoRefreshCycle()
+  nextRefreshSec.value = collectIntervalSec.value
+  console.log('[AutoRefresh] 启动，间隔', collectIntervalSec.value, '秒')
+  refreshCountdownTimer = setInterval(() => {
+    nextRefreshSec.value = Math.max(0, nextRefreshSec.value - 1)
+  }, 1000)
+  scheduleNextRefresh()
+}
+
+function scheduleNextRefresh() {
+  if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null }
+  autoRefreshTimer = setTimeout(async () => {
+    try {
+      // 智能跳过：WS 连接正常且近期收到过消息时，延长轮询间隔
+      if (wsConnected.value && wsMsgCount.value > 0) {
+        console.log('[AutoRefresh] WS 正常，跳过本轮轮询')
+        nextRefreshSec.value = collectIntervalSec.value
+      } else {
+        console.log('[AutoRefresh] 执行轮询刷新，WS状态:', wsConnected.value, 'WS消息数:', wsMsgCount.value)
+        await fetchDashboard()
+        lastCollectTime.value = Date.now()
+        nextRefreshSec.value = collectIntervalSec.value
+      }
+    } catch (e) {
+      console.error('[AutoRefresh] 刷新失败:', e)
+      nextRefreshSec.value = collectIntervalSec.value
+    }
+    scheduleNextRefresh()
+  }, collectIntervalSec.value * 1000)
+}
+
+function stopAutoRefreshCycle() {
+  if (refreshCountdownTimer) { clearInterval(refreshCountdownTimer); refreshCountdownTimer = null }
+  if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null }
+  nextRefreshSec.value = 0
+}
 </script>
 
 <style scoped>

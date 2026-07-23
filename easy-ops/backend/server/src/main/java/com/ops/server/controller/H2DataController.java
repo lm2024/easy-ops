@@ -579,6 +579,89 @@ public class H2DataController {
         return Result.success(result);
     }
 
+    // ======================== 数据清理 API ========================
+
+    /**
+     * POST /api/db/cleanup - 清理所有流水表过期数据
+     * 
+     * @param retainDays 保留天数（可选，默认7天）
+     */
+    @PostMapping("/cleanup")
+    public Result<?> cleanupAll(@RequestParam(required = false, defaultValue = "7") Integer retainDays) {
+        long cutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
+        Map<String, Integer> results = new LinkedHashMap<>();
+        String[] tables = {
+            "operation_log", "file_access_log", "monitor_snapshot",
+            "alarm_record", "self_heal_event", "deploy_record",
+            "config_distribute_record", "ai_diagnosis_record",
+            "notification_record", "kb_recent_access"
+        };
+        for (String table : tables) {
+            try {
+                int deleted = jdbc.update("DELETE FROM " + escapeTableName(table) +
+                    " WHERE create_time < ?", cutoff);
+                if (deleted > 0) {
+                    results.put(table, deleted);
+                    log.info("Manual cleanup: deleted {} records from {}", deleted, table);
+                }
+            } catch (Exception e) {
+                // notification_record 用 expire_time，单独处理
+                if ("notification_record".equals(table)) {
+                    try {
+                        int deleted = jdbc.update(
+                            "DELETE FROM notification_record WHERE expire_time < ?",
+                            System.currentTimeMillis());
+                        if (deleted > 0) {
+                            results.put(table, deleted);
+                        }
+                    } catch (Exception ex) {
+                        log.warn("Failed to cleanup {}: {}", table, ex.getMessage());
+                    }
+                } else {
+                    log.warn("Failed to cleanup {}: {}", table, e.getMessage());
+                }
+            }
+        }
+        return Result.success(results);
+    }
+
+    /**
+     * POST /api/db/cleanup/{tableName} - 清理指定流水表
+     * 
+     * @param tableName  表名
+     * @param retainDays 保留天数（可选，默认7天）
+     */
+    @PostMapping("/cleanup/{tableName}")
+    public Result<?> cleanupTable(@PathVariable String tableName,
+                                   @RequestParam(required = false, defaultValue = "7") Integer retainDays) {
+        String safeTable = escapeTableName(tableName);
+        if (safeTable.isEmpty()) {
+            return Result.paramError("无效的表名");
+        }
+
+        try {
+            int deleted;
+            if ("notification_record".equalsIgnoreCase(safeTable)) {
+                deleted = jdbc.update(
+                    "DELETE FROM " + safeTable + " WHERE expire_time < ?",
+                    System.currentTimeMillis());
+            } else {
+                long cutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
+                deleted = jdbc.update(
+                    "DELETE FROM " + safeTable + " WHERE create_time < ?", cutoff);
+            }
+            log.info("Manual cleanup of {}: deleted {} records", safeTable, deleted);
+            Map<String, Object> result = new HashMap<>();
+            result.put("table", safeTable);
+            result.put("deleted", deleted);
+            result.put("retainDays", retainDays);
+            return Result.success(result);
+        } catch (Exception e) {
+            log.warn("Failed to cleanup {}: {}", safeTable, e.getMessage());
+            return Result.error(com.ops.common.constant.ErrorCode.SERVER_ERROR, "清理失败: " + e.getMessage());
+        }
+    }
+
     // ======================== 工具方法 ========================
 
     private String generateDDL(String tableName, List<Map<String, Object>> columns, List<String> pkColumns) {

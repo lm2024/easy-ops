@@ -11,4 +11,6 @@ public interface AIDiagnosisRecordMapper {
     int updateKbLink(@Param("id") Long id,
                      @Param("kbDocumentId") Long kbDocumentId,
                      @Param("savedToKb") Integer savedToKb);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

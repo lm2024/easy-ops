@@ -33,4 +33,6 @@ public interface NodeMapper {
     List<NodeModel> getOfflineCandidates(@Param("cutoff") Long cutoff);
     int countByNodeId(@Param("nodeId") Long nodeId);
     List<String> getProjectNamesByNodeId(@Param("nodeId") Long nodeId);
+
+    List<Long> getProjectIdsByNodeId(@Param("nodeId") Long nodeId);
 }

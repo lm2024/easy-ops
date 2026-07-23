@@ -12,7 +12,7 @@ public class MonitorCollectConfigService {
 
     public static final String CONFIG_KEY = "monitor.collect_interval_sec";
     public static final int DEFAULT_INTERVAL_SEC = 60;
-    public static final int MIN_INTERVAL_SEC = 1;
+    public static final int MIN_INTERVAL_SEC = 60;
     public static final int MAX_INTERVAL_SEC = 3600;
 
     @Autowired

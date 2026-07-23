@@ -16,4 +16,6 @@ public interface DeployRecordMapper {
     void updateStatus(@Param("id") Long id, @Param("status") int status, @Param("log") String log,
                       @Param("endTime") Long endTime);
     List<DeployModel> findScheduledReady(@Param("cutoff") Long cutoff);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

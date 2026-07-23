@@ -15,4 +15,8 @@
         SET status = #{status}, result_detail = #{resultDetail}
         WHERE id = #{id}
     </update>
+
+    <delete id="deleteBefore">
+        DELETE FROM config_distribute_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

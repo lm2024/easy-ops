@@ -87,4 +87,9 @@
         SELECT name FROM project_info
         WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
     </select>
+
+    <select id="getProjectIdsByNodeId" resultType="long">
+        SELECT id FROM project_info
+        WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
+    </select>
 </mapper>

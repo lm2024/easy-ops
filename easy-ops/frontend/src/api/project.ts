@@ -28,7 +28,19 @@ export function deleteProject(id: string) {
   return request.delete<any, Result>(`/projects/${id}`)
 }
 
-/** 对单个节点执行 start / stop / restart */
+/** 对单个节点执行 start / stop / restart（异步，返回 taskId） */
 export function operateProjectNode(projectId: string, nodeId: string, action: 'start' | 'stop' | 'restart') {
-  return request.post<any, Result<any>>(`/process/${projectId}/${nodeId}/${action}`)
+  return request.post<any, Result<{ taskId: string; action: string; nodeName: string }>>(`/process/${projectId}/${nodeId}/${action}`)
+}
+
+/** 查询异步操作任务状态 */
+export function getProcessTaskStatus(taskId: string) {
+  return request.get<any, Result<{
+    status: string
+    action: string
+    nodeName: string
+    projectName: string
+    result?: string
+    error?: string
+  }>>(`/process/task/${taskId}`)
 }

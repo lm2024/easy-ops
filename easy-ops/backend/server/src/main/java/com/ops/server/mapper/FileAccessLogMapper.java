@@ -8,4 +8,6 @@ import java.util.Map;
 @Mapper
 public interface FileAccessLogMapper {
     int insert(Map<String, Object> log);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }
