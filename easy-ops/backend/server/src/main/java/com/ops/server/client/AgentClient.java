@@ -254,6 +254,20 @@ public class AgentClient {
         return builder.build().encode().toUriString();
     }
 
+    /**
+     * DELETE 请求 Agent 接口
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> delete(NodeModel node, String path, Map<String, String> params) {
+        String url = buildUrlWithQuery(node, path, params);
+        try {
+            return restTemplate.exchange(url, HttpMethod.DELETE, null, Map.class).getBody();
+        } catch (Exception e) {
+            log.warn("Agent DELETE failed: {} - {}", url, e.getMessage());
+            return null;
+        }
+    }
+
     private String normalizePath(String path) {
         if (path == null || path.isEmpty()) {
             return "";
