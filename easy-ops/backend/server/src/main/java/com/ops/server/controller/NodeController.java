@@ -73,8 +73,10 @@ public class NodeController {
             @RequestParam(required = false) String status,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize,
-            @RequestParam(required = false) String keyword) {
-        List<NodeModel> nodes = nodeService.findByStatus(status, page, pageSize, keyword);
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String sortField,
+            @RequestParam(required = false) String sortOrder) {
+        List<NodeModel> nodes = nodeService.findByStatus(status, page, pageSize, keyword, sortField, sortOrder);
         Long total = nodeService.countByStatus(status, keyword);
         Map<String, Object> data = new HashMap<>();
         data.put("list", nodes);
@@ -88,7 +90,7 @@ public class NodeController {
     @GetMapping("/export")
     public void exportNodes(HttpServletResponse response) {
         try {
-            List<NodeModel> nodes = nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null);
+            List<NodeModel> nodes = nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null, null, null);
             response.setContentType("text/csv;charset=UTF-8");
             response.setHeader("Content-Disposition", "attachment;filename=nodes.csv");
             response.getWriter().write("名称,IP,端口,Token,状态,系统信息,创建时间\n");
@@ -324,20 +326,23 @@ public class NodeController {
         String diskInfo = request.getHeader("X-Disk-Info");
         String osArch = request.getHeader("X-OS-Arch");
         String agentVersion = request.getHeader("X-Agent-Version");
+        String agentPidStr = request.getHeader("X-Agent-PID");
         String metricsBase64 = request.getHeader("X-Metrics");
 
         // 解析硬件信息
         Integer cpuCores = null;
         Integer totalMemoryMb = null;
         Long totalDiskMb = null;
+        Long agentPid = null;
         try {
             if (cpuInfo != null && !cpuInfo.isEmpty()) cpuCores = Integer.parseInt(cpuInfo);
             if (memInfo != null && !memInfo.isEmpty()) totalMemoryMb = Integer.parseInt(memInfo);
             if (diskInfo != null && !diskInfo.isEmpty()) totalDiskMb = Long.parseLong(diskInfo);
+            if (agentPidStr != null && !agentPidStr.isEmpty()) agentPid = Long.parseLong(agentPidStr);
         } catch (NumberFormatException ignored) {}
 
         nodeMapper.updateHeartbeat(Long.parseLong(nodeId), System.currentTimeMillis(),
-                ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion);
+                ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion, agentPid);
 
         // 如果 Agent 上报了外部可访问的端口，更新节点端口
         if (nodePort != null && nodePort > 0) {
@@ -431,6 +436,44 @@ public class NodeController {
 
             // 设置进程状态（Agent在线即表示进程运行中）
             snap.setProcessStatus("RUNNING");
+
+            // 解析应用进程指标（Agent 心跳上报）
+            Object processesObj = metrics.get("processes");
+            if (processesObj instanceof List) {
+                List<?> processes = (List<?>) processesObj;
+                if (!processes.isEmpty()) {
+                    Object first = processes.get(0);
+                    if (first instanceof Map) {
+                        Map<?, ?> proc = (Map<?, ?>) first;
+                        Object pidObj = proc.get("pid");
+                        if (pidObj instanceof Number) {
+                            snap.setProcessPid(((Number) pidObj).intValue());
+                        }
+                        Object procCpu = proc.get("cpuPercent");
+                        if (procCpu instanceof Number) {
+                            snap.setCpuPercent(new java.math.BigDecimal(((Number) procCpu).doubleValue()));
+                        }
+                        Object procMem = proc.get("memoryMb");
+                        if (procMem instanceof Number) {
+                            snap.setMemoryMb(((Number) procMem).intValue());
+                        }
+                        Object procHeapUsed = proc.get("heapUsedMb");
+                        if (procHeapUsed instanceof Number) snap.setHeapUsedMb(((Number) procHeapUsed).intValue());
+                        Object procHeapMax = proc.get("heapMaxMb");
+                        if (procHeapMax instanceof Number) snap.setHeapMaxMb(((Number) procHeapMax).intValue());
+                        Object gcCount = proc.get("gcCount");
+                        if (gcCount instanceof Number) snap.setGcCount(((Number) gcCount).intValue());
+                        Object gcTime = proc.get("gcTimeMs");
+                        if (gcTime instanceof Number) snap.setGcTimeMs(((Number) gcTime).intValue());
+                        Object alive = proc.get("alive");
+                        if (Boolean.TRUE.equals(alive)) {
+                            snap.setProcessStatus("RUNNING");
+                        } else {
+                            snap.setProcessStatus("STOPPED");
+                        }
+                    }
+                }
+            }
 
             // 存储到数据库
             snapshotMapper.insert(snap);

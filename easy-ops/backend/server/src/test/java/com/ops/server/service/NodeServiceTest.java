@@ -81,25 +81,25 @@ class NodeServiceTest {
             createNode(1L, 1),
             createNode(2L, 1)
         );
-        when(nodeMapper.findByStatus("ONLINE", 0, 20, null)).thenReturn(expected);
+        when(nodeMapper.findByStatus("ONLINE", 0, 20, null, null, null)).thenReturn(expected);
 
         List<NodeModel> result = nodeService.findByStatus("ONLINE", 0, 20, null);
 
         assertNotNull(result);
         assertEquals(2, result.size());
-        verify(nodeMapper).findByStatus("ONLINE", 0, 20, null);
+        verify(nodeMapper).findByStatus("ONLINE", 0, 20, null, null, null);
     }
 
     @Test
     @DisplayName("findByStatus - 支持关键词过滤")
     void findByStatus_withKeyword() {
-        when(nodeMapper.findByStatus("ONLINE", 0, 10, "test"))
+        when(nodeMapper.findByStatus("ONLINE", 0, 10, "test", null, null))
             .thenReturn(Collections.singletonList(createNode(1L, 1)));
 
         List<NodeModel> result = nodeService.findByStatus("ONLINE", 0, 10, "test");
 
         assertEquals(1, result.size());
-        verify(nodeMapper).findByStatus("ONLINE", 0, 10, "test");
+        verify(nodeMapper).findByStatus("ONLINE", 0, 10, "test", null, null);
     }
 
     @Test
@@ -161,12 +161,12 @@ class NodeServiceTest {
     void updateHeartbeat_callsMapper() {
         nodeService.updateHeartbeat(
             1L, System.currentTimeMillis(), "192.168.1.1", "Linux 5.4",
-            "1.8.0_292", 8, 16384, 512000L, "amd64", "1.0.0-SNAPSHOT"
+            "1.8.0_292", 8, 16384, 512000L, "amd64", "1.0.0-SNAPSHOT", 12345L
         );
 
         verify(nodeMapper).updateHeartbeat(
             eq(1L), anyLong(), eq("192.168.1.1"), eq("Linux 5.4"),
-            eq("1.8.0_292"), eq(8), eq(16384), eq(512000L), eq("amd64"), eq("1.0.0-SNAPSHOT")
+            eq("1.8.0_292"), eq(8), eq(16384), eq(512000L), eq("amd64"), eq("1.0.0-SNAPSHOT"), eq(12345L)
         );
     }
 

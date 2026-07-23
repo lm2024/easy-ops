@@ -30,8 +30,13 @@
             <a-select-option value="0">🔴 离线</a-select-option>
           </a-select>
           <a-button @click="fetchNodes"><search-outlined /> 搜索</a-button>
+          <a-tooltip title="升级 Agent 版本（支持灰度部署）">
+            <a-button type="primary" @click="showUpgradeModal = true">
+              <rocket-outlined /> Agent 升级
+            </a-button>
+          </a-tooltip>
           <a-tooltip title="新增一个 Agent 节点。如果 Agent 已启动并通过心跳注册，会自动显示在这里。">
-            <a-button type="primary" @click="$router.push('/nodes/add')">
+            <a-button type="primary" ghost @click="$router.push('/nodes/add')">
               <plus-outlined /> 新增节点
             </a-button>
           </a-tooltip>
@@ -81,6 +86,11 @@
               <a-badge :status="record.status === 1 ? 'success' : 'error'"
                        :text="record.status === 1 ? '🟢 在线' : '🔴 离线'" />
             </a-tooltip>
+          </template>
+          <template v-if="column.key === 'agentVersion'">
+            <a-tag :color="record.agentVersion ? 'blue' : 'default'" style="font-size: 12px">
+              {{ record.agentVersion || '未知' }}
+            </a-tag>
           </template>
           <template v-if="column.key === 'systemInfo'">
             <a-tooltip title="Agent 宿主机硬件规格 — 用于自动计算 JVM 参数">
@@ -272,6 +282,9 @@
         </template>
       </a-table>
     </a-card>
+
+    <!-- Agent 升级弹窗 -->
+    <AgentUpgradeModal v-model:open="showUpgradeModal" @upgraded="fetchNodes" />
   </div>
 </template>
 
@@ -282,9 +295,10 @@ import { message } from 'ant-design-vue'
 import type { NodeModel } from '../types'
 import { getNodes, deleteNode, updateNodeTags } from '../api/node'
 import { getNodeSysInfo } from '../api/agent'
+import AgentUpgradeModal from './AgentUpgradeModal.vue'
 import {
   SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ClusterOutlined,
-  EyeOutlined, InfoCircleOutlined, CloseOutlined
+  EyeOutlined, InfoCircleOutlined, CloseOutlined, RocketOutlined
 } from '@ant-design/icons-vue'
 
 /** Agent 向 Server 上报心跳间隔（秒），与 backend agent.check-interval 一致 */
@@ -292,6 +306,9 @@ const AGENT_HEARTBEAT_SEC = 30
 /** 节点详情 CPU/内存 等指标的前端自动刷新间隔（秒），仅影响展示，不增加 Agent 心跳频率 */
 const DETAIL_REFRESH_SEC = 10
 const DETAIL_REFRESH_MS = DETAIL_REFRESH_SEC * 1000
+
+/** Agent 升级弹窗 */
+const showUpgradeModal = ref(false)
 
 function fmtDate(ts: any): string {
   if (!ts) return '-'
@@ -306,7 +323,9 @@ const nodes = ref<NodeModel[]>([])
 const loading = ref(false)
 const keyword = ref('')
 const filterStatus = ref<string | undefined>(undefined)
-const pagination = ref({ current: 1, pageSize: 20, total: 0 })
+const pagination = ref({ current: 1, pageSize: 20, total: 0, showSizeChanger: true, pageSizeOptions: ['2','10','20','50','100'], showTotal: (total: number) => `共 ${total} 条` })
+const sortField = ref<string | undefined>('tags')
+const sortOrder = ref<string | undefined>('ascend')
 const selectedRowKeys = ref<string[]>([])
 const rowSelection = computed(() => ({
   selectedRowKeys: selectedRowKeys.value,
@@ -328,10 +347,10 @@ let detailRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const columns = [
   { title: '节点名称', dataIndex: 'name', key: 'name', width: 200 },
-  { title: '标签', dataIndex: 'tags', key: 'tags', width: 220 },
-  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130 },
+  { title: '标签', dataIndex: 'tags', key: 'tags', width: 220, sorter: true },
+  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: true },
   { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 130 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100, sorter: true },
   { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 270 },
   { title: '最后心跳', dataIndex: 'lastHeartbeat', key: 'lastHeartbeat', width: 150 },
   { title: '操作', key: 'action', width: 210, fixed: 'right' as const }
@@ -386,18 +405,25 @@ async function saveTags(r: NodeModel) {
 
 async function onRowExpand(expanded: boolean, record: NodeModel) {
   const key = rowKey(record)
-  if (expanded && !nodeDetailData[key]) {
-    await fetchNodeDetail(key)
+  if (expanded) {
+    // 只允许展开一个：关闭其他
+    expandRowKeys.value = [key]
+    if (!nodeDetailData[key]) {
+      await fetchNodeDetail(key)
+    }
+  } else {
+    expandRowKeys.value = expandRowKeys.value.filter(k => k !== key)
   }
 }
 
 async function toggleExpand(record: NodeModel) {
   const key = rowKey(record)
   if (expandRowKeys.value.includes(key)) {
-    expandRowKeys.value = expandRowKeys.value.filter(k => k !== key)
+    expandRowKeys.value = []
     return
   }
-  expandRowKeys.value = [...expandRowKeys.value, key]
+  // 只允许展开一个
+  expandRowKeys.value = [key]
   if (!nodeDetailData[key]) await fetchNodeDetail(key)
 }
 
@@ -421,7 +447,7 @@ async function fetchNodeDetail(nodeId: string, silent = false) {
 
 async function fetchNodesSilent() {
   try {
-    const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value)
+    const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value, sortField.value, sortOrder.value)
     nodes.value = res.data.list
     pagination.value.total = res.data.total
   } catch {
@@ -450,12 +476,23 @@ function stopDetailRefresh() {
 async function fetchNodes() {
   try {
     loading.value = true
-    const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value)
+    const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value, sortField.value, sortOrder.value)
     nodes.value = res.data.list; pagination.value.total = res.data.total
   } finally { loading.value = false }
 }
 
-function handleTableChange(pag: any) { pagination.value.current = pag.current; pagination.value.pageSize = pag.pageSize; fetchNodes() }
+function handleTableChange(pag: any, _filters: any, sorter: any) {
+  pagination.value.current = pag.current
+  pagination.value.pageSize = pag.pageSize
+  if (sorter.field) {
+    sortField.value = sorter.field
+    sortOrder.value = sorter.order
+  } else {
+    sortField.value = undefined
+    sortOrder.value = undefined
+  }
+  fetchNodes()
+}
 function editNode(r: NodeModel) { router.push(`/nodes/${r.id}/edit`) }
 async function deleteNodeAction(id: string) { await deleteNode(id); fetchNodes(); message.success('节点已删除') }
 

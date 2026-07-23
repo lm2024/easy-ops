@@ -175,23 +175,41 @@
             {{ record.collectTime ? fmtTime(record.collectTime) : '-' }}
           </template>
           <template v-if="column.key === 'action'">
-            <a-space>
-              <a-popconfirm :title="`确认启动 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'start')">
-                <a-button type="link" size="small" style="color: #52c41a">启动</a-button>
-              </a-popconfirm>
-              <a-popconfirm :title="`确认停止 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'stop')">
-                <a-button type="link" size="small" danger>停止</a-button>
-              </a-popconfirm>
-              <a-popconfirm :title="`确认重启 ${record.projectName} (${record.nodeName})？`" @confirm="operateNode(record, 'restart')">
-                <a-button type="link" size="small" style="color: #faad14">重启</a-button>
-              </a-popconfirm>
-              <a-button type="link" size="small" @click="openProbe(record.projectId)">探针</a-button>
-            </a-space>
+            <a-dropdown :trigger="['click']">
+              <a-button type="text" size="small" style="padding: 0 8px">
+                <MoreOutlined style="font-size: 18px" />
+              </a-button>
+              <template #overlay>
+                <a-menu @click="(info: any) => handleMenuAction(info.key, record)">
+                  <a-menu-item key="start">
+                    <PlayCircleOutlined style="color: #52c41a; margin-right: 6px" />启动
+                  </a-menu-item>
+                  <a-menu-item key="stop">
+                    <PauseCircleOutlined style="color: #ff4d4f; margin-right: 6px" />停止
+                  </a-menu-item>
+                  <a-menu-item key="restart">
+                    <ReloadOutlined style="color: #faad14; margin-right: 6px" />重启
+                  </a-menu-item>
+                  <a-menu-divider />
+                  <a-menu-item key="probe">
+                    <DashboardOutlined style="margin-right: 6px" />探针
+                  </a-menu-item>
+                  <a-menu-item key="detail">详情</a-menu-item>
+                </a-menu>
+              </template>
+            </a-dropdown>
           </template>
         </template>
       </a-table>
       </div>
     </a-card>
+
+    <!-- 实例详情 Drawer -->
+    <InstanceDetailDrawer
+      :visible="drawerVisible"
+      :record="drawerRecord"
+      @close="drawerVisible = false"
+    />
 
     <!-- 探针配置弹窗 -->
     <a-modal v-model:open="probeModalVisible" title="HTTP 健康探针配置" @ok="saveProbe" :confirm-loading="probeSaving">
@@ -218,7 +236,8 @@ import {
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode, getProcessTaskStatus } from '../api/project'
-import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined } from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import InstanceDetailDrawer from '../components/InstanceDetailDrawer.vue'
 import dayjs from 'dayjs'
 
 interface MonitorTableRow extends AppMonitorNodeInfo {
@@ -237,6 +256,9 @@ const lastCollectTime = ref<number>()
 const collectIntervalSec = ref(60)
 const autoCollectEnabled = ref(true)
 const probeModalVisible = ref(false)
+// 实例详情 Drawer
+const drawerVisible = ref(false)
+const drawerRecord = ref<any>(null)
 const probeSaving = ref(false)
 const probeProjectId = ref<number>()
 const selectedRowKeys = ref<string[]>([])
@@ -298,6 +320,7 @@ const agentColumns = [
   { title: 'CPU 核数', dataIndex: 'cpuCores', key: 'cpuCores', width: 80 },
   { title: '系统', dataIndex: 'osInfo', key: 'osInfo', width: 160, ellipsis: true },
   { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80 },
+  { title: 'PID', dataIndex: 'agentPid', key: 'agentPid', width: 70 },
 ]
 
 // WebSocket状态
@@ -331,7 +354,7 @@ const columns = [
   { title: '内存', key: 'memory', width: 120 },
   { title: '响应', key: 'responseMs', width: 100, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.responseMs || 0) - (b.responseMs || 0), defaultSortOrder: 'descend' as const },
   { title: '采集时间', key: 'collectTime', width: 150 },
-  { title: '操作', key: 'action', width: 130, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 
 // 实时数据直接 patch 到 dashboard 源数据，无需独立缓存层
@@ -385,6 +408,22 @@ function processLabel(status?: string) {
 
 // ====== 启动/停止/重启 ======
 const actionLabel: Record<string, string> = { start: '启动', stop: '停止', restart: '重启' }
+
+function handleMenuAction(key: string, record: MonitorTableRow) {
+  if (key === 'start' || key === 'stop' || key === 'restart') {
+    Modal.confirm({
+      title: `确认${actionLabel[key]} ${record.projectName} (${record.nodeName})？`,
+      okText: `确认${actionLabel[key]}`,
+      okType: key === 'stop' ? 'danger' : 'primary',
+      cancelText: '取消',
+      onOk: () => operateNode(record, key as 'start' | 'stop' | 'restart')
+    })
+  } else if (key === 'probe') {
+    openProbe(record.projectId)
+  } else if (key === 'detail') {
+    openDetail(record)
+  }
+}
 
 async function operateNode(record: MonitorTableRow, action: 'start' | 'stop' | 'restart') {
   try {
@@ -730,6 +769,11 @@ async function openProbe(projectId: number) {
   if (res.data) Object.assign(probe, res.data)
   probe.projectId = projectId
   probeModalVisible.value = true
+}
+
+function openDetail(record: any) {
+  drawerRecord.value = { ...record }
+  drawerVisible.value = true
 }
 
 async function saveProbe() {

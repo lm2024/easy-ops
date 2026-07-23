@@ -35,9 +35,10 @@ public class SystemUpgradeController {
      */
     @PostMapping("/upgrade")
     public Result<Map<String, Object>> upgrade(@RequestParam("file") MultipartFile file,
-                                               @RequestParam(required = false) String sha256) {
+                                               @RequestParam(required = false) String sha256,
+                                               @RequestParam(required = false) String targetVersion) {
         try {
-            return Result.success(upgradeService.upgrade(file, sha256));
+            return Result.success(upgradeService.upgrade(file, sha256, targetVersion));
         } catch (Exception e) {
             return Result.error(500, "Agent 升级失败: " + e.getMessage());
         }
