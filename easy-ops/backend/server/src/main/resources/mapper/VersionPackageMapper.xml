@@ -25,4 +25,15 @@
     <select id="getLastId" resultType="long">
         SELECT MAX(id) FROM version_package
     </select>
+    <select id="findOldVersions" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package
+        WHERE project_id = #{projectId}
+        ORDER BY create_time DESC
+        OFFSET #{keepCount}
+    </select>
+    <select id="findByProjectIdAndVersion" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package
+        WHERE project_id = #{projectId} AND version = #{version}
+        LIMIT 1
+    </select>
 </mapper>
