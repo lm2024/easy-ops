@@ -107,7 +107,7 @@ const shortCwd = computed(() => {
 })
 
 async function fetchData() {
-  const [pRes, nRes] = await Promise.all([getProjects(), getNodes()])
+  const [pRes, nRes] = await Promise.all([getProjects(), getNodes(1, 1000)])
   projects.value = pRes.data.list
   nodes.value = nRes.data.list
 }

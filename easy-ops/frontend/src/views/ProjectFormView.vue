@@ -7,8 +7,21 @@
       </a-space>
     </template>
 
-    <!-- 环境模板快速填入 JVM 参数（直接生成 start.sh） -->
-    <a-card size="small" class="template-card" style="margin-bottom: 16px" :bordered="true">
+    <!-- 应用类型选择器（最顶部） -->
+    <a-form :model="formState" layout="vertical" style="margin-bottom: 16px">
+      <a-form-item label="应用类型" name="projectType" style="margin-bottom: 0">
+        <a-radio-group v-model:value="formState.projectType" :disabled="isEdit">
+          <a-radio-button value="backend">☕ 后端应用</a-radio-button>
+          <a-radio-button value="frontend">🌐 前端应用</a-radio-button>
+        </a-radio-group>
+        <template #extra>
+          <span style="color: #888">后端应用部署 Jar 包，前端应用部署 dist.zip 静态资源</span>
+        </template>
+      </a-form-item>
+    </a-form>
+
+    <!-- 环境模板快速填入 JVM 参数（仅后端应用） -->
+    <a-card v-if="formState.projectType !== 'frontend'" size="small" class="template-card" style="margin-bottom: 16px" :bordered="true">
       <template #title>
         <a-space>
           <thunderbolt-outlined style="color: #faad14" />
@@ -108,64 +121,33 @@
       <!-- ====== 基本信息 ====== -->
       <a-divider orientation="left" style="font-size: 13px; color: #888">📋 基本信息</a-divider>
       <a-row :gutter="16">
-        <a-col :span="8">
+        <a-col :span="formState.projectType === 'frontend' ? 8 : 8">
           <a-form-item label="应用名称" name="name">
             <a-input v-model:value="formState.name" placeholder="例如: 订单服务" />
-            <template #extra>
-              <span class="help-toggle" @click="toggleHelp('name')">{{ expandedHelps.has('name') ? '▼' : '▶' }} 说明</span>
-              <div v-show="expandedHelps.has('name')" class="help-content">必填。应用的显示名称，用于列表和部署记录中标识</div>
-            </template>
           </a-form-item>
         </a-col>
-        <a-col :span="8">
+        <a-col :span="8" v-if="formState.projectType !== 'frontend'">
           <a-form-item label="Jar 包名" name="jarName">
             <a-input v-model:value="formState.jarName" placeholder="app.jar" />
-            <template #extra>
-              <span class="help-toggle" @click="toggleHelp('jarName')">{{ expandedHelps.has('jarName') ? '▼' : '▶' }} 说明</span>
-              <div v-show="expandedHelps.has('jarName')" class="help-content">必填。后端部署时传输和启动的 jar 文件名，如 <code>demo-test-app.jar</code></div>
-            </template>
           </a-form-item>
         </a-col>
-        <a-col :span="8">
+        <a-col :span="formState.projectType === 'frontend' ? 8 : 8">
           <a-form-item label="部署目录" name="deployDir">
             <a-input v-model:value="formState.deployDir" :placeholder="defaultDeployDir || '/app/data/apps/应用名'" />
+          </a-form-item>
+        </a-col>
+        <a-col :span="8" v-if="formState.projectType === 'frontend'">
+          <a-form-item label="解压后目录名" name="frontendDirName">
+            <a-input v-model:value="formState.frontendDirName" placeholder="例如: dist 或 web" />
             <template #extra>
-              <span class="help-toggle" @click="toggleHelp('deployDir')">{{ expandedHelps.has('deployDir') ? '▼' : '▶' }} 说明</span>
-              <div v-show="expandedHelps.has('deployDir')" class="help-content">
-                <div><b>必填。</b>应用在 Agent 服务器上的运行目录。</div>
-                <div style="margin-top:4px">以此为基础自动派生以下路径（部署时由 Server 自动管理）：</div>
-                <div>• 📦 <b>版本包存档</b> → <code>{{ deployDirText }}/versions/{版本名}/</code></div>
-                <div>• 🌐 <b>前端静态资源</b> → <code>{{ deployDirText }}/frontend/</code>（未自定义时）</div>
-                <div>• 📝 <b>日志目录</b> → <code>{{ deployDirText }}/logs/</code>（默认约定）</div>
-                <div>• ⚙️ <b>配置目录</b> → <code>{{ deployDirText }}/config/</code>（默认约定）</div>
-                <div style="margin-top:4px;background:#f6f8fa;padding:4px 8px;border-radius:4px">💡 <b>版本包</b>：jar/zip 上传后先存储到版本包目录，启动时复制到 <code>{{ deployDirText }}/</code> 下运行。</div>
-              </div>
+              <span style="color: #888">必填。zip 解压后在部署目录下创建的子目录名</span>
             </template>
           </a-form-item>
         </a-col>
       </a-row>
 
-      <!-- ====== 前端部署（可选） ====== -->
-      <a-divider orientation="left" style="font-size: 13px; color: #888">🌐 前端部署（可选，不部署前端请跳过）</a-divider>
-      <a-row :gutter="16">
-        <a-col :span="16">
-          <a-form-item label="前端部署目录">
-            <a-input v-model:value="formState.frontendDeployDir" :placeholder="defaultFrontendDir || '留空则默认为 部署目录/frontend'" />
-            <template #extra>
-              <span class="help-toggle" @click="toggleHelp('frontendDir')">{{ expandedHelps.has('frontendDir') ? '▼' : '▶' }} 说明</span>
-              <div v-show="expandedHelps.has('frontendDir')" class="help-content">
-                <div>选填。仅在部署前端静态资源（dist.zip）时需要。</div>
-                <div>• <b>不部署前端</b> → 不用填，留空即可，不影响后端部署</div>
-                <div>• <b>部署前端</b> → 填写 Nginx 等静态服务指向的目录，如 <code>/usr/share/nginx/html</code></div>
-                <div>• <b>留空时</b> → 自动使用 <code>{{ defaultFrontendDir || '部署目录/frontend' }}</code></div>
-              </div>
-            </template>
-          </a-form-item>
-        </a-col>
-      </a-row>
-
-      <!-- ====== JVM 与脚本 ====== -->
-      <a-divider orientation="left" style="font-size: 13px; color: #888">⚙️ JVM 参数与启停脚本</a-divider>
+      <!-- ====== JVM 与脚本（仅后端） ====== -->
+      <template v-if="formState.projectType !== 'frontend'">      <a-divider orientation="left" style="font-size: 13px; color: #888">⚙️ JVM 参数与启停脚本</a-divider>
       <a-row :gutter="16">
         <a-col :span="24">
           <a-form-item label="JVM 参数">
@@ -205,21 +187,32 @@
         </a-col>
       </a-row>
 
-      <!-- ====== 部署节点 ====== -->
+      </template> <!-- 结束后端专属字段：JVM 与脚本 -->
+
+      <!-- ====== 部署节点（后端 / 前端都需要） ====== -->
       <a-divider orientation="left" style="font-size: 13px; color: #888">🖥️ 部署节点</a-divider>
       <a-form-item label="部署节点" name="nodeIds">
-        <a-select v-model:value="formState.nodeIds" mode="multiple" style="width: 100%" placeholder="选择要部署到的服务器节点" :max-tag-count="3">
+        <a-select
+          v-model:value="formState.nodeIds"
+          mode="multiple"
+          style="width: 100%"
+          placeholder="输入名称、IP或标签搜索节点..."
+          :max-tag-count="3"
+          show-search
+          :filter-option="filterNodeOption"
+        >
           <a-select-option v-for="n in nodeOptions" :key="n.id" :value="n.id">
             <span>{{ n.name }} ({{ n.ip }})</span>
+            <a-tag v-if="n.tags" color="blue" size="small" style="margin-left: 8px">{{ n.tags }}</a-tag>
           </a-select-option>
         </a-select>
         <template #extra>
-          <span class="help-toggle" @click="toggleHelp('nodeIds')">{{ expandedHelps.has('nodeIds') ? '▼' : '▶' }} 说明</span>
-          <div v-show="expandedHelps.has('nodeIds')" class="help-content">必填，至少选择 1 个节点。部署时会同时将应用分发到所有选中的节点</div>
+          <span style="color: #888">支持按名称、IP、标签模糊搜索；前端应用也需选择要分发到的节点</span>
         </template>
       </a-form-item>
 
-      <!-- ====== 健康检查 ====== -->
+      <!-- ====== 健康检查（仅后端） ====== -->
+      <template v-if="formState.projectType !== 'frontend'">
       <a-divider orientation="left" style="font-size: 13px; color: #888">🏥 部署后健康检查</a-divider>
       <a-form-item label="启用健康检查">
         <template #extra>
@@ -249,6 +242,7 @@
           </a-form-item>
         </a-col>
       </a-row>
+      </template> <!-- 结束后端专属字段 -->
 
       <!-- ====== 填写指南 ====== -->
       <a-divider orientation="left" style="font-size: 13px; color: #888">
@@ -343,10 +337,6 @@ const staticParamGuide = [
   { flag: '-Dfile.encoding=UTF-8', purpose: '字符集', reason: '避免 Linux 默认编码导致日志与接口乱码。' }
 ]
 
-const deployDirText = computed(() => {
-  return formState.value.deployDir || defaultDeployDir.value || '{deployDir}'
-})
-
 const defaultDeployDir = computed(() => {
   if (!globalPaths.value) return ''
   const name = formState.value.name || 'app'
@@ -361,75 +351,101 @@ const defaultFrontendDir = computed(() => {
 })
 
 // ====== 填写指南表格 ======
-const guideColumns = [
-  { title: '部署场景', dataIndex: 'scenario', key: 'scenario', width: 130 },
-  { title: '应用名称', dataIndex: 'name', key: 'name', width: 80 },
-  { title: 'Jar 包名', dataIndex: 'jarName', key: 'jarName', width: 90 },
-  { title: '部署目录', dataIndex: 'deployDir', key: 'deployDir', width: 90 },
-  { title: '前端部署目录', dataIndex: 'frontendDir', key: 'frontendDir', width: 110 },
-  { title: '启停脚本', dataIndex: 'scripts', key: 'scripts', width: 100 },
-  { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 80 },
-  { title: '说明', dataIndex: 'note', key: 'note' }
-]
-
-const guideData = [
-  {
-    key: '1',
-    scenario: '☕ 仅部署后端',
-    name: '✅ 必填',
-    jarName: '✅ 必填',
-    deployDir: '✅ 必填',
-    frontendDir: '⬜ 不用填',
-    scripts: '✅ 填写（或一键填入）',
-    nodeIds: '✅ 必填',
-    note: '最常见场景。Jar 包通过一键部署传输到服务器，脚本控制启停'
-  },
-  {
-    key: '2',
-    scenario: '🌐 仅部署前端',
-    name: '✅ 必填',
-    jarName: '⬜ 不用填',
-    deployDir: '✅ 必填',
-    frontendDir: '✅ 填写（Nginx 目录）',
-    scripts: '⬜ 不用填',
-    nodeIds: '✅ 必填',
-    note: '上传 dist.zip 时自动解压到前端目录，供 Nginx 等使用'
-  },
-  {
-    key: '3',
-    scenario: '☕+🌐 前后端都部署',
-    name: '✅ 必填',
-    jarName: '✅ 必填',
-    deployDir: '✅ 必填',
-    frontendDir: '✅ 填写',
-    scripts: '✅ 填写',
-    nodeIds: '✅ 必填',
-    note: '上传 jar 走后端部署流程，上传 dist.zip 走前端部署流程'
+const guideColumns = computed(() => {
+  if (formState.value.projectType === 'frontend') {
+    return [
+      { title: '字段', dataIndex: 'field', key: 'field', width: 120 },
+      { title: '是否必填', dataIndex: 'required', key: 'required', width: 100 },
+      { title: '说明', dataIndex: 'note', key: 'note' }
+    ]
   }
-]
+  return [
+    { title: '部署场景', dataIndex: 'scenario', key: 'scenario', width: 130 },
+    { title: '应用名称', dataIndex: 'name', key: 'name', width: 80 },
+    { title: 'Jar 包名', dataIndex: 'jarName', key: 'jarName', width: 90 },
+    { title: '部署目录', dataIndex: 'deployDir', key: 'deployDir', width: 90 },
+    { title: '前端部署目录', dataIndex: 'frontendDir', key: 'frontendDir', width: 110 },
+    { title: '启停脚本', dataIndex: 'scripts', key: 'scripts', width: 100 },
+    { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 80 },
+    { title: '说明', dataIndex: 'note', key: 'note' }
+  ]
+})
+
+const guideData = computed(() => {
+  if (formState.value.projectType === 'frontend') {
+    return [
+      { key: '1', field: '应用名称', required: '✅ 必填', note: '前端应用的显示名称' },
+      { key: '2', field: '部署目录', required: '✅ 必填', note: '应用在服务器上的根目录' },
+      { key: '3', field: '解压后目录名', required: '✅ 必填', note: 'zip 解压后在部署目录下创建的子目录名，如 dist、web' },
+      { key: '4', field: '部署节点', required: '✅ 必填', note: '选择要部署到的服务器节点' }
+    ]
+  }
+  return [
+    {
+      key: '1',
+      scenario: '☕ 仅部署后端',
+      name: '✅ 必填',
+      jarName: '✅ 必填',
+      deployDir: '✅ 必填',
+      frontendDir: '⬜ 不用填',
+      scripts: '✅ 填写（或一键填入）',
+      nodeIds: '✅ 必填',
+      note: '最常见场景。Jar 包通过一键部署传输到服务器，脚本控制启停'
+    },
+    {
+      key: '2',
+      scenario: '🌐 仅部署前端',
+      name: '✅ 必填',
+      jarName: '⬜ 不用填',
+      deployDir: '✅ 必填',
+      frontendDir: '✅ 填写（Nginx 目录）',
+      scripts: '⬜ 不用填',
+      nodeIds: '✅ 必填',
+      note: '上传 dist.zip 时自动解压到前端目录，供 Nginx 等使用'
+    },
+    {
+      key: '3',
+      scenario: '☕+🌐 前后端都部署',
+      name: '✅ 必填',
+      jarName: '✅ 必填',
+      deployDir: '✅ 必填',
+      frontendDir: '✅ 填写',
+      scripts: '✅ 填写',
+      nodeIds: '✅ 必填',
+      note: '上传 jar 走后端部署流程，上传 dist.zip 走前端部署流程'
+    }
+  ]
+})
 
 const formState = ref<any>({
+  projectType: 'backend',
   name: '',
   jarName: '',
   deployDir: '',
+  frontendDirName: '',
   frontendDeployDir: '',
   startScript: '',
   stopScript: '',
   jvmOpts: '',
   envVars: '',
   nodeIds: [] as string[],
-  healthCheckEnabled: true,
+  healthCheckEnabled: false,
   healthCheckPort: 8080,
   healthCheckPath: '/hello',
-  healthCheckKeyword: '200'
+  healthCheckKeyword: '200',
+  monitorIntervalSec: 60
 })
 
-const rules: Record<string, Rule[]> = {
+const isFrontend = computed(() => formState.value.projectType === 'frontend')
+
+const rules = computed<Record<string, Rule[]>>(() => ({
   name: [{ required: true, message: '请输入应用名称' }],
-  jarName: [{ required: true, message: '请输入 Jar 包名（如 demo-test-app.jar）' }],
+  projectType: [{ required: true, message: '请选择应用类型' }],
+  jarName: isFrontend.value ? [] : [{ required: true, message: '请输入 Jar 包名（如 demo-test-app.jar）' }],
   deployDir: [{ required: true, message: '请输入部署目录' }],
+  frontendDirName: isFrontend.value ? [{ required: true, message: '请输入解压后目录名' }] : [],
   nodeIds: [{ required: true, type: 'array', min: 1, message: '请至少选择一个部署节点' }],
-  startScript: [{
+  startScript: isFrontend.value ? [] : [{
     validator: (_rule: Rule, value: string) => {
       if (!value || !formState.value.jarName) return Promise.resolve()
       const jarNameInScript = extractJarNameFromScript(value)
@@ -439,7 +455,7 @@ const rules: Record<string, Rule[]> = {
       return Promise.resolve()
     }
   }]
-}
+}))
 
 // 说明展开状态（默认全部折叠）
 const expandedHelps = ref<Set<string>>(new Set())
@@ -447,6 +463,16 @@ function toggleHelp(key: string) {
   const s = new Set(expandedHelps.value)
   if (s.has(key)) s.delete(key); else s.add(key)
   expandedHelps.value = s
+}
+
+/** 节点搜索过滤：支持按名称、IP、标签模糊匹配 */
+function filterNodeOption(input: string, option: any) {
+  const node = nodeOptions.value.find(n => n.id === option.value)
+  if (!node) return false
+  const keyword = input.toLowerCase()
+  return (node.name && node.name.toLowerCase().includes(keyword))
+    || (node.ip && node.ip.toLowerCase().includes(keyword))
+    || (node.tags && node.tags.toLowerCase().includes(keyword))
 }
 
 /** 从 startScript 中提取 JAR_NAME=xxx 的值 */
@@ -597,7 +623,7 @@ onMounted(async () => {
     globalPaths.value = gp.data
   } catch { /* ignore */ }
 
-  const res = await getNodes()
+  const res = await getNodes(1, 1000)
   nodeOptions.value = res.data.list
 
   const id = route.params.id as string

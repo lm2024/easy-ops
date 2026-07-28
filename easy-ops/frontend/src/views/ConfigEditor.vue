@@ -51,7 +51,7 @@ const content = ref('')
 const saving = ref(false)
 
 async function fetchData() {
-  const res = await getNodes()
+  const res = await getNodes(1, 1000)
   nodes.value = res.data.list
 }
 

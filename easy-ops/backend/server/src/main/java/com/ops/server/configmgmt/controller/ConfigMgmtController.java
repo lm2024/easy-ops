@@ -8,10 +8,16 @@ import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletResponse;
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 /**
  * 配置文件管理接口
@@ -174,6 +180,95 @@ public class ConfigMgmtController {
             return Result.error(403, "无权访问该项目");
         }
         return Result.success(configMgmtService.scanAndImport(projectId));
+    }
+
+    /**
+     * GET /api/config/download - 单个配置文件下载
+     */
+    @GetMapping("/download")
+    public void downloadSingle(@RequestParam Long projectId,
+                               @RequestParam Long nodeId,
+                               @RequestParam Long configFileId,
+                               HttpServletResponse response) {
+        if (!securityContext.hasProjectPermission(projectId)) {
+            setErrorResponse(response, 403, "无权访问该项目");
+            return;
+        }
+        try {
+            String content = configMgmtService.getContent(projectId, nodeId, configFileId);
+            ProjectConfigFileModel file = configMgmtService.listFiles(projectId).stream()
+                    .filter(f -> configFileId.equals(f.getId()))
+                    .findFirst().orElse(null);
+            String fileName = file != null ? file.getFileName() : "config.txt";
+            setDownloadHeaders(response, fileName);
+            try (OutputStream os = response.getOutputStream()) {
+                os.write(content.getBytes("UTF-8"));
+            }
+            auditLog.log("CONFIG", "DOWNLOAD", "下载配置文件: " + fileName);
+        } catch (Exception e) {
+            setErrorResponse(response, 500, "下载失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/config/download/batch - 批量下载配置文件（ZIP）
+     */
+    @PostMapping("/download/batch")
+    public void downloadBatch(@RequestBody Map<String, Object> body,
+                               HttpServletResponse response) {
+        Long projectId = toLong(body.get("projectId"));
+        if (!securityContext.hasProjectPermission(projectId)) {
+            setErrorResponse(response, 403, "无权访问该项目");
+            return;
+        }
+        Long nodeId = toLong(body.get("nodeId"));
+        List<Long> configFileIds = toLongList(body.get("configFileIds"));
+        if (configFileIds.isEmpty()) {
+            setErrorResponse(response, 400, "未选择配置文件");
+            return;
+        }
+        try {
+            List<ProjectConfigFileModel> allFiles = configMgmtService.listFiles(projectId);
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (ZipOutputStream zos = new ZipOutputStream(baos)) {
+                for (Long fileId : configFileIds) {
+                    String content = configMgmtService.getContent(projectId, nodeId, fileId);
+                    ProjectConfigFileModel file = allFiles.stream()
+                            .filter(f -> fileId.equals(f.getId()))
+                            .findFirst().orElse(null);
+                    String fileName = file != null ? file.getRelativePath().replaceAll("[/\\\\]", "_") : "config_" + fileId + ".txt";
+                    ZipEntry entry = new ZipEntry(fileName);
+                    zos.putNextEntry(entry);
+                    zos.write(content.getBytes("UTF-8"));
+                    zos.closeEntry();
+                }
+            }
+            String zipName = "configs_" + System.currentTimeMillis() + ".zip";
+            setDownloadHeaders(response, zipName);
+            response.getOutputStream().write(baos.toByteArray());
+            auditLog.log("CONFIG", "DOWNLOAD_BATCH", "批量下载配置文件: " + configFileIds.size() + " 个");
+        } catch (Exception e) {
+            setErrorResponse(response, 500, "批量下载失败: " + e.getMessage());
+        }
+    }
+
+    private void setDownloadHeaders(HttpServletResponse response, String fileName) {
+        response.setContentType("application/octet-stream");
+        response.setCharacterEncoding("UTF-8");
+        try {
+            String encoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+        } catch (java.io.UnsupportedEncodingException e) {
+            response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        }
+    }
+
+    private void setErrorResponse(HttpServletResponse response, int code, String msg) {
+        try {
+            response.setStatus(code);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + msg + "\"}");
+        } catch (Exception ignored) {}
     }
 
     private Long toLong(Object value) {

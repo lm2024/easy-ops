@@ -5,6 +5,7 @@ services:
     build:
       context: agent/docker
       dockerfile: Dockerfile
+    image: backend-agent-1:latest
     container_name: ops-agent-1
     restart: unless-stopped
     ports:
@@ -25,6 +26,7 @@ services:
     build:
       context: agent/docker
       dockerfile: Dockerfile
+    image: backend-agent-2:latest
     container_name: ops-agent-2
     restart: unless-stopped
     ports:
@@ -45,6 +47,7 @@ services:
     build:
       context: agent/docker
       dockerfile: Dockerfile
+    image: backend-agent-3:latest
     container_name: ops-agent-3
     restart: unless-stopped
     ports:

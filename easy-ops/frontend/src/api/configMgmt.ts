@@ -77,3 +77,18 @@ export function scanConfigFiles(projectId: number) {
     params: { projectId }
   })
 }
+
+/** 下载单个配置文件 */
+export function downloadConfigFile(projectId: number, nodeId: number, configFileId: number) {
+  return request.get('/config/download', {
+    params: { projectId, nodeId, configFileId },
+    responseType: 'blob'
+  })
+}
+
+/** 批量下载配置文件（ZIP） */
+export function downloadConfigFilesBatch(projectId: number, configFileIds: number[], nodeId?: number) {
+  return request.post('/config/download/batch', { projectId, configFileIds, nodeId }, {
+    responseType: 'blob'
+  })
+}

@@ -7,6 +7,9 @@ import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletResponse;
+import java.io.OutputStream;
+import java.net.URLEncoder;
 import java.util.List;
 import java.util.Map;
 
@@ -109,6 +112,43 @@ public class LogMgmtController {
         String filePath = body.get("filePath") != null ? body.get("filePath").toString() : null;
         return Result.success(logMgmtService.search(projectId, keyword, scope,
                 nodeIds, contextLines, maxResults, level, filePath));
+    }
+
+    /**
+     * GET /api/logs/download - 下载日志（最新1000条）
+     */
+    @GetMapping("/download")
+    public void downloadLog(@RequestParam Long projectId,
+                            @RequestParam(required = false) Long nodeId,
+                            @RequestParam(required = false) String filePath,
+                            @RequestParam(defaultValue = "1000") int lines,
+                            @RequestParam(required = false) String level,
+                            @RequestParam(defaultValue = "aggregate") String mode,
+                            HttpServletResponse response) {
+        if (!securityContext.hasProjectPermission(projectId)) {
+            writeError(response, 403, "无权访问该项目");
+            return;
+        }
+        try {
+            String content = logMgmtService.downloadLog(projectId, nodeId, filePath, lines, level, mode);
+            String fileName = "logs_" + projectId + "_" + System.currentTimeMillis() + ".txt";
+            response.setContentType("text/plain;charset=UTF-8");
+            String encoded = URLEncoder.encode(fileName, "UTF-8").replace("+", "%20");
+            response.setHeader("Content-Disposition", "attachment; filename*=UTF-8''" + encoded);
+            try (OutputStream os = response.getOutputStream()) {
+                os.write(content.getBytes("UTF-8"));
+            }
+        } catch (Exception e) {
+            writeError(response, 500, "下载失败: " + e.getMessage());
+        }
+    }
+
+    private void writeError(HttpServletResponse response, int code, String msg) {
+        try {
+            response.setStatus(code);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"code\":" + code + ",\"message\":\"" + msg + "\"}");
+        } catch (Exception ignored) {}
     }
 
     private Long toLong(Object value) {

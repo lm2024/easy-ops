@@ -18,6 +18,7 @@ public class ProcessStatusController {
     private final ProcessStatusChecker statusChecker = new ProcessStatusChecker();
     private final HttpHealthProber healthProber = new HttpHealthProber();
     private final ProcessMetricsHelper metricsHelper = new ProcessMetricsHelper(statusChecker);
+    private final ThreadMetricsHelper threadHelper = new ThreadMetricsHelper();
 
     /**
      * GET /process/status — 进程存活检测（ps grep deployDir + jarName）。
@@ -75,6 +76,58 @@ public class ProcessStatusController {
             return Result.success(metricsHelper.getJvmMetrics(pid));
         } catch (Exception e) {
             return Result.error(500, "JVM 指标采集失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /process/thread-top — 线程 CPU 使用率排名（top -H + jcmd）。
+     * 仅在用户主动请求时调用，不影响日常监控。
+     */
+    @GetMapping("/thread-top")
+    public Result<Map<String, Object>> threadTop(
+            @RequestParam long pid,
+            @RequestParam(defaultValue = "20") int top) {
+        if (pid <= 0) {
+            return Result.paramError("pid 必须大于 0");
+        }
+        try {
+            return Result.success(threadHelper.getThreadTop(pid, top));
+        } catch (Exception e) {
+            return Result.error(500, "线程 CPU 采集失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /process/thread-info — 线程详情（状态分布 + 死锁检测 + 栈摘要）。
+     * 仅在用户主动请求时调用。
+     */
+    @GetMapping("/thread-info")
+    public Result<Map<String, Object>> threadInfo(
+            @RequestParam long pid,
+            @RequestParam(defaultValue = "5") int maxStack) {
+        if (pid <= 0) {
+            return Result.paramError("pid 必须大于 0");
+        }
+        try {
+            return Result.success(threadHelper.getThreadInfo(pid, maxStack));
+        } catch (Exception e) {
+            return Result.error(500, "线程详情采集失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * GET /process/jvm-detail — JVM 详情（堆分区 + 非堆 + GC 详情 + 类加载 + fd）。
+     * 仅在用户主动请求时调用。
+     */
+    @GetMapping("/jvm-detail")
+    public Result<Map<String, Object>> jvmDetail(@RequestParam long pid) {
+        if (pid <= 0) {
+            return Result.paramError("pid 必须大于 0");
+        }
+        try {
+            return Result.success(threadHelper.getJvmDetail(pid));
+        } catch (Exception e) {
+            return Result.error(500, "JVM 详情采集失败: " + e.getMessage());
         }
     }
 }

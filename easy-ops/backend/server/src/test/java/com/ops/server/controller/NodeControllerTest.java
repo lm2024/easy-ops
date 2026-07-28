@@ -48,7 +48,7 @@ class NodeControllerTest extends BaseControllerTest {
 
     @Test
     void listNodes() throws Exception {
-        when(nodeMapper.findByStatus(null, 1, 20, null)).thenReturn(Arrays.asList(mockNode()));
+        when(nodeMapper.findByStatus(null, 1, 20, null, null, null)).thenReturn(Arrays.asList(mockNode()));
         when(nodeMapper.countByStatus(null, null)).thenReturn(1L);
 
         mockMvc.perform(get("/nodes"))
@@ -58,7 +58,7 @@ class NodeControllerTest extends BaseControllerTest {
 
     @Test
     void listNodes_empty() throws Exception {
-        when(nodeMapper.findByStatus(null, 1, 20, null)).thenReturn(Collections.emptyList());
+        when(nodeMapper.findByStatus(null, 1, 20, null, null, null)).thenReturn(Collections.emptyList());
         when(nodeMapper.countByStatus(null, null)).thenReturn(0L);
 
         mockMvc.perform(get("/nodes"))

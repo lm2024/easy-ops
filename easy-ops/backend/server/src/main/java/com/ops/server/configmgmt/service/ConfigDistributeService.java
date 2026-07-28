@@ -22,6 +22,11 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 配置分发服务
@@ -51,6 +56,12 @@ public class ConfigDistributeService {
     private RestTemplate restTemplate;
 
     /**
+     * 配置分发线程池，避免串行分发导致长时间阻塞
+     */
+    private static final ExecutorService DISTRIBUTE_EXECUTOR = Executors.newFixedThreadPool(
+            Math.min(Runtime.getRuntime().availableProcessors() * 2, 16));
+
+    /**
      * 分发配置到目标节点
      */
     public Map<String, Object> distribute(Long projectId, Long configFileId, String content,
@@ -73,45 +84,57 @@ public class ConfigDistributeService {
         distributeRecordMapper.insert(record);
 
         List<Map<String, Object>> results = new ArrayList<>();
-        int successCount = 0;
+        AtomicInteger successCount = new AtomicInteger(0);
+
+        // 并行分发到所有目标节点，避免串行阻塞
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
         for (Long nodeId : targetNodeIds) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("nodeId", nodeId);
-            NodeModel node = nodeMapper.findById(nodeId);
-            if (node == null || node.getStatus() == null || node.getStatus() != 1) {
-                item.put("success", false);
-                item.put("error", "节点不存在或离线");
-                results.add(item);
-                continue;
-            }
-            try {
-                Map<String, Object> body = new HashMap<>();
-                body.put("configPath", configPath);
-                body.put("content", content);
-                body.put("backup", true);
-                agentClient.postForMap(node, "/file/config", body);
-                upsertSnapshot(projectId, nodeId, configFileId, content, hash, 1);
-                item.put("restarted", restartAfter);
-                if (restartAfter) {
-                    try {
-                        restartProject(projectId, node);
-                        item.put("restartSuccess", true);
-                    } catch (Exception re) {
-                        item.put("restartSuccess", false);
-                        item.put("restartError", re.getMessage());
-                    }
+            futures.add(CompletableFuture.runAsync(() -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("nodeId", nodeId);
+                NodeModel node = nodeMapper.findById(nodeId);
+                if (node == null || node.getStatus() == null || node.getStatus() != 1) {
+                    item.put("success", false);
+                    item.put("error", "节点不存在或离线");
+                    synchronized (results) { results.add(item); }
+                    return;
                 }
-                item.put("success", true);
-                successCount++;
-            } catch (Exception e) {
-                item.put("success", false);
-                item.put("error", e.getMessage());
-            }
-            results.add(item);
+                try {
+                    Map<String, Object> body = new HashMap<>();
+                    body.put("configPath", configPath);
+                    body.put("content", content);
+                    body.put("backup", true);
+                    agentClient.postForMap(node, "/file/config", body);
+                    upsertSnapshot(projectId, nodeId, configFileId, content, hash, 1);
+                    item.put("restarted", restartAfter);
+                    if (restartAfter) {
+                        try {
+                            restartProject(projectId, node);
+                            item.put("restartSuccess", true);
+                        } catch (Exception re) {
+                            item.put("restartSuccess", false);
+                            item.put("restartError", re.getMessage());
+                        }
+                    }
+                    item.put("success", true);
+                    successCount.incrementAndGet();
+                } catch (Exception e) {
+                    item.put("success", false);
+                    item.put("error", e.getMessage());
+                }
+                synchronized (results) { results.add(item); }
+            }, DISTRIBUTE_EXECUTOR));
         }
 
-        int status = successCount == targetNodeIds.size() ? 1
-                : successCount == 0 ? 3 : 2;
+        try {
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                    .get(60, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            // 超时或异常，记录已完成的节点结果
+        }
+
+        int status = successCount.get() == targetNodeIds.size() ? 1
+                : successCount.get() == 0 ? 3 : 2;
         String detail = JSON.toJSONString(results);
         distributeRecordMapper.updateStatus(record.getId(), status, detail);
 

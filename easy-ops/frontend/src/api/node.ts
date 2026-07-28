@@ -2,9 +2,9 @@ import request from '../utils/request'
 import type { NodeModel, Result } from '../types'
 
 /** 获取节点列表 */
-export function getNodes(page = 1, pageSize = 20, keyword = '', status?: string) {
+export function getNodes(page = 1, pageSize = 20, keyword = '', status?: string, sortField?: string, sortOrder?: string) {
   return request.get('/nodes', {
-    params: { page, pageSize, keyword, status }
+    params: { page, pageSize, keyword, status, sortField, sortOrder }
   }) as Promise<Result<{ list: NodeModel[]; total: number }>>
 }
 

@@ -27,8 +27,13 @@ import java.util.concurrent.TimeUnit;
 @Service
 public class LogSearchService {
 
-    private static final int SEARCH_TIMEOUT_SEC = 60;
-    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(10);
+    private static final int SEARCH_TIMEOUT_SEC = 45;
+    private static final int BATCH_SIZE = 20;
+    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(15, r -> {
+        Thread t = new Thread(r, "log-search");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Autowired
     private AgentClient agentClient;
@@ -54,25 +59,32 @@ public class LogSearchService {
         List<Long> targets = resolveNodeIds(projectId, nodeIds, scope);
         List<Map<String, Object>> hits = new ArrayList<>();
         List<Map<String, Object>> scopeList = new ArrayList<>();
-        List<Future<NodeSearchResult>> futures = new ArrayList<>();
 
-        for (Long nodeId : targets) {
-            futures.add(EXECUTOR.submit(new SearchTask(nodeId, keyword, contextLines,
-                    maxResults, profile, level, filePath)));
-        }
-        for (Future<NodeSearchResult> future : futures) {
-            try {
-                NodeSearchResult result = future.get(SEARCH_TIMEOUT_SEC, TimeUnit.SECONDS);
-                if (result != null) {
-                    if (result.scope != null) {
-                        scopeList.add(result.scope);
+        // 分批并发搜索
+        int totalNodes = targets.size();
+        for (int batchStart = 0; batchStart < totalNodes; batchStart += BATCH_SIZE) {
+            int batchEnd = Math.min(batchStart + BATCH_SIZE, totalNodes);
+            List<Long> batch = targets.subList(batchStart, batchEnd);
+
+            List<Future<NodeSearchResult>> futures = new ArrayList<>();
+            for (Long nodeId : batch) {
+                futures.add(EXECUTOR.submit(new SearchTask(nodeId, keyword, contextLines,
+                        maxResults, profile, level, filePath)));
+            }
+            for (Future<NodeSearchResult> future : futures) {
+                try {
+                    NodeSearchResult result = future.get(SEARCH_TIMEOUT_SEC, TimeUnit.SECONDS);
+                    if (result != null) {
+                        if (result.scope != null) {
+                            scopeList.add(result.scope);
+                        }
+                        if (result.hits != null) {
+                            hits.addAll(result.hits);
+                        }
                     }
-                    if (result.hits != null) {
-                        hits.addAll(result.hits);
-                    }
+                } catch (Exception ignored) {
+                    // 单节点搜索失败跳过
                 }
-            } catch (Exception ignored) {
-                // 单节点搜索失败跳过
             }
         }
 

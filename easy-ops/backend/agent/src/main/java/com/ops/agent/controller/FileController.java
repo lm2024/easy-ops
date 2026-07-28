@@ -3,6 +3,7 @@ package com.ops.agent.controller;
 import com.ops.agent.file.ConfigFileService;
 import com.ops.agent.file.LogDiscoveryService;
 import com.ops.agent.file.LogFileService;
+import com.ops.agent.file.ScriptFileService;
 import com.ops.common.response.Result;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -14,10 +15,12 @@ import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Agent文件接收接口
- * 接收Server下发的Jar包
+ * 接收Server下发的Jar包、配置文件、脚本文件等
  */
 @RestController
 @RequestMapping("/file")
@@ -29,6 +32,11 @@ public class FileController {
     private final ConfigFileService configFileService = new ConfigFileService();
     private final LogFileService logFileService = new LogFileService();
     private final LogDiscoveryService logDiscoveryService = new LogDiscoveryService();
+    private final ScriptFileService scriptFileService = new ScriptFileService();
+
+    // 日志读/搜索并发限制（防止大量日志请求拖垮 Agent）
+    private static final Semaphore LOG_SEMAPHORE = new Semaphore(5);
+    private static final int LOG_SEMA_TIMEOUT_SEC = 3;
 
     /**
      * 接收Server下发的Jar包
@@ -197,6 +205,9 @@ public class FileController {
     public Result<Map<String, Object>> tailLog(@RequestParam String logPath,
                                                @RequestParam(defaultValue = "200") int lines,
                                                @RequestParam(required = false) String level) {
+        if (!tryAcquireLogPermit()) {
+            return Result.error(429, "Agent 日志服务繁忙，请稍后重试");
+        }
         try {
             return Result.success(logFileService.tail(logPath, lines, level));
         } catch (IOException e) {
@@ -204,6 +215,8 @@ public class FileController {
                 return Result.error(400, e.getMessage());
             }
             return Result.error(500, "读取日志尾部失败: " + e.getMessage());
+        } finally {
+            LOG_SEMAPHORE.release();
         }
     }
 
@@ -222,11 +235,128 @@ public class FileController {
         int contextLines = body.get("contextLines") != null
                 ? Integer.parseInt(body.get("contextLines").toString()) : 2;
         String level = body.get("level") != null ? body.get("level").toString() : null;
+        if (!tryAcquireLogPermit()) {
+            return Result.error(429, "Agent 日志服务繁忙，请稍后重试");
+        }
         try {
             return Result.success(logFileService.search(
                     logPathObj.toString(), keywordObj.toString(), maxResults, contextLines, level));
         } catch (IOException e) {
             return Result.error(500, "日志搜索失败: " + e.getMessage());
+        } finally {
+            LOG_SEMAPHORE.release();
+        }
+    }
+
+    /**
+     * 扫描指定部署目录下的配置文件（yml/yaml/properties/conf）
+     * GET /file/config/discover?deployDir=/path/to/deploy
+     */
+
+    private boolean tryAcquireLogPermit() {
+        try {
+            return LOG_SEMAPHORE.tryAcquire(LOG_SEMA_TIMEOUT_SEC, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return false;
+        }
+    }
+
+    @GetMapping("/config/discover")
+    public Result<List<Map<String, Object>>> discoverConfigs(@RequestParam String deployDir) {
+        try {
+            List<Map<String, Object>> configs = configFileService.discoverConfigs(deployDir);
+            return Result.success(configs);
+        } catch (IOException e) {
+            return Result.error(400, "配置文件扫描失败: " + e.getMessage());
+        }
+    }
+
+    // ==================== 脚本文件管理接口 ====================
+
+    /**
+     * 读取脚本文件内容
+     * GET /file/script?filePath=/path/to/script.sh
+     */
+    @GetMapping("/script")
+    public Result<String> getScriptContent(@RequestParam String filePath) {
+        try {
+            return Result.success(scriptFileService.readScript(filePath));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
+            }
+            return Result.error(500, "读取脚本失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 写入脚本文件，可选备份、设置可执行权限
+     * POST /file/script
+     */
+    @PostMapping("/script")
+    public Result<Map<String, Object>> writeScript(@RequestBody Map<String, Object> body) {
+        Object filePathObj = body.get("filePath");
+        Object contentObj = body.get("content");
+        if (filePathObj == null || contentObj == null) {
+            return Result.paramError("filePath 与 content 不能为空");
+        }
+        boolean backup = !Boolean.FALSE.equals(body.get("backup")); // 默认 true
+        boolean setExecutable = Boolean.TRUE.equals(body.get("setExecutable"));
+        try {
+            return Result.success(scriptFileService.writeScript(
+                    filePathObj.toString(), contentObj.toString(), backup, setExecutable));
+        } catch (IOException e) {
+            return Result.error(500, "写入脚本失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 备份脚本文件
+     * POST /file/script/backup
+     */
+    @PostMapping("/script/backup")
+    public Result<Map<String, Object>> backupScript(@RequestBody Map<String, String> body) {
+        String filePath = body.get("filePath");
+        if (filePath == null || filePath.trim().isEmpty()) {
+            return Result.paramError("filePath 不能为空");
+        }
+        try {
+            return Result.success(scriptFileService.backupScript(filePath));
+        } catch (IOException e) {
+            if (e.getMessage() != null && e.getMessage().contains("不存在")) {
+                return Result.error(400, e.getMessage());
+            }
+            return Result.error(500, "备份脚本失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 获取脚本文件状态信息
+     * GET /file/script/status?filePath=/path/to/script.sh
+     */
+    @GetMapping("/script/status")
+    public Result<Map<String, Object>> getScriptStatus(@RequestParam String filePath) {
+        try {
+            return Result.success(scriptFileService.getFileStatus(filePath));
+        } catch (IOException e) {
+            return Result.error(400, "获取文件状态失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 扫描指定目录下的脚本文件（支持任意文件类型）
+     * GET /file/script/discover?scanDir=/path/to/dir
+     */
+    @GetMapping("/script/discover")
+    public Result<List<Map<String, Object>>> discoverScripts(
+            @RequestParam String scanDir,
+            @RequestParam(defaultValue = "3") int maxDepth,
+            @RequestParam(defaultValue = "500") int maxFiles) {
+        try {
+            return Result.success(scriptFileService.discoverScripts(scanDir, maxDepth, maxFiles));
+        } catch (IOException e) {
+            return Result.error(400, "脚本文件扫描失败: " + e.getMessage());
         }
     }
 

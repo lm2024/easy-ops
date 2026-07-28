@@ -58,7 +58,7 @@ const columns = [
 ]
 
 async function fetchData() {
-  const res = await getNodes()
+  const res = await getNodes(1, 1000)
   nodes.value = res.data.list
   fileList.value = [
     { path: './data/logs/server.log', type: 'LOG' },
