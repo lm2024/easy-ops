@@ -396,22 +396,22 @@ public class NodeController {
                 snap.setProjectId(0L); // 默认值
             }
 
-            // 解析CPU使用率
+            // 解析CPU使用率（现在是真实的系统CPU使用率，不是负载转换值）
             Object cpuUsage = metrics.get("cpuUsagePercent");
             if (cpuUsage instanceof Number) {
                 double val = ((Number) cpuUsage).doubleValue();
                 snap.setHostCpuPercent(new java.math.BigDecimal(val));
-                // 心跳上报时，Agent自身CPU也作为进程CPU显示
+                // 心跳上报时，如果没有应用进程数据，用Agent自身CPU作为进程CPU
                 snap.setCpuPercent(new java.math.BigDecimal(val));
             }
 
-            // 解析内存使用率
+            // 解析内存使用率（现在是真实的系统内存使用率，不是JVM内存使用率）
             Object memUsage = metrics.get("memoryUsagePercent");
             if (memUsage instanceof Number) {
                 snap.setHostMemoryPercent(((Number) memUsage).intValue());
             }
 
-            // 解析堆内存
+            // 解析堆内存（Agent 自身 JVM）
             Object heapUsed = metrics.get("heapUsedMB");
             Object heapMax = metrics.get("heapMaxMB");
             if (heapUsed instanceof Number) snap.setHeapUsedMb(((Number) heapUsed).intValue());
