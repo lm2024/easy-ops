@@ -134,5 +134,7 @@ Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 - **启动失败假象**：`ProcessController` 已`mkdir -p logs` + `setsid`
 - **前端生产只需 Nginx + dist**：`vite build` outDir 为 `nginx/dist`
 - **JDK 8 限制**：不用 `Map.of`/`Path.of` 等 Java 9+ API
+- **Docker Agent 缺 `ps` 命令**：`eclipse-temurin:8-jdk` 不自带 `procps`，`ProcessStatusChecker.findPid()` 用 `ps aux | grep` 检测进程 PID 会静默失败。Dockerfile 需加 `RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -rf /var/lib/apt/lists/*`，否则应用监控的 PID 和进程状态全部丢失
+- **心跳进程状态误判**：`NodeController.saveMonitorSnapshot()` 原逻辑先无条件设 `processStatus=RUNNING`（仅因 Agent 在线），再检查 `processes` 列表；若列表为空（未找到应用进程），状态保持 RUNNING 但 PID 为 null。修复：默认应设为 `STOPPED`，仅当 processes 列表中 `alive=true` 时才设为 RUNNING
 
 启动后查日志关键字 **`启动路径`** 核对。
