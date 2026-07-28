@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NodeScriptSnapshotMapper">
+    <select id="findById" resultType="com.ops.common.model.NodeScriptSnapshotModel">
+        SELECT * FROM node_script_snapshot WHERE id = #{id}
+    </select>
+    <select id="findByNodeAndFile" resultType="com.ops.common.model.NodeScriptSnapshotModel">
+        SELECT * FROM node_script_snapshot WHERE node_id = #{nodeId} AND script_file_id = #{scriptFileId}
+    </select>
+    <select id="findByProjectAndFile" resultType="com.ops.common.model.NodeScriptSnapshotModel">
+        SELECT * FROM node_script_snapshot WHERE project_id = #{projectId} AND script_file_id = #{scriptFileId}
+    </select>
+    <select id="findByNodeId" resultType="com.ops.common.model.NodeScriptSnapshotModel">
+        SELECT * FROM node_script_snapshot WHERE node_id = #{nodeId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO node_script_snapshot (project_id, node_id, script_file_id, content_hash, content_size, file_mode, sync_status, last_sync_time, update_time)
+        VALUES (#{projectId}, #{nodeId}, #{scriptFileId}, #{contentHash}, #{contentSize}, #{fileMode}, #{syncStatus}, #{lastSyncTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE node_script_snapshot
+        SET content_hash = #{contentHash}, content_size = #{contentSize}, file_mode = #{fileMode},
+            sync_status = #{syncStatus}, last_sync_time = #{lastSyncTime}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM node_script_snapshot WHERE id = #{id}
+    </delete>
+    <delete id="deleteByScriptFileId">
+        DELETE FROM node_script_snapshot WHERE script_file_id = #{scriptFileId}
+    </delete>
+    <delete id="deleteByProjectId">
+        DELETE FROM node_script_snapshot WHERE project_id = #{projectId}
+    </delete>
+</mapper>

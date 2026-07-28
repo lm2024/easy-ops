@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ScriptDistributeRecordMapper">
+    <select id="findById" resultType="com.ops.common.model.ScriptDistributeRecordModel">
+        SELECT * FROM script_distribute_record WHERE id = #{id}
+    </select>
+    <select id="findByProjectId" resultType="com.ops.common.model.ScriptDistributeRecordModel">
+        SELECT * FROM script_distribute_record WHERE project_id = #{projectId} ORDER BY create_time DESC
+    </select>
+    <select id="findByScriptFileId" resultType="com.ops.common.model.ScriptDistributeRecordModel">
+        SELECT * FROM script_distribute_record WHERE script_file_id = #{scriptFileId} ORDER BY create_time DESC
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO script_distribute_record (project_id, script_file_id, operator_id, target_node_ids, content_hash, set_executable, auto_backup, status, result_detail, create_time)
+        VALUES (#{projectId}, #{scriptFileId}, #{operatorId}, #{targetNodeIds}, #{contentHash}, #{setExecutable}, #{autoBackup}, #{status}, #{resultDetail}, #{createTime})
+    </insert>
+    <update id="updateStatus">
+        UPDATE script_distribute_record
+        SET status = #{status}, result_detail = #{resultDetail}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM script_distribute_record WHERE id = #{id}
+    </delete>
+</mapper>

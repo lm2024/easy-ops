@@ -1,0 +1,104 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::               (v2.7.18)
+
+2026-07-23 15:35:41.249 [main] INFO  com.ops.agent.AgentApplication - Starting AgentApplication using Java 1.8.0_202 on DESKTOP-6HG71H8 with PID 27836 (C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\agent\target\easy-ops-agent-1.0.0-SNAPSHOT.jar started by Li in C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend)
+2026-07-23 15:35:41.251 [main] INFO  com.ops.agent.AgentApplication - No active profile set, falling back to 1 default profile: "default"
+2026-07-23 15:35:42.334 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port(s): 2123 (http)
+2026-07-23 15:35:42.343 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-2123"]
+2026-07-23 15:35:42.346 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-07-23 15:35:42.346 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/9.0.83]
+2026-07-23 15:35:42.453 [main] INFO  o.a.c.c.C.[.[localhost].[/api] - Initializing Spring embedded WebApplicationContext
+2026-07-23 15:35:42.454 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1155 ms
+2026-07-23 15:35:42.937 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-2123"]
+2026-07-23 15:35:42.962 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port(s): 2123 (http) with context path '/api'
+2026-07-23 15:35:42.975 [main] INFO  com.ops.agent.AgentApplication - Started AgentApplication in 2.2 seconds (JVM running for 2.624)
+2026-07-23 15:35:42.978 [main] INFO  c.o.a.config.AgentStartupPathLogger - ========== EasyOps Agent å¯åŠ¨è·¯å¾„ ==========
+2026-07-23 15:35:42.978 [main] INFO  c.o.a.config.AgentStartupPathLogger - èŠ‚ç‚¹åç§°: default-node
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - ç›‘å¬ç«¯å£: 2123
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - Server åœ°å€: http://localhost:8081/api
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - æ•°æ®æ ¹ç›®å½• agent.data-path: C:\app\data
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - ç‰ˆæœ¬åŒ…ç›®å½•: C:\app\data\versions
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - æ—¥å¿—ç›®å½•: C:\app\data\logs
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - Jar è·¯å¾„ agent.jar-path: C:\app\agent.jar
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - é‡å¯æ¨¡å¼ agent.restart-mode: auto
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - é‡å¯è„šæœ¬ agent.restart-script: 
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - å‡çº§ä¸“ç”¨æ—¥å¿—: C:\app\data\logs\upgrade-restart.log
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - å·¥ä½œç›®å½• user.dir: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend
+2026-07-23 15:35:42.981 [main] INFO  c.o.a.config.AgentStartupPathLogger - ============================================
+[AutoRestartDaemon] Î´ÅäÖÃ AGENT_TOKEN£¬×ÔÓúÊØ»¤ÒÑ½ûÓÃ£¨ÄÚÍø¼ò»¯Ä£Ê½£©
+============================================================
+[HeartbeatDaemon] Î´ÅäÖÃ AGENT_TOKEN£¬ÒÑ×Ô¶¯Éú³É£¨ÄÚÍøÄ£Ê½£©
+[HeartbeatDaemon] ÇëÔÚ Server ½Úµã¹ÜÀíÖĞ×¢²á´Ë Token:
+[HeartbeatDaemon]   easyops-4da944874b8b40d5
+============================================================
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Sent OK for default-node (127.0.0.1), CPU=0.0%, Memory=2.1%
+2026-07-23 15:35:59.423 [http-nio-2123-exec-1] INFO  o.a.c.c.C.[.[localhost].[/api] - Initializing Spring DispatcherServlet 'dispatcherServlet'
+2026-07-23 15:35:59.423 [http-nio-2123-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Initializing Servlet 'dispatcherServlet'
+2026-07-23 15:35:59.425 [http-nio-2123-exec-1] INFO  o.s.web.servlet.DispatcherServlet - Completed initialization in 2 ms
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
+[Agent Heartbeat] Sending headers: X-Node-Name=default-node, X-Token=easyops-4da944874b8b40d5
+[Agent Heartbeat] Failed: 500 : "{"code":500,"message":"ÏµÍ³ÄÚ²¿´íÎó: DuplicateKeyException"}"
