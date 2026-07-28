@@ -86,6 +86,9 @@
               <span v-if="record.totalMemoryMb">{{ (record.totalMemoryMb / 1024).toFixed(1) }} GB</span>
               <span v-else>-</span>
             </template>
+            <template v-if="column.key === 'action'">
+              <a-button type="link" size="small" @click="openAgentDetail(record)">详情</a-button>
+            </template>
           </template>
         </a-table>
       </div>
@@ -147,6 +150,12 @@
               {{ processLabel(record.processStatus) }}
             </a-tag>
           </template>
+          <template v-if="column.key === 'processPid'">
+            <span v-if="record.processStatus === 'N/A'" style="color:#bfbfbf">静态资源</span>
+            <span v-else :style="{ fontWeight: 600, color: (record.processPid != null && record.processPid > 0) ? '#52c41a' : '#bfbfbf' }">
+              {{ record.processPid != null && record.processPid > 0 ? record.processPid : '-' }}
+            </span>
+          </template>
           <template v-if="column.key === 'healthStatus'">
             <div>
               <a-badge :status="badgeStatus(record.healthStatus)" :text="healthLabel(record.healthStatus)" />
@@ -164,7 +173,8 @@
           </template>
           <template v-if="column.key === 'memory'">
             <div>总: <b>{{ record.hostMemoryPercent != null ? record.hostMemoryPercent + '%' : '-' }}</b></div>
-            <div style="font-size:11px;color:#888">堆: {{ record.heapUsedMb || 0 }}/{{ record.heapMaxMb || 0 }}MB</div>
+            <div v-if="record.processStatus === 'N/A'" style="font-size:11px;color:#bfbfbf">堆: -</div>
+            <div v-else style="font-size:11px;color:#888">堆: {{ record.heapUsedMb || 0 }}/{{ record.heapMaxMb || 0 }}MB</div>
           </template>
           <template v-if="column.key === 'responseMs'">
             <span :style="{ color: (record.responseMs || 0) > 3000 ? '#ff4d4f' : (record.responseMs || 0) > 1000 ? '#faad14' : '#52c41a', fontWeight: 600 }">
@@ -204,7 +214,7 @@
       </div>
     </a-card>
 
-    <!-- 实例详情 Drawer -->
+    <!-- 实例详情 Drawer（应用监控 + Agent 状态 共用同一详情） -->
     <InstanceDetailDrawer
       :visible="drawerVisible"
       :record="drawerRecord"
@@ -256,9 +266,34 @@ const lastCollectTime = ref<number>()
 const collectIntervalSec = ref(60)
 const autoCollectEnabled = ref(true)
 const probeModalVisible = ref(false)
-// 实例详情 Drawer
+// 实例详情 Drawer（应用监控 + Agent 状态 共用）
 const drawerVisible = ref(false)
 const drawerRecord = ref<any>(null)
+// Agent 状态 sheet 的「详情」：复用应用监控的实例详情抽屉，把 Agent 自身当作一个 JVM 进程展示
+function openAgentDetail(record: AgentStatusItem) {
+  drawerRecord.value = {
+    nodeId: record.nodeId,
+    nodeName: record.nodeName,
+    projectName: '(Agent 自身)',
+    projectId: undefined as unknown as number, // 无 project，跳过实时刷新
+    processPid: record.agentPid ?? null,        // 进程即 Agent 自己
+    agentPid: record.agentPid ?? null,
+    processStatus: record.status === 1 ? 'RUNNING' : 'STOPPED',
+    healthStatus: record.status === 1 ? 'UP' : 'DOWN',
+    healthDetail: record.status === 1 ? 'Agent 在线' : 'Agent 离线',
+    hostCpuPercent: record.hostCpuPercent,
+    hostMemoryPercent: record.hostMemoryPercent,
+    diskUsagePercent: record.diskUsagePercent,
+    cpuPercent: null,
+    heapUsedMb: null,
+    heapMaxMb: null,
+    memoryMb: null,
+    gcCount: null,
+    gcTimeMs: null,
+    responseMs: null,
+  } as any
+  drawerVisible.value = true
+}
 const probeSaving = ref(false)
 const probeProjectId = ref<number>()
 const selectedRowKeys = ref<string[]>([])
@@ -320,7 +355,8 @@ const agentColumns = [
   { title: 'CPU 核数', dataIndex: 'cpuCores', key: 'cpuCores', width: 80 },
   { title: '系统', dataIndex: 'osInfo', key: 'osInfo', width: 160, ellipsis: true },
   { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80 },
-  { title: 'PID', dataIndex: 'agentPid', key: 'agentPid', width: 70 },
+  { title: 'Agent PID', dataIndex: 'agentPid', key: 'agentPid', width: 80 },
+  { title: '操作', key: 'action', width: 80, fixed: 'right' as const },
 ]
 
 // WebSocket状态
@@ -349,12 +385,13 @@ const columns = [
   { title: '应用', dataIndex: 'projectName', key: 'projectName', width: 120, fixed: 'left' as const },
   { title: '节点 / IP', key: 'nodeName', width: 140 },
   { title: '进程', key: 'processStatus', width: 80 },
+  { title: '应用PID', key: 'processPid', width: 95, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.processPid || 0) - (b.processPid || 0) },
   { title: '健康', key: 'healthStatus', width: 90, sorter: true },
   { title: 'CPU', key: 'cpu', width: 110, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.hostCpuPercent || 0) - (b.hostCpuPercent || 0) },
   { title: '内存', key: 'memory', width: 120 },
   { title: '响应', key: 'responseMs', width: 100, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.responseMs || 0) - (b.responseMs || 0), defaultSortOrder: 'descend' as const },
   { title: '采集时间', key: 'collectTime', width: 150 },
-  { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 70, fixed: 'right' as const }
 ]
 
 // 实时数据直接 patch 到 dashboard 源数据，无需独立缓存层
@@ -403,7 +440,7 @@ function healthLabel(status: string) {
   return ({ UP: '健康', DOWN: '异常', DEGRADED: '降级', UNKNOWN: '未采集' } as Record<string, string>)[status] || status
 }
 function processLabel(status?: string) {
-  return ({ RUNNING: '运行中', STOPPED: '已停止', UNKNOWN: '未知' } as Record<string, string>)[status || ''] || '-'
+  return ({ RUNNING: '运行中', STOPPED: '已停止', 'N/A': '静态资源', UNKNOWN: '未知' } as Record<string, string>)[status || ''] || '-'
 }
 
 // ====== 启动/停止/重启 ======

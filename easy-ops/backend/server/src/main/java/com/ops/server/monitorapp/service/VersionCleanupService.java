@@ -138,7 +138,7 @@ public class VersionCleanupService {
      * 使用线程池并发执行，单个 Agent 失败不影响其他
      */
     private void notifyAgentsDelete(Long projectId, String versionName) {
-        List<NodeModel> nodes = nodeMapper.findByStatus(null, 1, 1000, null);
+        List<NodeModel> nodes = nodeMapper.findByStatus(null, 1, 1000, null, null, null);
         if (nodes == null || nodes.isEmpty()) return;
 
         List<CompletableFuture<Void>> futures = new ArrayList<>();

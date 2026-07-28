@@ -4,6 +4,17 @@ import type {
   LogAggregateResult, LogSearchResult
 } from '../types'
 
+function triggerDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 /** 获取项目日志配置 */
 export function getLogProfile(projectId: number) {
   return request.get<any, Result<ProjectLogProfileModel>>('/logs/profile', {
@@ -69,4 +80,29 @@ export function searchLogs(params: {
   filePath?: string
 }) {
   return request.post<any, Result<LogSearchResult>>('/logs/search', params)
+}
+
+/** 下载日志（单节点或聚合，默认最新1000条） */
+export async function downloadLogs(params: {
+  projectId: number
+  nodeId?: number
+  filePath?: string
+  lines?: number
+  level?: string
+  mode?: 'single' | 'aggregate'
+}) {
+  const res = await request.get('/logs/download', {
+    params: {
+      projectId: params.projectId,
+      nodeId: params.nodeId,
+      filePath: params.filePath,
+      lines: params.lines || 1000,
+      level: params.level,
+      mode: params.mode || 'aggregate'
+    },
+    responseType: 'blob'
+  })
+  const fileName = `logs_${params.projectId}_${Date.now()}.txt`
+  triggerDownload(res as any as Blob, fileName)
+  return true
 }

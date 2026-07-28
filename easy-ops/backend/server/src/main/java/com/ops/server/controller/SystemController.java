@@ -10,6 +10,7 @@ import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.SysConfigMapper;
 import com.ops.server.mapper.UserMapper;
 import com.ops.server.service.CaptchaService;
+import com.ops.server.service.LoginAttemptService;
 import com.ops.server.config.AdminConfig;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,6 +42,9 @@ public class SystemController {
     private CaptchaService captchaService;
 
     @Autowired
+    private LoginAttemptService loginAttemptService;
+
+    @Autowired
     private AdminConfig adminConfig;
 
     /**
@@ -64,25 +68,38 @@ public class SystemController {
         if (username == null || password == null) {
             return Result.paramError("用户名和密码不能为空");
         }
+
+        // SEC: 检查账号是否已被锁定
+        String lockMsg = loginAttemptService.checkLocked(username);
+        if (lockMsg != null) {
+            return Result.error(ErrorCode.FORBIDDEN, lockMsg);
+        }
+
         if (!captchaService.verify(captchaId, captchaCode)) {
+            loginAttemptService.onFailure(username);
             return Result.paramError("验证码错误或已过期");
         }
 
         UserModel user = userMapper.findByUsername(username);
         if (user == null) {
+            loginAttemptService.onFailure(username);
             return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
-        // Verify password (simple comparison for demo)
+        // Verify password (BCrypt)
         String dbPassword = user.getPassword();
         boolean valid = bcryptCheck(password, dbPassword);
         if (!valid) {
+            loginAttemptService.onFailure(username);
             return Result.error(ErrorCode.UNAUTHORIZED, "用户名或密码错误");
         }
 
         if (user.getStatus() == 0) {
             return Result.error(ErrorCode.FORBIDDEN, "用户已禁用");
         }
+
+        // 登录成功，清除失败记录
+        loginAttemptService.onSuccess(username);
 
         // Generate token
         String token = generateToken();
@@ -116,10 +133,21 @@ public class SystemController {
     }
 
     /**
-     * POST /api/auth/reset - 将管理员密码重置为默认密码
+     * POST /api/auth/reset - 将管理员密码重置为默认密码（需管理员身份）
      */
     @PostMapping("/reset")
-    public Result<?> resetAdminPassword() {
+    public Result<?> resetAdminPassword(HttpServletRequest httpRequest) {
+        // SEC: 校验管理员 token
+        String authHeader = httpRequest.getHeader("Authorization");
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+        String token = authHeader.substring(7);
+        AuthInterceptor.UserAuthContext userAuth = authInterceptor.lookupUserAuth(token);
+        if (userAuth == null || !"admin".equalsIgnoreCase(userAuth.getRole())) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+
         UserModel admin = userMapper.findByUsername("admin");
         if (admin == null) {
             return Result.error(ErrorCode.SERVER_ERROR, "管理员用户不存在");
@@ -140,14 +168,6 @@ public class SystemController {
             operationLogMapper.insert(logModel);
         } catch (Exception e) {
             System.err.println("[Auth] Failed to write reset log: " + e.getMessage());
-        }
-
-        // 标记为默认密码
-        try {
-            sysConfigMapper.upsert("admin_password_is_default", "true",
-                "管理员使用默认密码", System.currentTimeMillis());
-        } catch (Exception e) {
-            // ignore
         }
 
         return Result.success("密码已重置为默认密码 " + defaultPwd + "（可通过 app.admin.default-password 配置）");
@@ -248,13 +268,6 @@ public class SystemController {
                 return Result.paramError(pwdError);
             }
             user.setPassword(hashPassword(newPassword));
-            // 标记密码已被用户手动修改（DataInitializer 据此判断是否覆盖）
-            try {
-                sysConfigMapper.upsert("admin_password_is_default", "false",
-                    "管理员密码已被用户修改", System.currentTimeMillis());
-            } catch (Exception e) {
-                // ignore
-            }
         } else {
             user.setPassword(existing.getPassword());
         }

@@ -10,11 +10,22 @@
 
       <!-- 基本信息 -->
       <a-descriptions title="📋 基本信息" bordered size="small" :column="3" style="margin-bottom: 16px">
+        <a-descriptions-item label="应用类型" :span="1">
+          <a-tag :color="project.projectType === 'frontend' ? 'cyan' : 'blue'">
+            {{ project.projectType === 'frontend' ? '🌐 前端应用' : '☕ 后端应用' }}
+          </a-tag>
+        </a-descriptions-item>
         <a-descriptions-item label="项目名称" :span="1">
           <span style="font-weight: 600">{{ project.name }}</span>
         </a-descriptions-item>
-        <a-descriptions-item label="Jar 包名" :span="1">
+        <a-descriptions-item label="Jar 包名" :span="1" v-if="project.projectType !== 'frontend'">
           <a-tag color="blue">{{ project.jarName || '-' }}</a-tag>
+        </a-descriptions-item>
+        <a-descriptions-item label="部署目录" :span="1">
+          <code>{{ project.deployDir || '-' }}</code>
+        </a-descriptions-item>
+        <a-descriptions-item label="解压后目录名" :span="1" v-if="project.projectType === 'frontend'">
+          <a-tag color="cyan">{{ project.frontendDirName || '-' }}</a-tag>
         </a-descriptions-item>
         <a-descriptions-item label="部署节点" :span="1">
           <a-space wrap>
@@ -22,21 +33,21 @@
             <template v-if="!project.nodeIds">-</template>
           </a-space>
         </a-descriptions-item>
-        <a-descriptions-item label="环境变量" :span="3">
+        <a-descriptions-item label="环境变量" :span="3" v-if="project.projectType !== 'frontend'">
           <code class="eo-code">{{ project.envVars || '-' }}</code>
         </a-descriptions-item>
       </a-descriptions>
 
-      <!-- JVM 参数 -->
-      <a-descriptions title="⚙️ JVM 参数" bordered size="small" :column="1" style="margin-bottom: 16px">
+      <!-- JVM 参数（仅后端） -->
+      <a-descriptions v-if="project.projectType !== 'frontend'" title="⚙️ JVM 参数" bordered size="small" :column="1" style="margin-bottom: 16px">
         <a-descriptions-item label="JVM 参数（G1GC）">
           <pre v-if="project.jvmOpts" class="eo-code">{{ project.jvmOpts }}</pre>
           <span v-else>-</span>
         </a-descriptions-item>
       </a-descriptions>
 
-      <!-- 脚本 -->
-      <a-descriptions title="📜 部署脚本" bordered size="small" :column="3" style="margin-bottom: 16px">
+      <!-- 脚本（仅后端） -->
+      <a-descriptions v-if="project.projectType !== 'frontend'" title="📜 部署脚本" bordered size="small" :column="3" style="margin-bottom: 16px">
         <a-descriptions-item label="启动脚本" :span="3">
           <pre v-if="project.startScript" class="eo-code eo-code--success">{{ project.startScript }}</pre>
           <span v-else class="eo-text-muted">未配置</span>
@@ -55,7 +66,11 @@
       <a-card title="📂 路径说明" size="small" style="margin-bottom: 16px; border-left: 4px solid #722ed1">
         <div style="font-size:13px;line-height:2">
           <div><b>部署目录</b>：<code>{{ project.deployDir || '未配置（将使用全局默认路径）' }}</code></div>
-          <div style="margin-top:6px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
+          <div v-if="project.projectType === 'frontend'">
+            <div><b>解压后目录名</b>：<code>{{ project.frontendDirName || '未配置' }}</code></div>
+            <div><b>最终路径</b>：<code>{{ project.deployDir || '{deployDir}' }}/{{ project.frontendDirName || '{dirName}' }}/</code></div>
+          </div>
+          <div v-else style="margin-top:6px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
             <div style="font-weight:500;margin-bottom:4px">以此为基础自动派生的路径：</div>
             <div>📦 <b>版本包存档</b> → <code>{{ project.deployDir || '{deployDir}' }}/versions/{版本名}/</code></div>
             <div>🌐 <b>前端静态资源</b> → <code>{{ project.frontendDeployDir || (project.deployDir ? project.deployDir + '/frontend/' : '{deployDir}/frontend/') }}</code></div>

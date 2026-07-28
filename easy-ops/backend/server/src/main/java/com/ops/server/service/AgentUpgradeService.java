@@ -97,7 +97,7 @@ public class AgentUpgradeService {
         int success = 0;
         int failed = 0;
         if (nodeIds == null || nodeIds.isEmpty()) {
-            List<NodeModel> online = nodeMapper.findByStatus(String.valueOf(NodeStatus.ONLINE.getCode()), 1, 10000, null);
+            List<NodeModel> online = nodeMapper.findByStatus(String.valueOf(NodeStatus.ONLINE.getCode()), 1, 10000, null, null, null);
             if (online != null) {
                 for (NodeModel node : online) {
                     Map<String, Object> item = upgradeOneSafe(node);

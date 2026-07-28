@@ -59,10 +59,10 @@ jwt:
   expire-ms: 86400000
 
 # 默认管理员密码 —— 唯一配置源，改这个值即可（重启生效）
-# 说明：仅在密码为默认值时自动刷新；用户手动改过的密码会被保留。
+# 优先级：YML 配置 > 用户自己设置的密码（每次启动都会用 YML 密码覆盖）
 app:
   admin:
-    default-password: Admin123!
+    default-password: Admin111!
 
 
 mybatis:

@@ -44,7 +44,9 @@ public class MonitorCollectorScheduler implements SchedulingConfigurer {
             return;
         }
         try {
-            collectorService.collectAll();
+            // 使用异步采集，不阻塞调度线程
+            String taskId = collectorService.collectAllAsync();
+            log.info("Monitor async collection started: taskId={}", taskId);
         } catch (Exception e) {
             log.error("Monitor collection failed: {}", e.getMessage());
         } finally {

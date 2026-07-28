@@ -32,6 +32,19 @@
             GROUP BY node_id
         ) t ON s.node_id = t.node_id AND s.collect_time = t.max_time
     </select>
+    <!-- 按 (项目,节点) 维度取每个应用各自的最新快照，避免同节点多应用时串用 PID/堆内存 -->
+    <select id="findLatestByProjectNodeIds" resultType="com.ops.common.model.MonitorSnapshotModel">
+        SELECT s.* FROM monitor_snapshot s
+        INNER JOIN (
+            SELECT project_id, node_id, MAX(collect_time) AS max_time
+            FROM monitor_snapshot
+            WHERE node_id IN
+            <foreach collection="nodeIds" item="nid" open="(" separator="," close=")">
+                #{nid}
+            </foreach>
+            GROUP BY project_id, node_id
+        ) t ON s.project_id = t.project_id AND s.node_id = t.node_id AND s.collect_time = t.max_time
+    </select>
     <select id="findHistory" resultType="com.ops.common.model.MonitorSnapshotModel">
         SELECT * FROM monitor_snapshot
         WHERE project_id = #{projectId}

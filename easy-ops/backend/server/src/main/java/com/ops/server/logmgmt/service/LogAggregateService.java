@@ -31,10 +31,15 @@ import java.util.regex.Pattern;
 @Service
 public class LogAggregateService {
 
-    private static final int MAX_NODES = 20;
+    private static final int MAX_NODES = 100;
+    private static final int BATCH_SIZE = 20;
     private static final int TAIL_LINES_PER_FILE = 100;
-    private static final int FETCH_TIMEOUT_SEC = 30;
-    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(10);
+    private static final int FETCH_TIMEOUT_SEC = 20;
+    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(15, r -> {
+        Thread t = new Thread(r, "log-aggregate");
+        t.setDaemon(true);
+        return t;
+    });
 
     @Autowired
     private AgentClient agentClient;
@@ -61,23 +66,31 @@ public class LogAggregateService {
 
         List<Map<String, Object>> allLines = new ArrayList<>();
         List<Map<String, Object>> nodeScopes = new ArrayList<>();
-        List<Future<NodeTailResult>> futures = new ArrayList<>();
-        for (Long nodeId : targets) {
-            futures.add(EXECUTOR.submit(new TailFetchTask(nodeId, profile, since, level)));
-        }
-        for (Future<NodeTailResult> future : futures) {
-            try {
-                NodeTailResult result = future.get(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
-                if (result != null) {
-                    if (result.scope != null) {
-                        nodeScopes.add(result.scope);
+
+        // 分批并发：每批 BATCH_SIZE 个节点，避免同时打垮所有 Agent
+        int totalNodes = targets.size();
+        for (int batchStart = 0; batchStart < totalNodes; batchStart += BATCH_SIZE) {
+            int batchEnd = Math.min(batchStart + BATCH_SIZE, totalNodes);
+            List<Long> batch = targets.subList(batchStart, batchEnd);
+
+            List<Future<NodeTailResult>> futures = new ArrayList<>();
+            for (Long nodeId : batch) {
+                futures.add(EXECUTOR.submit(new TailFetchTask(nodeId, profile, since, level)));
+            }
+            for (Future<NodeTailResult> future : futures) {
+                try {
+                    NodeTailResult result = future.get(FETCH_TIMEOUT_SEC, TimeUnit.SECONDS);
+                    if (result != null) {
+                        if (result.scope != null) {
+                            nodeScopes.add(result.scope);
+                        }
+                        if (result.lines != null) {
+                            allLines.addAll(result.lines);
+                        }
                     }
-                    if (result.lines != null) {
-                        allLines.addAll(result.lines);
-                    }
+                } catch (Exception ignored) {
+                    // 单节点失败跳过
                 }
-            } catch (Exception ignored) {
-                // 单节点失败跳过
             }
         }
 

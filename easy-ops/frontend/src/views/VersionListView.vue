@@ -11,13 +11,13 @@
         <a-space>
           <a-select v-model:value="projectId" style="width: 200px" placeholder="选择项目" @change="onProjectChange">
             <a-select-option v-for="p in projects" :key="p.id" :value="String(p.id)">
-              {{ p.name }}
+              {{ p.name }} {{ p.projectType === 'frontend' ? '(前端)' : '(后端)' }}
             </a-select-option>
           </a-select>
-          <a-button type="primary" :disabled="!projectId" @click="openUploadModal('jar')">
+          <a-button v-if="currentProject?.projectType !== 'frontend'" type="primary" :disabled="!projectId" @click="openUploadModal('jar')">
             <upload-outlined /> 上传 Jar 包
           </a-button>
-          <a-button :disabled="!projectId" @click="openUploadModal('frontend')">
+          <a-button v-if="currentProject?.projectType !== 'backend'" :disabled="!projectId" @click="openUploadModal('frontend')">
             <upload-outlined /> 上传前端 dist.zip
           </a-button>
         </a-space>

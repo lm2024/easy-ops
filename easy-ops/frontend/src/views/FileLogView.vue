@@ -47,7 +47,7 @@ const offset = ref(0)
 const lines = ref(200)
 
 async function fetchData() {
-  const res = await getNodes()
+  const res = await getNodes(1, 1000)
   nodes.value = res.data.list
 }
 

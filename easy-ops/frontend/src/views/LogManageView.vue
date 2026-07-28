@@ -90,6 +90,9 @@
             <a-button :disabled="viewMode !== 'page' || viewOffset <= 0" @click="prevPage">上一页</a-button>
             <a-button :disabled="viewMode !== 'page' || !viewHasMore" @click="nextPage">下一页</a-button>
             <a-button @click="switchToHistoryMode">从头浏览</a-button>
+            <a-button @click="handleDownloadSingle" :disabled="!nodeId || !filePath">
+              <download-outlined /> 下载日志
+            </a-button>
           </a-space>
           <div class="log-hint">
             自动扫描部署目录及 logs 子目录下所有 .log / .out 文件，不依赖固定文件名。
@@ -127,6 +130,9 @@
               <a-select-option value="WARN">WARN</a-select-option>
               <a-select-option value="INFO">INFO</a-select-option>
             </a-select>
+            <a-button @click="handleDownloadAggregate" :loading="aggLoading">
+              <download-outlined /> 下载
+            </a-button>
           </a-space>
           <a-alert
             v-if="aggDescription"
@@ -330,9 +336,9 @@ import { message } from 'ant-design-vue'
 import type { ProjectModel, NodeModel, LogFileInfo, LogAggregateEntry, ProjectLogProfileModel, LogNodeScope, LogSearchHit } from '../types'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
-import { discoverLogFiles, viewLog, aggregateLogs, searchLogs, getLogProfile, saveLogProfile } from '../api/logMgmt'
+import { discoverLogFiles, viewLog, aggregateLogs, searchLogs, getLogProfile, saveLogProfile, downloadLogs } from '../api/logMgmt'
 import { getGlobalPaths, type GlobalPaths } from '../api/system'
-import { FileTextOutlined, SearchOutlined, SettingOutlined } from '@ant-design/icons-vue'
+import { FileTextOutlined, SearchOutlined, SettingOutlined, DownloadOutlined } from '@ant-design/icons-vue'
 import dayjs from 'dayjs'
 
 const projects = ref<ProjectModel[]>([])
@@ -683,6 +689,38 @@ function showSearchDetail(item: LogSearchHit) {
   }
   detailContext.value = item.context || []
   detailVisible.value = true
+}
+
+async function handleDownloadSingle() {
+  if (!projectId.value || !nodeId.value || !filePath.value) return
+  try {
+    await downloadLogs({
+      projectId: projectId.value,
+      nodeId: nodeId.value,
+      filePath: filePath.value,
+      level: logLevel.value !== 'ALL' ? logLevel.value : undefined,
+      mode: 'single',
+      lines: 1000
+    })
+    message.success('下载成功')
+  } catch {
+    message.error('下载失败')
+  }
+}
+
+async function handleDownloadAggregate() {
+  if (!projectId.value) return
+  try {
+    await downloadLogs({
+      projectId: projectId.value,
+      level: aggLogLevel.value !== 'ALL' ? aggLogLevel.value : undefined,
+      mode: 'aggregate',
+      lines: 1000
+    })
+    message.success('下载成功')
+  } catch {
+    message.error('下载失败')
+  }
 }
 
 async function doSearch() {

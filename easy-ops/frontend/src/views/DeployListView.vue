@@ -480,7 +480,7 @@ async function loadProjects() {
 }
 
 async function loadNodes() {
-  const res = await getNodes()
+  const res = await getNodes(1, 1000)
   nodeList.value = res.data.list
   const map: Record<string, string> = {}
   res.data.list.forEach((n: any) => map[String(n.id)] = n.name + ' (' + n.ip + ')')
