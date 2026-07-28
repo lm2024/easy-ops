@@ -434,8 +434,8 @@ public class NodeController {
                 snap.setHealthDetail("Agent主动上报");
             }
 
-            // 设置进程状态（Agent在线即表示进程运行中）
-            snap.setProcessStatus("RUNNING");
+            // 进程状态默认未知，由下方 processes 列表决定
+            snap.setProcessStatus("STOPPED");
 
             // 解析应用进程指标（Agent 心跳上报）
             Object processesObj = metrics.get("processes");
