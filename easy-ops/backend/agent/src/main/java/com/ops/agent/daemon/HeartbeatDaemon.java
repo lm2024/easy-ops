@@ -185,22 +185,107 @@ public class HeartbeatDaemon implements CommandLineRunner {
         Map<String, Object> metrics = new HashMap<>();
 
         try {
-            // CPU使用率
+            // CPU使用率 - 使用 com.sun.management.OperatingSystemMXBean 获取真实CPU使用率
             OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
-            double cpuUsage = osBean.getSystemLoadAverage();
-            // 转换为百分比（0-100）
             int cpuCores = Runtime.getRuntime().availableProcessors();
-            double cpuUsagePercent = cpuUsage >= 0 ? (cpuUsage / cpuCores) * 100 : 0;
+
+            // 优先使用 getSystemCpuLoad()（Java 8 com.sun.management API）
+            double cpuUsagePercent = -1;
+            if (osBean instanceof com.sun.management.OperatingSystemMXBean) {
+                com.sun.management.OperatingSystemMXBean sunOsBean =
+                        (com.sun.management.OperatingSystemMXBean) osBean;
+                cpuUsagePercent = sunOsBean.getSystemCpuLoad() * 100; // 返回 0.0~1.0
+            }
+            // fallback: 系统负载转换（不太准，但总比没有好）
+            if (cpuUsagePercent < 0) {
+                double cpuUsage = osBean.getSystemLoadAverage();
+                cpuUsagePercent = cpuUsage >= 0 ? (cpuUsage / cpuCores) * 100 : 0;
+            }
             metrics.put("cpuUsagePercent", Math.round(cpuUsagePercent * 10.0) / 10.0);
 
-            // 内存使用率
+            // 内存使用率 - 采集真实的系统内存，而不是 JVM 内存
+            double memoryUsagePercent = 0;
+            long totalSystemMemoryMb = 0;
+            long usedSystemMemoryMb = 0;
+
+            String os = System.getProperty("os.name").toLowerCase();
+            if (os.contains("linux")) {
+                // Linux: 从 /proc/meminfo 读取真实系统内存
+                try {
+                    java.io.BufferedReader memReader = new java.io.BufferedReader(
+                            new java.io.FileReader("/proc/meminfo"));
+                    long memTotalKb = 0, memAvailableKb = 0;
+                    String memLine;
+                    while ((memLine = memReader.readLine()) != null) {
+                        if (memLine.startsWith("MemTotal:")) {
+                            memTotalKb = parseMemInfoValue(memLine);
+                        } else if (memLine.startsWith("MemAvailable:")) {
+                            memAvailableKb = parseMemInfoValue(memLine);
+                        }
+                        if (memTotalKb > 0 && memAvailableKb > 0) break;
+                    }
+                    memReader.close();
+                    if (memTotalKb > 0) {
+                        totalSystemMemoryMb = memTotalKb / 1024;
+                        usedSystemMemoryMb = (memTotalKb - memAvailableKb) / 1024;
+                        memoryUsagePercent = ((memTotalKb - memAvailableKb) * 100.0) / memTotalKb;
+                    }
+                } catch (Exception e) {
+                    System.err.println("[Agent Metrics] Failed to read /proc/meminfo: " + e.getMessage());
+                }
+            } else if (os.contains("mac") || os.contains("darwin")) {
+                // macOS: 通过 sysctl 获取总内存，vm_stat 获取使用量
+                try {
+                    totalSystemMemoryMb = getTotalMemoryMB();
+                    Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "vm_stat"});
+                    java.io.BufferedReader vmReader = new java.io.BufferedReader(
+                            new java.io.InputStreamReader(p.getInputStream()));
+                    // 第一行是 header: "Virtual Memory Statistics..."
+                    vmReader.readLine();
+                    long pageSize = 4096; // 默认页大小
+                    long freePages = 0, activePages = 0, inactivePages = 0, wiredPages = 0;
+                    String vmLine;
+                    while ((vmLine = vmReader.readLine()) != null) {
+                        if (vmLine.contains("page size of")) {
+                            // 提取页大小
+                            String[] parts = vmLine.split("\\s+");
+                            for (int i = 0; i < parts.length - 1; i++) {
+                                if (parts[i].matches("\\d+")) {
+                                    pageSize = Long.parseLong(parts[i]);
+                                    break;
+                                }
+                            }
+                        } else if (vmLine.startsWith("Pages free:")) {
+                            freePages = parseVmStatValue(vmLine);
+                        } else if (vmLine.startsWith("Pages active:")) {
+                            activePages = parseVmStatValue(vmLine);
+                        } else if (vmLine.startsWith("Pages inactive:")) {
+                            inactivePages = parseVmStatValue(vmLine);
+                        } else if (vmLine.startsWith("Pages wired down:")) {
+                            wiredPages = parseVmStatValue(vmLine);
+                        }
+                    }
+                    vmReader.close();
+                    long usedPages = activePages + inactivePages + wiredPages;
+                    long totalPages = usedPages + freePages;
+                    if (totalPages > 0) {
+                        usedSystemMemoryMb = (usedPages * pageSize) / (1024 * 1024);
+                        memoryUsagePercent = (usedPages * 100.0) / totalPages;
+                    }
+                } catch (Exception e) {
+                    System.err.println("[Agent Metrics] Failed to get macOS memory: " + e.getMessage());
+                }
+            }
+
+            // 使用系统级内存数据
+            metrics.put("memoryUsagePercent", Math.round(memoryUsagePercent * 10.0) / 10.0);
+            metrics.put("totalSystemMemoryMb", totalSystemMemoryMb);
+            metrics.put("usedSystemMemoryMb", usedSystemMemoryMb);
+
+            // JVM 内存（Agent 自身）- 独立字段，不与系统内存混淆
             MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
             MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
             MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
-            long totalMemory = heapUsage.getUsed() + nonHeapUsage.getUsed();
-            long maxMemory = Runtime.getRuntime().maxMemory();
-            double memoryUsagePercent = (totalMemory * 100.0) / maxMemory;
-            metrics.put("memoryUsagePercent", Math.round(memoryUsagePercent * 10.0) / 10.0);
             metrics.put("heapUsedMB", heapUsage.getUsed() / (1024 * 1024));
             metrics.put("heapMaxMB", heapUsage.getMax() / (1024 * 1024));
 
@@ -212,6 +297,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
             metrics.put("diskUsagePercent", getRootDiskUsagePercent());
 
             // 系统负载
+            double cpuUsage = osBean.getSystemLoadAverage();
             metrics.put("systemLoadAverage", cpuUsage);
 
             // 进程运行时间（毫秒）
@@ -226,6 +312,36 @@ public class HeartbeatDaemon implements CommandLineRunner {
         }
 
         return metrics;
+    }
+
+    /**
+     * 解析 /proc/meminfo 中的值（单位 kB）
+     * 格式：MemTotal:       16384000 kB
+     */
+    private long parseMemInfoValue(String line) {
+        try {
+            String[] parts = line.split("\\s+");
+            if (parts.length >= 2) {
+                return Long.parseLong(parts[1]);
+            }
+        } catch (NumberFormatException ignored) {}
+        return 0;
+    }
+
+    /**
+     * 解析 vm_stat 中的值（页数）
+     * 格式：Pages free:       123456.
+     */
+    private long parseVmStatValue(String line) {
+        try {
+            String[] parts = line.split("\\s+");
+            for (String part : parts) {
+                if (part.matches("\\d+\\.?")) {
+                    return Long.parseLong(part.replace(".", ""));
+                }
+            }
+        } catch (NumberFormatException ignored) {}
+        return 0;
     }
 
     /**
