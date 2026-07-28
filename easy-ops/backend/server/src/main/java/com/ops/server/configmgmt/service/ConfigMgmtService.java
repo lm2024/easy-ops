@@ -38,7 +38,8 @@ public class ConfigMgmtService {
     private static final Logger log = LoggerFactory.getLogger(ConfigMgmtService.class);
 
     private static final int FETCH_TIMEOUT_SEC = 10;
-    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(10);
+    private static final int SCAN_TIMEOUT_SEC = 15; // 单节点扫描超时
+    private static final ExecutorService EXECUTOR = Executors.newFixedThreadPool(20); // 增加线程池大小
 
     @Autowired
     private ProjectConfigFileMapper configFileMapper;
@@ -255,11 +256,13 @@ public class ConfigMgmtService {
 
     /**
      * 扫描项目所有在线节点的 config/ 目录，发现未注册的配置文件并自动导入。
+     * 使用并行扫描优化性能，支持 100+ 节点场景。
      */
     public List<ProjectConfigFileModel> scanAndImport(Long projectId) {
         ProjectModel project = requireProject(projectId);
         List<Long> nodeIds = parseNodeIds(project);
         if (nodeIds.isEmpty()) {
+            log.info("[ConfigScan] 项目 {} 无关联节点，返回已有记录", projectId);
             return configFileMapper.findByProjectId(projectId);
         }
         String deployDir = project.getDeployDir();
@@ -269,37 +272,86 @@ public class ConfigMgmtService {
 
         // 收集所有在线节点的扫描结果（去重）
         Map<String, ProjectConfigFileModel> discovered = new LinkedHashMap<>();
+        int onlineCount = 0;
+        int successCount = 0;
+
+        // 预加载所有节点信息，避免循环中重复查询数据库
+        Map<Long, NodeModel> nodeMap = new HashMap<>();
         for (Long nodeId : nodeIds) {
             NodeModel node = nodeMapper.findById(nodeId);
-            if (node == null || node.getStatus() == null || node.getStatus() != 1) continue;
+            if (node != null) {
+                nodeMap.put(nodeId, node);
+            }
+        }
+
+        // 筛选在线节点
+        List<Long> onlineNodeIds = new ArrayList<>();
+        for (Long nodeId : nodeIds) {
+            NodeModel node = nodeMap.get(nodeId);
+            if (node != null && Integer.valueOf(1).equals(node.getStatus())) {
+                onlineNodeIds.add(nodeId);
+                onlineCount++;
+            } else {
+                log.debug("[ConfigScan] 节点 {} 离线或不存在，跳过", nodeId);
+            }
+        }
+
+        if (onlineNodeIds.isEmpty()) {
+            log.info("[ConfigScan] 项目 {} 无在线节点，返回已有记录", projectId);
+            return configFileMapper.findByProjectId(projectId);
+        }
+
+        // 并行扫描所有在线节点
+        log.info("[ConfigScan] 项目 {} 开始并行扫描: 在线节点数={}", projectId, onlineCount);
+        long startTime = System.currentTimeMillis();
+
+        // 使用线程池并行扫描，限制并发数避免过载
+        List<Future<Map<Long, List<Map<String, Object>>>>> futures = new ArrayList<>();
+        int batchSize = Math.min(onlineNodeIds.size(), 20); // 每批最多 20 个节点
+
+        for (int i = 0; i < onlineNodeIds.size(); i += batchSize) {
+            List<Long> batch = onlineNodeIds.subList(i, Math.min(i + batchSize, onlineNodeIds.size()));
+            futures.add(EXECUTOR.submit(new ScanBatchTask(batch, nodeMap, deployDir)));
+        }
+
+        // 收集结果
+        for (Future<Map<Long, List<Map<String, Object>>>> future : futures) {
             try {
-                Map<String, String> params = new HashMap<>();
-                params.put("deployDir", deployDir);
-                Object raw = agentClient.getForMap(node, "/file/config/discover", params);
-                if (raw == null) continue;
-                if (!(raw instanceof Map)) continue;
-                Object dataObj = ((Map<?,?>) raw).get("data");
-                if (!(dataObj instanceof List)) continue;
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> files = (List<Map<String, Object>>) dataObj;
-                for (Map<String, Object> f : files) {
-                    String relativePath = f.get("relativePath") != null ? f.get("relativePath").toString() : "";
-                    if (relativePath.isEmpty()) continue;
-                    String fileKey = relativePath; // dedup by relativePath
-                    if (!discovered.containsKey(fileKey)) {
-                        ProjectConfigFileModel model = new ProjectConfigFileModel();
-                        model.setProjectId(projectId);
-                        model.setFileName(f.get("fileName") != null ? f.get("fileName").toString() : "");
-                        model.setRelativePath(relativePath);
-                        model.setIsPrimary(0);
-                        discovered.put(fileKey, model);
+                Map<Long, List<Map<String, Object>>> batchResult = future.get(SCAN_TIMEOUT_SEC, TimeUnit.SECONDS);
+                if (batchResult != null) {
+                    for (Map.Entry<Long, List<Map<String, Object>>> entry : batchResult.entrySet()) {
+                        Long nodeId = entry.getKey();
+                        List<Map<String, Object>> files = entry.getValue();
+                        if (files != null && !files.isEmpty()) {
+                            log.info("[ConfigScan] 节点 {} 发现 {} 个配置文件", nodeId, files.size());
+                            for (Map<String, Object> f : files) {
+                                String relativePath = f.get("relativePath") != null ? f.get("relativePath").toString() : "";
+                                if (relativePath.isEmpty()) {
+                                    log.debug("[ConfigScan] 跳过空 relativePath 的文件: {}", f);
+                                    continue;
+                                }
+                                String fileKey = relativePath;
+                                if (!discovered.containsKey(fileKey)) {
+                                    ProjectConfigFileModel model = new ProjectConfigFileModel();
+                                    model.setProjectId(projectId);
+                                    model.setFileName(f.get("fileName") != null ? f.get("fileName").toString() : "");
+                                    model.setRelativePath(relativePath);
+                                    model.setIsPrimary(0);
+                                    discovered.put(fileKey, model);
+                                }
+                            }
+                            successCount++;
+                        }
                     }
                 }
             } catch (Exception e) {
-                // 单节点失败跳过
-                log.warn("[ConfigScan] 节点 {} 扫描失败: {}", nodeId, e.getMessage());
+                log.error("[ConfigScan] 批量扫描任务失败: {}", e.getMessage(), e);
             }
         }
+
+        long scanTime = System.currentTimeMillis() - startTime;
+        log.info("[ConfigScan] 项目 {} 扫描完成: 在线节点数={}, 成功节点数={}, 发现文件数={}, 耗时={}ms",
+                projectId, onlineCount, successCount, discovered.size(), scanTime);
 
         // 查询已有 DB 记录
         List<ProjectConfigFileModel> existing = configFileMapper.findByProjectId(projectId);
@@ -321,8 +373,95 @@ public class ConfigMgmtService {
             }
         }
 
+        log.info("[ConfigScan] 项目 {} 导入完成: 新导入 {} 个文件", projectId, imported.size());
+
         // 返回完整列表
         return configFileMapper.findByProjectId(projectId);
+    }
+
+    /**
+     * 批量扫描任务：并行扫描一批节点
+     */
+    private class ScanBatchTask implements Callable<Map<Long, List<Map<String, Object>>>> {
+        private final List<Long> nodeIds;
+        private final Map<Long, NodeModel> nodeMap;
+        private final String deployDir;
+
+        ScanBatchTask(List<Long> nodeIds, Map<Long, NodeModel> nodeMap, String deployDir) {
+            this.nodeIds = nodeIds;
+            this.nodeMap = nodeMap;
+            this.deployDir = deployDir;
+        }
+
+        @Override
+        public Map<Long, List<Map<String, Object>>> call() {
+            Map<Long, List<Map<String, Object>>> result = new HashMap<>();
+            List<Future<Map.Entry<Long, List<Map<String, Object>>>>> futures = new ArrayList<>();
+
+            for (Long nodeId : nodeIds) {
+                futures.add(EXECUTOR.submit(new ScanNodeTask(nodeId, nodeMap.get(nodeId), deployDir)));
+            }
+
+            for (Future<Map.Entry<Long, List<Map<String, Object>>>> future : futures) {
+                try {
+                    Map.Entry<Long, List<Map<String, Object>>> entry = future.get(SCAN_TIMEOUT_SEC, TimeUnit.SECONDS);
+                    if (entry != null && entry.getValue() != null) {
+                        result.put(entry.getKey(), entry.getValue());
+                    }
+                } catch (Exception e) {
+                    log.warn("[ConfigScan] 节点扫描任务超时或失败: {}", e.getMessage());
+                }
+            }
+            return result;
+        }
+    }
+
+    /**
+     * 单节点扫描任务
+     */
+    private class ScanNodeTask implements Callable<Map.Entry<Long, List<Map<String, Object>>>> {
+        private final Long nodeId;
+        private final NodeModel node;
+        private final String deployDir;
+
+        ScanNodeTask(Long nodeId, NodeModel node, String deployDir) {
+            this.nodeId = nodeId;
+            this.node = node;
+            this.deployDir = deployDir;
+        }
+
+        @Override
+        public Map.Entry<Long, List<Map<String, Object>>> call() {
+            try {
+                Map<String, String> params = new HashMap<>();
+                params.put("deployDir", deployDir);
+                log.debug("[ConfigScan] 请求节点 {} 扫描配置文件: deployDir={}", nodeId, deployDir);
+                Map<String, Object> raw = agentClient.getForMap(node, "/file/config/discover", params);
+                if (raw == null) {
+                    log.warn("[ConfigScan] 节点 {} 返回空响应", nodeId);
+                    return null;
+                }
+                // 检查 Agent 返回的 Result 包装
+                Object codeObj = raw.get("code");
+                if (codeObj instanceof Number && ((Number) codeObj).intValue() != 200) {
+                    Object message = raw.get("message");
+                    log.warn("[ConfigScan] 节点 {} 返回错误: code={}, message={}", nodeId, codeObj, message);
+                    return null;
+                }
+                Object dataObj = raw.get("data");
+                if (!(dataObj instanceof List)) {
+                    log.warn("[ConfigScan] 节点 {} 返回数据格式异常: data 类型={}", nodeId,
+                            dataObj != null ? dataObj.getClass().getSimpleName() : "null");
+                    return null;
+                }
+                @SuppressWarnings("unchecked")
+                List<Map<String, Object>> files = (List<Map<String, Object>>) dataObj;
+                return new java.util.AbstractMap.SimpleEntry<>(nodeId, files);
+            } catch (Exception e) {
+                log.error("[ConfigScan] 节点 {} 扫描失败: {}", nodeId, e.getMessage(), e);
+                return null;
+            }
+        }
     }
 
     private Map<Long, String> fetchNodeHashes(List<Long> nodeIds, String configPath) {

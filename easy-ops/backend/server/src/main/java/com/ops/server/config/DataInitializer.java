@@ -1,7 +1,6 @@
 package com.ops.server.config;
 
 import com.ops.common.model.UserModel;
-import com.ops.server.mapper.SysConfigMapper;
 import com.ops.server.mapper.UserMapper;
 import org.mindrot.jbcrypt.BCrypt;
 import org.slf4j.Logger;
@@ -17,26 +16,21 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * 密码来源：application.yml → app.admin.default-password（通过 AdminConfig 读取）
  *
+ * 优先级：YML 配置 > 用户自己设置的密码
+ *
  * 行为逻辑：
  *   ┌─ 无 admin 用户 → INSERT 创建（用 YML 配置的密码）
  *   │
- *   ├─ 有 admin 用户 ─┬─ 用户手动改过密码 → 不覆盖
- *   │                 │   （sys_config.admin_password_is_default = false）
- *   │                 │
- *   │                 └─ 仍是默认密码 → 用 YML 最新配置刷新
- *   │                     （支持改 YML 后重启更新）
+ *   └─ 有 admin 用户 → 每次启动都用 YML 密码覆盖
+ *       （YML 配置永远是第一优先级）
  */
 @Component
 public class DataInitializer {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);
-    static final String CONFIG_KEY = "admin_password_is_default";
 
     @Autowired
     private UserMapper userMapper;
-
-    @Autowired
-    private SysConfigMapper sysConfigMapper;
 
     @Autowired
     private AdminConfig adminConfig;
@@ -58,17 +52,12 @@ public class DataInitializer {
             return;
         }
 
-        String isDefault = sysConfigMapper.getValue(CONFIG_KEY);
-        if ("false".equals(isDefault)) {
-            log.info("[DataInit] 管理员密码已被用户手动修改，保留用户设置");
-            return;
-        }
-
+        // 每次启动都用 YML 密码覆盖（YML 配置永远是第一优先级）
         String newHash = BCrypt.hashpw(defaultPwd, BCrypt.gensalt(10));
         admin.setPassword(newHash);
         admin.setUpdateTime(now);
         userMapper.update(admin);
-        log.info("[DataInit] 已刷新管理员默认密码（来源：app.admin.default-password）");
+        log.info("[DataInit] 已同步管理员密码（来源：app.admin.default-password）");
     }
 
     private void createAdmin(String defaultPwd, long now) {
@@ -81,8 +70,6 @@ public class DataInitializer {
         newAdmin.setCreateTime(now);
         newAdmin.setUpdateTime(now);
         userMapper.insert(newAdmin);
-
-        sysConfigMapper.upsert(CONFIG_KEY, "true", "管理员是否使用默认密码", System.currentTimeMillis());
         log.info("[DataInit] 已创建默认管理员（密码来自 app.admin.default-password）");
     }
 }

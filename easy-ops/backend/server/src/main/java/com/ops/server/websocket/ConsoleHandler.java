@@ -17,15 +17,24 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 控制台 WebSocket：JSON 协议 + Agent 远程 Shell。
+ * Agent 调用通过独立线程池异步执行，不阻塞 WebSocket I/O 线程。
  */
 @Component
 public class ConsoleHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ConsoleHandler.class);
+
+    /** Agent 调用专用线程池，避免阻塞 WebSocket I/O 线程 */
+    private static final ExecutorService AGENT_EXECUTOR = Executors.newFixedThreadPool(
+            Math.min(Runtime.getRuntime().availableProcessors() * 2, 16));
 
     private final Map<String, Map<String, WebSocketSession>> sessionGroups = new ConcurrentHashMap<>();
     private final Map<String, SessionState> sessionState = new ConcurrentHashMap<>();
@@ -61,17 +70,20 @@ public class ConsoleHandler extends TextWebSocketHandler {
             closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
+        final String nid = nodeId;
 
-        NodeModel node = agentClient.findNode(nodeId);
+        NodeModel node = agentClient.findNode(nid);
         if (node == null) {
             sendJson(session, event("error", "text", "节点不存在，请刷新页面后重试"));
             closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
         String nodeName = node.getName();
-        String cwd;
+        final String[] cwdHolder = new String[1];
         try {
-            cwd = agentClient.resolveCwd(nodeId);
+            cwdHolder[0] = CompletableFuture
+                    .supplyAsync(() -> agentClient.resolveCwd(nid), AGENT_EXECUTOR)
+                    .get(10, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Console init failed node={}: {}", nodeId, e.getMessage());
             String endpoint = (node.getIp() != null ? node.getIp() : "127.0.0.1") + ":"
@@ -81,6 +93,7 @@ public class ConsoleHandler extends TextWebSocketHandler {
             closeQuietly(session, CloseStatus.SERVER_ERROR);
             return;
         }
+        String cwd = cwdHolder[0];
 
         SessionState state = new SessionState(projectId, nodeId, nodeName, cwd);
         sessionState.put(session.getId(), state);
@@ -179,8 +192,13 @@ public class ConsoleHandler extends TextWebSocketHandler {
 
         String wrapped = "cd " + shellQuote(state.cwd) + " && " + normalized;
         try {
-            Map<String, Object> response = agentClient.exec(state.nodeId, wrapped);
+            Map<String, Object> response = CompletableFuture
+                    .supplyAsync(() -> agentClient.exec(state.nodeId, wrapped), AGENT_EXECUTOR)
+                    .get(35, TimeUnit.SECONDS);
             writeExecResult(session, state, response);
+        } catch (java.util.concurrent.TimeoutException e) {
+            sendJson(session, event("error", "text", "命令执行超时（>35秒），Agent 可能负载过高"));
+            sendMeta(session, state, 1, 0L);
         } catch (Exception e) {
             sendJson(session, event("error", "text", "命令执行失败: " + e.getMessage()));
             sendMeta(session, state, 1, 0L);
@@ -198,7 +216,9 @@ public class ConsoleHandler extends TextWebSocketHandler {
             cdCmd = "cd " + shellQuote(state.cwd) + " && cd " + shellQuote(target) + " && pwd";
         }
         try {
-            Map<String, Object> response = agentClient.exec(state.nodeId, cdCmd);
+            Map<String, Object> response = CompletableFuture
+                    .supplyAsync(() -> agentClient.exec(state.nodeId, cdCmd), AGENT_EXECUTOR)
+                    .get(35, TimeUnit.SECONDS);
             String stdout = agentClient.extractStdout(response);
             Integer exitCode = agentClient.extractExitCode(response);
             if (stdout != null && !stdout.trim().isEmpty() && (exitCode == null || exitCode == 0)) {
@@ -209,6 +229,9 @@ public class ConsoleHandler extends TextWebSocketHandler {
                 sendJson(session, event("error", "text", "目录不存在或无法进入: " + (target.isEmpty() ? "~" : target)));
                 sendMeta(session, state, exitCode != null ? exitCode : 1, agentClient.extractElapsed(response));
             }
+        } catch (java.util.concurrent.TimeoutException e) {
+            sendJson(session, event("error", "text", "cd 超时，Agent 可能负载过高"));
+            sendMeta(session, state, 1, 0L);
         } catch (Exception e) {
             sendJson(session, event("error", "text", "cd 失败: " + e.getMessage()));
             sendMeta(session, state, 1, 0L);
@@ -219,7 +242,9 @@ public class ConsoleHandler extends TextWebSocketHandler {
         String line = String.valueOf(json.getOrDefault("line", ""));
         int cursor = parseInt(json.get("cursor"), line.length());
         try {
-            List<String> candidates = agentClient.complete(state.nodeId, state.cwd, line, cursor);
+            List<String> candidates = CompletableFuture
+                    .supplyAsync(() -> agentClient.complete(state.nodeId, state.cwd, line, cursor), AGENT_EXECUTOR)
+                    .get(10, TimeUnit.SECONDS);
             sendJson(session, event("complete", "candidates", candidates));
         } catch (Exception e) {
             sendJson(session, event("complete", "candidates", java.util.Collections.emptyList()));

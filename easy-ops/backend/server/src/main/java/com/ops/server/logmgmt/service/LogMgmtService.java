@@ -194,6 +194,52 @@ public class LogMgmtService {
                 contextLines, maxResults, profile, level, filePath);
     }
 
+    /**
+     * 下载日志（单节点或聚合，最新 lines 行）
+     */
+    public String downloadLog(Long projectId, Long nodeId, String filePath,
+                               int lines, String level, String mode) {
+        ProjectLogProfileModel profile = requireProfile(projectId);
+        ProjectModel project = requireProject(projectId);
+
+        if (nodeId != null && "single".equals(mode)) {
+            // 单节点下载
+            NodeModel node = requireOnlineNode(nodeId);
+            String logPath = filePath != null ? filePath : resolveViewPath(project, profile, null);
+            if (logPath == null || logPath.trim().isEmpty()) {
+                throw new BusinessException(ErrorCode.PARAM_ERROR, "请先选择日志文件");
+            }
+            Map<String, String> params = new HashMap<>();
+            params.put("logPath", logPath);
+            params.put("lines", String.valueOf(Math.min(lines, 1000)));
+            if (level != null && !level.trim().isEmpty() && !"ALL".equalsIgnoreCase(level.trim())) {
+                params.put("level", level.trim());
+            }
+            Map<String, Object> agentResp = agentClient.getForMap(node, "/file/log/tail", params);
+            agentClient.ensureAgentSuccess(agentResp);
+            Map<String, Object> agentData = agentClient.extractDataMap(agentResp);
+            return agentData != null && agentData.get("content") != null
+                    ? agentData.get("content").toString() : "";
+        } else {
+            // 聚合下载：获取所有节点最新日志
+            Map<String, Object> aggResult = aggregate(projectId, null, 1, Math.min(lines, 1000), null, level);
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> aggLines = (List<Map<String, Object>>) aggResult.get("lines");
+            StringBuilder sb = new StringBuilder();
+            if (aggLines != null) {
+                for (Map<String, Object> line : aggLines) {
+                    Object nodeName = line.get("nodeName");
+                    Object sourceFile = line.get("sourceFile");
+                    Object content = line.get("content");
+                    sb.append("[").append(nodeName != null ? nodeName : "-").append("]")
+                      .append("[").append(sourceFile != null ? sourceFile : "-").append("] ")
+                      .append(content != null ? content : "").append("\n");
+                }
+            }
+            return sb.toString();
+        }
+    }
+
     private ProjectLogProfileModel requireProfile(Long projectId) {
         return getProfile(projectId);
     }

@@ -1,227 +1,250 @@
 <template>
-  <div
-    ref="shellRef"
-    class="login-shell"
-    :style="mouseVars"
-    @mousemove="onMouseMove"
-    @mousedown="onClick"
-  >
-    <div class="grid-glow" aria-hidden="true" />
-
-    <span
-      v-for="r in ripples"
-      :key="r.id"
-      class="click-pulse"
-      :style="{ left: `${r.x}px`, top: `${r.y}px` }"
-      aria-hidden="true"
-    />
-
-  <section class="narrative">
-    <header class="brand">
-      <span class="brand-icon mono">&gt;_</span>
-      <span class="brand-name">EasyOps</span>
-    </header>
-
-    <div class="hero">
-      <h1 class="headline">
-        让每一次发布，都可<span class="headline-highlight">观测</span>、可<span class="headline-highlight">回滚</span>、可<span class="headline-highlight">审计</span>
-      </h1>
-      <div class="capabilities">
-        <template v-for="(cap, i) in capabilities" :key="cap">
-          <span v-if="i > 0" class="cap-sep">|</span>
-          <span class="mono cap-text"><span class="prompt">&gt;_</span> {{ cap }}</span>
-        </template>
-      </div>
+  <div class="login-page" :data-theme="themeMode">
+    <!-- 背景装饰 -->
+    <div class="login-bg">
+      <div class="login-bg__gradient" />
+      <div class="login-bg__grid" />
     </div>
 
-    <div ref="topologyWrapRef" class="topology-wrap">
-      <svg class="topology" viewBox="0 0 800 520" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
-        <defs>
-          <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stop-color="#e8ff59" stop-opacity="0.45" />
-            <stop offset="45%" stop-color="#e8ff59" stop-opacity="0.12" />
-            <stop offset="100%" stop-color="#e8ff59" stop-opacity="0" />
-          </radialGradient>
-          <filter id="hubBlur" x="-100%" y="-100%" width="300%" height="300%">
-            <feGaussianBlur stdDeviation="9" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
-        </defs>
-
-        <!-- 太阳光晕 -->
-        <circle class="sun-halo" cx="400" cy="260" r="190" fill="url(#sunGlow)" />
-        <g class="radar-rings">
-          <circle class="ring ring-static" cx="400" cy="260" r="78" />
-          <circle class="ring ring-static" cx="400" cy="260" r="120" />
-          <circle class="ring ring-static" cx="400" cy="260" r="165" />
-          <circle class="ring ring-1" cx="400" cy="260" r="78" />
-          <circle class="ring ring-2" cx="400" cy="260" r="120" />
-          <circle class="ring ring-3" cx="400" cy="260" r="165" />
-        </g>
-
-        <g class="topo-edges">
-          <line v-for="(e, i) in edges" :key="i" :x1="e.x1" :y1="e.y1" :x2="e.x2" :y2="e.y2" />
-        </g>
-
-        <g class="topo-nodes">
-          <g v-for="n in nodes" :key="n.id">
-            <circle
-              :cx="n.x" :cy="n.y"
-              :r="n.hub ? 14 : 5"
-              :class="{ hub: n.hub }"
-              :filter="n.hub ? 'url(#hubBlur)' : undefined"
-            />
-            <text :x="n.tx" :y="n.ty" :text-anchor="'start'" class="mono node-label">{{ n.label }}</text>
-          </g>
-        </g>
-      </svg>
-    </div>
-  </section>
-
-  <section class="auth">
-    <div class="auth-inner">
-      <h2 class="auth-title">登录 EasyOps 控制台</h2>
-      <p class="auth-sub">欢迎回来，请输入您的账号</p>
-      <p class="auth-hint mono">默认账号 admin · 密码 Admin123!（区分大小写）</p>
-
-      <a-config-provider :theme="formTheme">
-        <a-form :model="formState" @finish="handleLogin" layout="vertical" class="auth-form">
-          <a-form-item name="username" :rules="[{ required: true, message: '请输入用户名' }]">
-            <a-input v-model:value="formState.username" placeholder="用户名" size="large" autocomplete="username">
-              <template #prefix><svg class="field-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5.5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></template>
-            </a-input>
-          </a-form-item>
-          <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
-            <a-input-password v-model:value="formState.password" placeholder="密码" size="large" autocomplete="current-password">
-              <template #prefix><svg class="field-icon" viewBox="0 0 16 16" fill="none"><rect x="3.5" y="7" width="9" height="6.5" rx="1" stroke="currentColor" stroke-width="1.2"/><path d="M5.5 7V5.5a2.5 2.5 0 015 0V7" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></template>
-            </a-input-password>
-          </a-form-item>
-          <a-form-item name="captchaCode" :rules="[{ required: true, message: '请输入验证码' }]">
-            <div class="captcha-row">
-              <a-input v-model:value="formState.captchaCode" placeholder="验证码" size="large" maxlength="6" />
-              <img v-if="captchaImage" :src="captchaImage" class="captcha-img" alt="验证码" title="点击刷新" @click="loadCaptcha" />
-              <a-button size="large" @click="loadCaptcha">刷新</a-button>
+    <!-- 主容器 -->
+    <div class="login-container">
+      <!-- 左侧品牌 -->
+      <div class="login-brand">
+        <div class="login-brand__content">
+          <div class="login-brand__logo">
+            <div class="login-brand__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+              </svg>
             </div>
-          </a-form-item>
-          <a-form-item>
-            <button ref="ctaRef" type="submit" class="cta" :disabled="loading">{{ loading ? '登录中…' : '登 录' }}</button>
-          </a-form-item>
-        </a-form>
-          <div class="reset-row">
-            <a class="reset-link" @click="handleReset">管理员密码重置为默认</a>
+            <span class="login-brand__name">EasyOps</span>
           </div>
 
-      </a-config-provider>
+          <h1 class="login-brand__title">
+            智能运维
+            <br />
+            <span class="login-brand__title--accent">管理平台</span>
+          </h1>
+
+          <p class="login-brand__desc">
+            一站式分布式运维解决方案
+            <br />
+            监控 · 部署 · 管理 · 自愈
+          </p>
+
+          <div class="login-brand__features">
+            <div class="login-brand__feature">
+              <div class="login-brand__feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+                </svg>
+              </div>
+              <span>实时监控</span>
+            </div>
+            <div class="login-brand__feature">
+              <div class="login-brand__feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                </svg>
+              </div>
+              <span>一键部署</span>
+            </div>
+            <div class="login-brand__feature">
+              <div class="login-brand__feature-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                </svg>
+              </div>
+              <span>安全可靠</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 主题切换 -->
+        <button class="login-theme-btn" @click="toggleTheme" :title="themeMode === 'dark' ? '切换白天模式' : '切换夜间模式'">
+          <svg v-if="themeMode === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="5" />
+            <line x1="12" y1="1" x2="12" y2="3" />
+            <line x1="12" y1="21" x2="12" y2="23" />
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+            <line x1="1" y1="12" x2="3" y2="12" />
+            <line x1="21" y1="12" x2="23" y2="12" />
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- 右侧登录表单 -->
+      <div class="login-form-wrapper">
+        <div class="login-form-card">
+          <div class="login-form-header">
+            <h2 class="login-form-title">欢迎回来</h2>
+            <p class="login-form-subtitle">请输入您的账号登录系统</p>
+          </div>
+
+          <a-config-provider :theme="formTheme">
+            <a-form :model="formState" @finish="handleLogin" layout="vertical" class="login-form" size="large">
+              <a-form-item name="username" :rules="[{ required: true, message: '请输入用户名' }]">
+                <a-input v-model:value="formState.username" placeholder="用户名" autocomplete="username">
+                  <template #prefix>
+                    <svg class="login-form__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  </template>
+                </a-input>
+              </a-form-item>
+
+              <a-form-item name="password" :rules="[{ required: true, message: '请输入密码' }]">
+                <a-input-password v-model:value="formState.password" placeholder="密码" autocomplete="current-password">
+                  <template #prefix>
+                    <svg class="login-form__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                    </svg>
+                  </template>
+                </a-input-password>
+              </a-form-item>
+
+              <a-form-item name="captchaCode" :rules="[{ required: true, message: '请输入验证码' }]">
+                <div class="login-captcha">
+                  <div class="login-captcha__input">
+                    <a-input v-model:value="formState.captchaCode" placeholder="验证码" maxlength="5" size="large">
+                      <template #prefix>
+                        <svg class="login-form__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      </template>
+                    </a-input>
+                  </div>
+                  <div class="login-captcha__wrapper">
+                    <div class="login-captcha__img" @click="loadCaptcha" :title="captchaExpired ? '验证码已过期，点击刷新' : '点击刷新验证码'">
+                      <img v-if="captchaImage" :src="captchaImage" alt="验证码" />
+                      <span v-else class="login-captcha__loading">加载中...</span>
+                      <div v-if="captchaExpired" class="login-captcha__expired-overlay">
+                        <span>已过期</span>
+                      </div>
+                    </div>
+                    <div class="login-captcha__timer">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="login-captcha__timer-icon">
+                        <circle cx="12" cy="12" r="10" />
+                        <polyline points="12 6 12 12 16 14" />
+                      </svg>
+                      <span :class="{ 'login-captcha__timer--expired': captchaExpired }">
+                        {{ captchaExpired ? '已过期' : captchaCountdown + 's' }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </a-form-item>
+
+              <a-form-item>
+                <a-button type="primary" html-type="submit" block :loading="loading" :disabled="loading" class="login-btn">
+                  {{ loading ? '登录中...' : '登 录' }}
+                </a-button>
+              </a-form-item>
+            </a-form>
+          </a-config-provider>
+
+          <div class="login-form-footer">
+            <span class="login-form-hint">请输入您的账号密码登录系统</span>
+          </div>
+        </div>
+
+        <p class="login-copyright">© 2024 EasyOps. All rights reserved.</p>
+      </div>
     </div>
-    <p class="copyright mono">© 2024 EasyOps. All rights reserved.</p>
-  </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
-import { login, getCaptcha, resetAdminPassword } from '../api/auth'
-import { message, Modal } from 'ant-design-vue'
+import { useAppStore } from '../stores/app'
+import { login, getCaptcha } from '../api/auth'
+import { message } from 'ant-design-vue'
+import { getAntTheme } from '../theme/themes'
 import type { ThemeConfig } from 'ant-design-vue/es/config-provider/context'
+import type { ThemeMode } from '../theme/themes'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const appStore = useAppStore()
 const loading = ref(false)
-const shellRef = ref<HTMLElement | null>(null)
-const topologyWrapRef = ref<HTMLElement | null>(null)
-const ctaRef = ref<HTMLButtonElement | null>(null)
 
-const capabilities = ['节点编排', '部署流水线', '实时监控']
+const themeMode = computed<ThemeMode>(() => appStore.themeMode)
 
-const HUB_X = 400
-const HUB_Y = 260
+function toggleTheme() {
+  appStore.toggleTheme()
+}
 
-const nodes = [
-  { id: 1, x: HUB_X, y: HUB_Y, tx: 422, ty: 264, label: 'api-gateway  v2.4.3', hub: true },
-  { id: 2, x: 140, y: 95, tx: 32, ty: 91, label: 'user-service  v1.8.2' },
-  { id: 3, x: 660, y: 88, tx: 672, ty: 84, label: 'order-service  v1.0.0' },
-  { id: 4, x: 95, y: 400, tx: 12, ty: 404, label: 'payment-service  v2.3.1' },
-  { id: 5, x: 700, y: 395, tx: 712, ty: 391, label: 'mysql  8.0.34' },
-  { id: 6, x: 530, y: 445, tx: 542, ty: 449, label: 'inventory-service  v1.9.0' },
-  { id: 7, x: 265, y: 72, tx: 277, ty: 68, label: 'redis-cache  v6.2.1' },
-  { id: 8, x: 555, y: 112, tx: 567, ty: 108, label: 'nginx-ingress  v1.9.0' },
-  { id: 9, x: 72, y: 252, tx: 2, ty: 256, label: 'monitor-agent  v3.2.0' },
-  { id: 10, x: 725, y: 268, tx: 737, ty: 272, label: 'log-collector  v2.1.0' }
-]
-
-const edges = [
-  ...nodes.filter(n => !n.hub).map(n => ({ x1: HUB_X, y1: HUB_Y, x2: n.x, y2: n.y })),
-  { x1: 140, y1: 95, x2: 660, y2: 88 },
-  { x1: 140, y1: 95, x2: 265, y2: 72 },
-  { x1: 660, y1: 88, x2: 555, y2: 112 },
-  { x1: 265, y1: 72, x2: 555, y2: 112 },
-  { x1: 95, y1: 400, x2: 700, y2: 395 },
-  { x1: 72, y1: 252, x2: 140, y2: 95 },
-  { x1: 72, y1: 252, x2: 95, y2: 400 },
-  { x1: 725, y1: 268, x2: 700, y2: 395 },
-  { x1: 725, y1: 268, x2: 660, y2: 88 },
-  { x1: 530, y1: 445, x2: 700, y2: 395 },
-  { x1: 530, y1: 445, x2: 95, y2: 400 }
-]
+const formTheme = computed<ThemeConfig>(() => getAntTheme(appStore.themeMode))
 
 const formState = reactive({ username: '', password: '', captchaCode: '' })
 const captchaId = ref('')
 const captchaImage = ref('')
 
+// 验证码倒计时相关
+const CAPTCHA_EXPIRE_SECONDS = 120 // 验证码有效期2分钟
+const captchaCountdown = ref(CAPTCHA_EXPIRE_SECONDS)
+const captchaExpired = ref(false)
+let countdownTimer: ReturnType<typeof setInterval> | null = null
+
+// 启动倒计时
+function startCountdown() {
+  // 清除之前的定时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+  }
+  
+  captchaCountdown.value = CAPTCHA_EXPIRE_SECONDS
+  captchaExpired.value = false
+  
+  countdownTimer = setInterval(() => {
+    captchaCountdown.value--
+    
+    if (captchaCountdown.value <= 0) {
+      captchaExpired.value = true
+      clearInterval(countdownTimer!)
+      countdownTimer = null
+      
+      // 自动刷新验证码
+      message.warning('验证码已过期，正在自动刷新...')
+      loadCaptcha()
+    }
+  }, 1000)
+}
+
+// 加载验证码
 async function loadCaptcha() {
   try {
     const res = await getCaptcha()
     captchaId.value = res.data.captchaId
     captchaImage.value = res.data.imageBase64
     formState.captchaCode = ''
-  } catch { /* interceptor */ }
+    
+    // 重新启动倒计时
+    startCountdown()
+  } catch { /* interceptor handles error */ }
 }
 
-const formTheme: ThemeConfig = {
-  token: {
-    colorBgContainer: '#0f0f10',
-    colorText: '#e5e5e5',
-    colorTextPlaceholder: '#525252',
-    colorBorder: '#2a2a2a',
-    colorPrimary: '#e8ff59',
-    controlHeightLG: 48,
-    borderRadius: 6,
-    fontSize: 14
-  }
-}
-
-interface Ripple { id: number; x: number; y: number }
-const ripples = ref<Ripple[]>([])
-let rippleId = 0
-const mouse = reactive({ x: 0, y: 0 })
-
-const mouseVars = computed(() => ({
-  '--mx': `${mouse.x}px`,
-  '--my': `${mouse.y}px`
-}))
-
-function onMouseMove(e: MouseEvent) {
-  if (!shellRef.value) return
-  const rect = shellRef.value.getBoundingClientRect()
-  mouse.x = e.clientX - rect.left
-  mouse.y = e.clientY - rect.top
-}
-
-function onClick(e: MouseEvent) {
-  if (!shellRef.value) return
-  const rect = shellRef.value.getBoundingClientRect()
-  const id = ++rippleId
-  ripples.value.push({ id, x: e.clientX - rect.left, y: e.clientY - rect.top })
-  setTimeout(() => { ripples.value = ripples.value.filter(r => r.id !== id) }, 550)
-}
-
+// 登录处理
 async function handleLogin() {
   if (loading.value) return
+  
+  // 检查验证码是否过期
+  if (captchaExpired.value) {
+    message.warning('验证码已过期，请刷新验证码')
+    return
+  }
+  
   try {
     loading.value = true
     const res = await login(formState.username, formState.password, captchaId.value, formState.captchaCode)
@@ -242,372 +265,515 @@ async function handleLogin() {
   }
 }
 
-async function handleReset() {
-  Modal.confirm({
-    title: "确认重置管理员密码?",
-    content: "密码将恢复为系统默认值（可在 app.admin.default-password 中配置）",
-    okText: "确认重置",
-    cancelText: "取消",
-    okButtonProps: { danger: true },
-    onOk: async () => {
-      try {
-        await resetAdminPassword()
-        message.success("管理员密码已重置为默认密码")
-        loadCaptcha()
-      } catch {
-        message.error("重置失败，请联系管理员")
-      }
-    }
-  })
-}
-
-function alignSunWithButton() {
-  const shell = shellRef.value
-  const wrap = topologyWrapRef.value
-  const btn = ctaRef.value
-  if (!shell || !wrap || !btn) return
-  const shellRect = shell.getBoundingClientRect()
-  const btnRect = btn.getBoundingClientRect()
-  const centerY = btnRect.top + btnRect.height / 2 - shellRect.top
-  wrap.style.top = `${centerY}px`
-}
-
 onMounted(() => {
   authStore.logout()
   loadCaptcha()
-  nextTick(alignSunWithButton)
-  window.addEventListener('resize', alignSunWithButton)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', alignSunWithButton)
+  // 清理定时器
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
 })
 </script>
 
 <style scoped>
-.login-shell {
-  --bg: #0a0a0b;
-  --surface: #0f0f10;
-  --text: #fafafa;
-  --muted: #737373;
-  --accent: #e8ff59;
-  --accent-text: #0a0a0b;
-  --sans: 'Geist', 'IBM Plex Sans', system-ui, sans-serif;
-  --mono: 'JetBrains Mono', ui-monospace, monospace;
+/* ===== 登录页面样式 - 参考现代大厂风格 ===== */
 
-  display: grid;
-  grid-template-columns: 1.15fr 0.85fr;
+/* 页面容器 */
+.login-page {
   min-height: 100dvh;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--sans);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   position: relative;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
+  font-family: 'Geist', 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
-.mono { font-family: var(--mono); }
+/* 背景装饰 */
+.login-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
 
-.grid-glow {
+.login-bg__gradient {
   position: absolute;
   inset: 0;
-  background: radial-gradient(
-    560px circle at var(--mx, 50%) var(--my, 50%),
-    rgba(232, 255, 89, 0.06) 0%,
-    transparent 52%
-  );
-  pointer-events: none;
-  z-index: 0;
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(232, 255, 89, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(56, 189, 248, 0.1), transparent),
+    radial-gradient(ellipse 50% 50% at 0% 100%, rgba(168, 85, 247, 0.08), transparent);
 }
 
-.click-pulse {
+[data-theme='light'] .login-bg__gradient {
+  background: 
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(101, 163, 13, 0.15), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(37, 99, 235, 0.08), transparent),
+    radial-gradient(ellipse 50% 50% at 0% 100%, rgba(168, 85, 247, 0.05), transparent);
+}
+
+.login-bg__grid {
   position: absolute;
-  width: 8px;
-  height: 8px;
-  margin: -4px 0 0 -4px;
-  border-radius: 50%;
-  background: var(--accent);
-  opacity: 0.8;
-  pointer-events: none;
-  z-index: 5;
-  animation: click-fade 0.55s ease-out forwards;
+  inset: 0;
+  background-image: 
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
 }
 
-@keyframes click-fade {
-  to { transform: scale(14); opacity: 0; }
+[data-theme='light'] .login-bg__grid {
+  background-image: 
+    linear-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.03) 1px, transparent 1px);
 }
 
-/* ── 左侧 ── */
-.narrative {
+/* 主容器 */
+.login-container {
   position: relative;
   z-index: 1;
   display: flex;
-  flex-direction: column;
+  width: 100%;
+  max-width: 1200px;
   min-height: 100dvh;
-  padding: 2.25rem 2.5rem 1.5rem;
+  padding: 2rem;
 }
 
-.brand {
+/* 左侧品牌 */
+.login-brand {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 3rem;
+  position: relative;
+}
+
+.login-brand__content {
+  max-width: 560px;
+}
+
+.login-brand__logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 3rem;
+}
+
+.login-brand__icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--eo-primary);
+  border-radius: 12px;
+  color: var(--eo-primary-text);
+}
+
+.login-brand__icon svg {
+  width: 28px;
+  height: 28px;
+}
+
+.login-brand__name {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--eo-text);
+}
+
+.login-brand__title {
+  font-size: clamp(2rem, 4vw, 3.5rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--eo-text);
+  margin: 0 0 1.5rem;
+}
+
+.login-brand__title--accent {
+  background: linear-gradient(135deg, var(--eo-primary), #38bdf8);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.login-brand__desc {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--eo-text-secondary);
+  margin: 0 0 3rem;
+}
+
+.login-brand__features {
+  display: flex;
+  gap: 2rem;
+}
+
+.login-brand__feature {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-shrink: 0;
+  padding: 12px 16px;
+  background: var(--eo-bg-elevated);
+  border: 1px solid var(--eo-border);
+  border-radius: 12px;
+  transition: all 0.2s ease;
 }
 
-.brand-icon {
-  display: inline-flex;
+.login-brand__feature:hover {
+  border-color: var(--eo-primary);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px var(--eo-shadow);
+}
+
+.login-brand__feature-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
   background: rgba(232, 255, 89, 0.1);
-  border: 1px solid rgba(232, 255, 89, 0.4);
-  border-radius: 6px;
-  color: var(--accent);
-  font-size: 13px;
+  border-radius: 8px;
+  color: var(--eo-primary);
 }
 
-.brand-name {
-  font-size: 19px;
-  font-weight: 600;
+[data-theme='light'] .login-brand__feature-icon {
+  background: rgba(101, 163, 13, 0.1);
 }
 
-.hero {
-  flex-shrink: 0;
-  margin-top: 2rem;
-  max-width: 540px;
-  position: relative;
-  z-index: 2;
+.login-brand__feature-icon svg {
+  width: 20px;
+  height: 20px;
 }
 
-.headline {
-  font-size: clamp(1.75rem, 2.6vw, 2.5rem);
-  font-weight: 600;
-  line-height: 1.32;
-  letter-spacing: -0.025em;
-  margin: 0 0 1.25rem;
-}
-
-.headline-highlight {
-  color: var(--accent);
-  font-size: 1.125em;
-}
-
-.capabilities {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0 16px;
-}
-
-.cap-sep { color: #3f3f46; font-size: 14px; }
-
-.cap-text {
-  font-size: 16px;
-  color: #a3a3a3;
-  letter-spacing: 0.02em;
-}
-
-.prompt {
-  color: var(--accent);
-  font-size: 16px;
-}
-
-/* 拓扑与右侧登录按钮水平对齐 */
-.topology-wrap {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.topology {
-  width: 118%;
-  max-width: 900px;
-  height: auto;
-  overflow: visible;
-}
-
-.sun-halo {
-  pointer-events: none;
-}
-
-.radar-rings .ring-static {
-  fill: none;
-  stroke: rgba(232, 255, 89, 0.1);
-  stroke-width: 1;
-}
-
-.radar-rings .ring {
-  fill: none;
-  stroke: rgba(232, 255, 89, 0.22);
-  stroke-width: 1;
-  transform-origin: 400px 260px;
-  transform-box: fill-box;
-}
-
-.ring-1 { animation: radar-pulse 3.2s ease-out infinite; }
-.ring-2 { animation: radar-pulse 3.2s ease-out 1s infinite; }
-.ring-3 { animation: radar-pulse 3.2s ease-out 2s infinite; }
-
-@keyframes radar-pulse {
-  0% { opacity: 0.65; transform: scale(1); }
-  100% { opacity: 0; transform: scale(1.12); }
-}
-
-.topo-edges line {
-  stroke: rgba(255, 255, 255, 0.14);
-  stroke-width: 1;
-}
-
-.topo-nodes circle {
-  fill: #52525b;
-  stroke: rgba(255, 255, 255, 0.22);
-  stroke-width: 1;
-}
-
-.topo-nodes circle.hub {
-  fill: var(--accent);
-  stroke: none;
-}
-
-.node-label {
-  font-size: 10.5px;
-  fill: #525252;
-}
-
-/* ── 右侧 ── */
-.auth {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2rem 3.5rem 3.5rem;
-}
-
-.auth-inner {
-  width: 100%;
-  max-width: 420px;
-}
-
-.auth-title {
-  font-size: 1.7rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 8px;
-}
-.field-label {
-  display: block;
-  font-size: 13px;
+.login-brand__feature span {
+  font-size: 0.875rem;
   font-weight: 500;
-  color: var(--accent);
-  margin-bottom: 10px;
+  color: var(--eo-text);
 }
-.field-icon {
-  width: 16px;
-  height: 16px;
-  color: #525252;
-}
-.auth-form :deep(.ant-form-item) { margin-bottom: 1.35rem; }
-.auth-form :deep(.ant-input),
-.auth-form :deep(.ant-input-affix-wrapper) {
-  background: var(--surface) !important;
-  border: 1px solid #2a2a2a !important;
-  border-radius: 6px !important;
-  box-shadow: none !important;
-  height: 48px !important;
-  padding: 0 14px !important;
-}
-.auth-form :deep(.ant-input),
-.auth-form :deep(.ant-input-password input) {
-  color: #e5e5e5 !important;
-  font-size: 14px !important;
-}
-.auth-form :deep(.ant-input-password input) {
-  background: transparent !important;
-}
-.auth-form :deep(input::placeholder) { color: #525252 !important; }
-.auth-form :deep(.ant-input-prefix) { margin-right: 10px !important; }
-.auth-form :deep(.ant-input-affix-wrapper:hover) { border-color: #404040 !important; }
-.auth-form :deep(.ant-input-affix-wrapper-focused) {
-  border-color: rgba(232, 255, 89, 0.5) !important;
-  box-shadow: 0 0 0 1px rgba(232, 255, 89, 0.1) !important;
-}
-.auth-form :deep(.ant-input-password-icon) { color: #525252 !important; }
-.cta {
-  width: 100%;
-  height: 50px;
-  margin-top: 0.75rem;
-  border: none;
-  border-radius: 6px;
-  background: var(--accent);
-  color: var(--accent-text);
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: 0.1em;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.cta:hover:not(:disabled) { opacity: 0.92; }
-.cta:disabled { opacity: 0.5; }
-.captcha-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.captcha-row :deep(.ant-input) {
-  flex: 1;
-}
-.captcha-img {
-  height: 48px;
-  border-radius: 6px;
-  cursor: pointer;
-  border: 1px solid #2a2a2a;
-}
-.copyright {
+
+/* 主题切换按钮 */
+.login-theme-btn {
   position: absolute;
-  right: 2.5rem;
-  bottom: 1.5rem;
-  font-size: 10px;
-  color: #404040;
+  bottom: 2rem;
+  left: 3rem;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--eo-bg-elevated);
+  border: 1px solid var(--eo-border);
+  border-radius: 50%;
+  color: var(--eo-text-secondary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.login-theme-btn:hover {
+  color: var(--eo-primary);
+  border-color: var(--eo-primary);
+  transform: scale(1.05);
+}
+
+.login-theme-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* 右侧登录表单 */
+.login-form-wrapper {
+  flex: 0 0 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+}
+
+.login-form-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--eo-bg-elevated);
+  border: 1px solid var(--eo-border);
+  border-radius: 20px;
+  padding: 2.5rem;
+  box-shadow: 0 20px 60px var(--eo-shadow);
+  backdrop-filter: blur(20px);
+}
+
+.login-form-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.login-form-title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--eo-text);
+  margin: 0 0 0.5rem;
+  letter-spacing: -0.02em;
+}
+
+.login-form-subtitle {
+  font-size: 0.875rem;
+  color: var(--eo-text-secondary);
   margin: 0;
 }
-@media (max-width: 960px) {
-  .login-shell { grid-template-columns: 1fr; }
-  .narrative { min-height: auto; padding-bottom: 1rem; }
-  .topology-wrap {
-    position: relative;
-    top: auto;
-    transform: none;
-    min-height: 320px;
-    margin-top: 2rem;
-  }
-  .topology { width: 100%; }
-  .auth { padding: 2rem 1.5rem 3rem; }
+
+/* 表单样式 */
+.login-form {
+  margin-bottom: 1.5rem;
 }
-@media (prefers-reduced-motion: reduce) {
-  .ring-1, .ring-2, .ring-3 { animation: none; opacity: 0; }
-  .click-pulse { display: none; }
+
+.login-form :deep(.ant-form-item) {
+  margin-bottom: 1.25rem;
 }
-.reset-row {
-  text-align: center;
-  margin-top: -0.5rem;
+
+.login-form :deep(.ant-input),
+.login-form :deep(.ant-input-affix-wrapper) {
+  height: 48px;
+  border-radius: 12px;
+  background: var(--eo-bg-muted);
+  border: 1px solid var(--eo-border);
+  transition: all 0.2s ease;
 }
-.reset-link {
-  font-size: 12px;
-  color: #525252;
+
+.login-form :deep(.ant-input:hover),
+.login-form :deep(.ant-input-affix-wrapper:hover) {
+  border-color: var(--eo-primary);
+}
+
+.login-form :deep(.ant-input:focus),
+.login-form :deep(.ant-input-affix-wrapper-focused) {
+  border-color: var(--eo-primary);
+  box-shadow: 0 0 0 3px rgba(232, 255, 89, 0.15);
+}
+
+[data-theme='light'] .login-form :deep(.ant-input:focus),
+[data-theme='light'] .login-form :deep(.ant-input-affix-wrapper-focused) {
+  box-shadow: 0 0 0 3px rgba(101, 163, 13, 0.15);
+}
+
+.login-form__icon {
+  width: 18px;
+  height: 18px;
+  color: var(--eo-text-muted);
+}
+
+/* 验证码 */
+.login-captcha {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.login-captcha__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.login-captcha__input :deep(.ant-input-affix-wrapper) {
+  height: 48px;
+  border-radius: 12px;
+  background: var(--eo-bg-muted);
+  border: 1px solid var(--eo-border);
+}
+
+.login-captcha__wrapper {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-captcha__img {
+  width: 160px;
+  height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
   cursor: pointer;
-  transition: color 0.15s;
-  text-decoration: none;
+  border: 1px solid var(--eo-border);
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--eo-bg-muted);
+  position: relative;
 }
-.reset-link:hover {
-  color: var(--accent);
+
+.login-captcha__img:hover {
+  border-color: var(--eo-primary);
+  transform: translateY(-1px);
+}
+
+.login-captcha__img img {
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.login-captcha__loading {
+  font-size: 0.75rem;
+  color: var(--eo-text-muted);
+}
+
+.login-captcha__expired-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(239, 68, 68, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  backdrop-filter: blur(2px);
+}
+
+.login-captcha__timer {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: var(--eo-text-muted);
+  transition: color 0.2s ease;
+}
+
+.login-captcha__timer-icon {
+  width: 12px;
+  height: 12px;
+}
+
+.login-captcha__timer--expired {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+/* 登录按钮 */
+.login-btn {
+  height: 48px !important;
+  border-radius: 12px !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  background: var(--eo-primary) !important;
+  border-color: var(--eo-primary) !important;
+  color: var(--eo-primary-text) !important;
+  box-shadow: 0 4px 16px rgba(232, 255, 89, 0.3);
+  transition: all 0.2s ease !important;
+}
+
+[data-theme='light'] .login-btn {
+  box-shadow: 0 4px 16px rgba(101, 163, 13, 0.3);
+}
+
+.login-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(232, 255, 89, 0.4) !important;
+}
+
+[data-theme='light'] .login-btn:hover:not(:disabled) {
+  box-shadow: 0 6px 24px rgba(101, 163, 13, 0.4) !important;
+}
+
+.login-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* 底部 */
+.login-form-footer {
+  text-align: center;
+  padding-top: 1rem;
+  border-top: 1px solid var(--eo-border);
+}
+
+.login-form-hint {
+  font-size: 0.75rem;
+  color: var(--eo-text-muted);
+}
+
+.login-copyright {
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: var(--eo-text-muted);
+  text-align: center;
+}
+
+/* ===== 响应式 ===== */
+@media (max-width: 1024px) {
+  .login-container {
+    flex-direction: column;
+    min-height: auto;
+    padding: 1rem;
+  }
+
+  .login-brand {
+    padding: 2rem 1.5rem;
+    text-align: center;
+  }
+
+  .login-brand__content {
+    max-width: 100%;
+  }
+
+  .login-brand__logo {
+    justify-content: center;
+  }
+
+  .login-brand__title {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  .login-brand__desc {
+    margin-bottom: 2rem;
+  }
+
+  .login-brand__features {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .login-theme-btn {
+    position: relative;
+    bottom: auto;
+    left: auto;
+    margin: 2rem auto 0;
+  }
+
+  .login-form-wrapper {
+    flex: 1;
+    padding: 1rem;
+  }
+
+  .login-form-card {
+    padding: 2rem;
+  }
+}
+
+@media (max-width: 640px) {
+  .login-brand__features {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .login-brand__feature {
+    width: 100%;
+    max-width: 280px;
+    justify-content: center;
+  }
+
+  .login-form-card {
+    padding: 1.5rem;
+    border-radius: 16px;
+  }
 }
 </style>

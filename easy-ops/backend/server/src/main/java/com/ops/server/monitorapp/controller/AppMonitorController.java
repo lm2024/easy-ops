@@ -110,13 +110,14 @@ public class AppMonitorController {
             if (node != null) nodeMap.put(nodeId, node);
         }
 
-        // 批量查询所有最新快照（一次查询代替N次）
-        Map<Long, MonitorSnapshotModel> snapMap = new HashMap<>();
+        // 批量查询所有最新快照（一次查询代替N次），按 (项目, 节点) 维度取各自最新，
+        // 避免同节点多应用时串用 PID / 堆内存（例如前端静态资源项目误显示后端应用的 PID）。
+        Map<String, MonitorSnapshotModel> snapMap = new HashMap<>();
         if (!allNodeIds.isEmpty()) {
-            List<MonitorSnapshotModel> snapshots = snapshotMapper.findLatestByNodeIds(new ArrayList<>(allNodeIds));
+            List<MonitorSnapshotModel> snapshots = snapshotMapper.findLatestByProjectNodeIds(new ArrayList<>(allNodeIds));
             if (snapshots != null) {
                 for (MonitorSnapshotModel snap : snapshots) {
-                    snapMap.put(snap.getNodeId(), snap);
+                    snapMap.put(snap.getProjectId() + "_" + snap.getNodeId(), snap);
                 }
             }
         }
@@ -133,7 +134,7 @@ public class AppMonitorController {
             List<Map<String, Object>> nodes = new ArrayList<>();
             for (Long nodeId : nodeIds) {
                 NodeModel node = nodeMap.get(nodeId);
-                MonitorSnapshotModel snap = snapMap.get(nodeId);
+                MonitorSnapshotModel snap = snapMap.get(project.getId() + "_" + nodeId);
                 if (snap != null) {
                     if ("UP".equals(snap.getHealthStatus())) up++;
                     else if ("DOWN".equals(snap.getHealthStatus())) down++;
@@ -342,6 +343,24 @@ public class AppMonitorController {
     }
 
     /**
+     * GET /api/monitor/app/node/refresh - 实时重新采集单个节点（不落库、不告警），保证详情页拿到 Agent 当前真实 PID。
+     * 详情抽屉打开时调用，避免因为最近一次快照被「补充采集」覆盖而显示 PID 未知。
+     */
+    @GetMapping("/app/node/refresh")
+    public Result<?> refreshNodeDetail(@RequestParam Long projectId, @RequestParam Long nodeId) {
+        if (!securityContext.hasProjectPermission(projectId)) {
+            return Result.error(403, "无权限访问该项目");
+        }
+        ProjectModel project = projectMapper.findById(projectId);
+        NodeModel node = nodeMapper.findById(nodeId);
+        if (project == null || node == null) {
+            return Result.error(404, "项目或节点不存在");
+        }
+        MonitorSnapshotModel snap = collectorService.collectOne(project, node, false);
+        return Result.success(buildNodeInfo(snap, node));
+    }
+
+    /**
      * GET /api/monitor/app/history - 指标历史曲线
      */
     @GetMapping("/app/history")
@@ -407,6 +426,8 @@ public class AppMonitorController {
         info.put("healthDetail", snap.getHealthDetail());
         info.put("processStatus", snap.getProcessStatus());
         info.put("processPid", snap.getProcessPid());
+        // Agent 自身 PID（与“Agent 状态”页一致，取自节点心跳上报，便于在应用详情里同时核对两个 PID）
+        info.put("agentPid", node != null ? node.getAgentPid() : null);
         info.put("cpuPercent", snap.getCpuPercent());
         info.put("memoryMb", snap.getMemoryMb());
         info.put("heapUsedMb", snap.getHeapUsedMb());

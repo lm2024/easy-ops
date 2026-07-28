@@ -56,7 +56,13 @@ public class DeployController {
     @Value("${server.path:./data}")
     private String serverPath;
 
-    private final RestTemplate restTemplate = new RestTemplate();
+    /**
+     * 共享的 RestTemplate Bean（连接池 + 超时），替代无超时的裸实例。
+     * 部署线程中的 Agent 调用由 AgentClient（自带 5s/10s 超时）统一管理，
+     * 直接 HTTP 调用的文件传输等场景使用此 Bean 保证超时不阻塞。
+     */
+    @Autowired
+    private RestTemplate restTemplate;
 
     /**
      * 部署锁：projectId -> lock
@@ -134,7 +140,21 @@ public class DeployController {
             return Result.success(data);
         }
 
-        // ====== 立即部署：生成 deployId，后台异步执行 ======
+        // ====== 立即部署：获取部署锁，生成 deployId，后台异步执行 ======
+        // 防止同一项目并发部署：使用标志位而非 ReentrantLock（跨线程释放限制）
+        if (deployLocks.putIfAbsent(projectId, new ReentrantLock()) != null) {
+            // 检查旧锁是否超时（2分钟），超时则强制清除
+            Long lockTime = deployLockTimestamps.get(projectId);
+            if (lockTime != null && System.currentTimeMillis() - lockTime > LOCK_TIMEOUT_MS) {
+                deployLocks.remove(projectId);
+                deployLockTimestamps.remove(projectId);
+                log.warn("[Deploy] 项目 {} 的旧部署锁已超时，强制清除", projectId);
+            } else {
+                return Result.error(500, "该项目正在部署中，请稍后再试");
+            }
+        }
+        deployLockTimestamps.put(projectId, System.currentTimeMillis());
+
         String deployId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);
         log.info("[Deploy] 开始异步部署: deployId={}, projectId={}, nodes={}", deployId, projectId, targetNodeIds.size());
         auditLog.log("DEPLOY", "DEPLOY", "发起部署: 项目=" + project.getName() + ", 版本=" + version.getVersion() + ", 节点数=" + targetNodeIds.size());
@@ -156,6 +176,8 @@ public class DeployController {
                     log.error("[Deploy] 推送失败消息异常: deployId={}", deployId, pushEx);
                 }
             } finally {
+                deployLocks.remove(projectId);
+                deployLockTimestamps.remove(projectId);
                 deployHandler.cleanup(deployId);
             }
         }, "deploy-" + deployId).start();
@@ -187,7 +209,13 @@ public class DeployController {
         String agentFilePath = agentFileDir + "/" + jarName;
         boolean isFrontendDeploy = "frontend".equalsIgnoreCase(version.getPackageType())
                 || jarName.toLowerCase().endsWith(".zip");
-        String frontendDir = globalPathProperties.resolveFrontendDir(deployDir, project.getFrontendDeployDir());
+        // 前端部署目录：优先使用 frontendDirName 拼接
+        String frontendDir;
+        if (isFrontendDeploy && project.getFrontendDirName() != null && !project.getFrontendDirName().isEmpty()) {
+            frontendDir = deployDir + "/" + project.getFrontendDirName();
+        } else {
+            frontendDir = globalPathProperties.resolveFrontendDir(deployDir, project.getFrontendDeployDir());
+        }
 
         String startScript = project.getStartScript();
         if (startScript != null && project.getJarName() != null && !project.getJarName().isEmpty()) {
@@ -233,7 +261,19 @@ public class DeployController {
 
             try {
                 if (isFrontendDeploy) {
-                    // 前端部署：传输 + 解压
+                    // 前端部署：清理旧目录 + 传输 + 解压
+                    pushStep(deployId, nid, node.getName(), "running", "clean", nodeIdx, "正在清理旧目录...");
+                    // 通过 shell 清理目标目录内容
+                    String cleanUrl = agentBase + "/api/shell/exec";
+                    Map<String, String> cleanReq = new HashMap<>();
+                    cleanReq.put("command", "rm -rf " + frontendDir + "/* && mkdir -p " + frontendDir);
+                    try {
+                        restTemplate.postForEntity(cleanUrl, cleanReq, String.class);
+                    } catch (Exception e) {
+                        // 清理失败不影响部署（目录可能不存在）
+                        nodeLog.append("⚠️ 清理旧目录: ").append(e.getMessage()).append("\n");
+                    }
+
                     pushStep(deployId, nid, node.getName(), "running", "transfer", nodeIdx, "正在传输前端包...");
                     String jarPath = findJarPath(projectId, version);
                     java.io.File zipFile = new java.io.File(jarPath);
@@ -525,11 +565,19 @@ public class DeployController {
     }
 
     private Result<?> doRollback(Long id, DeployModel record) {
-        Long previousVersionId = record.getVersionId() - 1;
-        if (previousVersionId < 1) previousVersionId = 1L;
-        VersionModel previousVersion = versionPackageMapper.findById(previousVersionId);
+        // 查找该项目的上一个版本（按创建时间倒序，取当前版本之前的第一个）
+        List<VersionModel> versions = versionPackageMapper.findByProjectId(record.getProjectId(), 1, 100);
+        VersionModel previousVersion = null;
+        if (versions != null) {
+            for (VersionModel v : versions) {
+                if (v.getId() != null && v.getId() < record.getVersionId()) {
+                    previousVersion = v;
+                    break;
+                }
+            }
+        }
         if (previousVersion == null) {
-            return Result.error(1004, "找不到上一个版本 (ID: " + previousVersionId + ")，无法回滚");
+            return Result.error(1004, "找不到上一个版本（当前版本ID=" + record.getVersionId() + "），无法回滚");
         }
         ProjectModel project = projectMapper.findById(record.getProjectId());
         NodeModel node = nodeMapper.findById(record.getNodeId());
@@ -538,7 +586,7 @@ public class DeployController {
 
         DeployModel rollbackRecord = new DeployModel();
         rollbackRecord.setProjectId(record.getProjectId());
-        rollbackRecord.setVersionId(previousVersionId);
+        rollbackRecord.setVersionId(previousVersion.getId());
         rollbackRecord.setNodeId(record.getNodeId());
         rollbackRecord.setStatus(DeployStatus.PROCESSING.getCode());
         rollbackRecord.setJarName(previousVersion.getJarName());

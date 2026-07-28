@@ -2,7 +2,8 @@ import request from '../utils/request'
 import type {
   Result, AppMonitorOverview, AppMonitorDashboard, AppMonitorNodeInfo,
   MonitorSnapshotModel, ProjectHealthProbeModel, AIDiagnosisRecordModel,
-  MonitorCollectConfig, AgentStatusResult
+  MonitorCollectConfig, AgentStatusResult, ThreadTopResult, ThreadInfoResult,
+  JvmDetailResult
 } from '../types'
 
 /** 获取监控采集配置 */
@@ -46,6 +47,13 @@ export function getAppOverview(projectId: number) {
 /** 单节点详细指标 */
 export function getAppNodeDetail(projectId: number, nodeId: number) {
   return request.get<any, Result<AppMonitorNodeInfo>>('/monitor/app/node', {
+    params: { projectId, nodeId }
+  })
+}
+
+/** 实时重新采集单个节点（不落库、不告警），保证详情页拿到 Agent 当前真实 PID */
+export function refreshAppNodeDetail(projectId: number, nodeId: number) {
+  return request.get<any, Result<AppMonitorNodeInfo>>('/monitor/app/node/refresh', {
     params: { projectId, nodeId }
   })
 }
@@ -109,5 +117,26 @@ export function collectAppMonitorFiltered(projectIds?: number[], nodeIds?: numbe
 export function getAgentStatus(page = 1, pageSize = 20, keyword?: string) {
   return request.get<any, Result<AgentStatusResult>>('/monitor/agent/status', {
     params: { page, pageSize, keyword }
+  })
+}
+
+/** 线程 CPU 使用率排名（按需加载，仅用户点击查看时调用） */
+export function getThreadTop(nodeId: number, pid: number, top = 20) {
+  return request.get<any, Result<ThreadTopResult>>(`/agent/${nodeId}/process/thread-top`, {
+    params: { pid, top }
+  })
+}
+
+/** 线程详情：状态分布 + 死锁检测 + 栈摘要（按需加载） */
+export function getThreadInfo(nodeId: number, pid: number, maxStack = 5) {
+  return request.get<any, Result<ThreadInfoResult>>(`/agent/${nodeId}/process/thread-info`, {
+    params: { pid, maxStack }
+  })
+}
+
+/** JVM 详情：堆分区 + 非堆 + GC 详情 + 类加载 + fd（按需加载） */
+export function getJvmDetail(nodeId: number, pid: number) {
+  return request.get<any, Result<JvmDetailResult>>(`/agent/${nodeId}/process/jvm-detail`, {
+    params: { pid }
   })
 }

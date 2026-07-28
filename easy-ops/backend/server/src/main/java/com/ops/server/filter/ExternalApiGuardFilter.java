@@ -58,6 +58,8 @@ public class ExternalApiGuardFilter implements Filter {
 
     // 速率限制：每分钟最多请求数
     private static final int MAX_REQUESTS_PER_MINUTE = 100;
+    // 登录接口专用限流：每分钟最多请求数（更严格，防暴力破解）
+    private static final int MAX_LOGIN_PER_MINUTE = 10;
 
     // 每个 IP 的请求计数和窗口重置时间
     private final ConcurrentHashMap<String, AtomicLong> rateLimits = new ConcurrentHashMap<>();
@@ -83,9 +85,18 @@ public class ExternalApiGuardFilter implements Filter {
 
         String method = httpRequest.getMethod();
 
+        // 登录接口专用限流（更严格）
+        if (uri.startsWith("/api/auth/login")) {
+            if (!checkRateLimit(httpRequest, httpResponse, MAX_LOGIN_PER_MINUTE)) {
+                return;
+            }
+            chain.doFilter(request, response);
+            return;
+        }
+
         // 对调用 Agent 的路径进行 SSRF 防护
         if (uri.startsWith("/api/deploy/") || uri.startsWith("/api/agent-proxy/")) {
-            if (!checkRateLimit(httpRequest, httpResponse)) {
+            if (!checkRateLimit(httpRequest, httpResponse, MAX_REQUESTS_PER_MINUTE)) {
                 return;
             }
             // 放行（Agent 通信由 AuthInterceptor 认证）
@@ -95,7 +106,7 @@ public class ExternalApiGuardFilter implements Filter {
 
         // 其他出站请求也需要速率限制
         if ("POST".equalsIgnoreCase(method) || "PUT".equalsIgnoreCase(method)) {
-            if (!checkRateLimit(httpRequest, httpResponse)) {
+            if (!checkRateLimit(httpRequest, httpResponse, MAX_REQUESTS_PER_MINUTE)) {
                 return;
             }
         }
@@ -107,7 +118,7 @@ public class ExternalApiGuardFilter implements Filter {
      * 速率限制检查
      * 同一 IP 每分钟最多 MAX_REQUESTS_PER_MINUTE 次请求
      */
-    private boolean checkRateLimit(HttpServletRequest request, HttpServletResponse response)
+    private boolean checkRateLimit(HttpServletRequest request, HttpServletResponse response, int maxCount)
             throws IOException {
         String ip = getClientIp(request);
 
@@ -123,7 +134,7 @@ public class ExternalApiGuardFilter implements Filter {
         AtomicLong counter = rateLimits.computeIfAbsent(ip, k -> new AtomicLong(0));
         long count = counter.incrementAndGet();
 
-        if (count > MAX_REQUESTS_PER_MINUTE) {
+        if (count > maxCount) {
             log.warn("Rate limit exceeded for IP='{}' (count={})", ip, count);
             response.setStatus(429);
             response.setContentType("application/json;charset=UTF-8");

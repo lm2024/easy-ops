@@ -287,13 +287,28 @@ public class MonitorCollectorService {
     }
 
     /**
-     * 采集单个项目-节点监控快照
+     * 采集单个项目-节点监控快照（写入并告警，供定时/手动采集使用）
      */
     public MonitorSnapshotModel collectOne(ProjectModel project, NodeModel node) {
-        MonitorSnapshotModel snap = new MonitorSnapshotModel();
+        return collectOne(project, node, true);
+    }
+
+    /**
+     * 采集单个项目-节点监控快照。
+     * @param persist true=写入快照表并触发告警（定时/手动采集）；false=仅做一次实时采集用于前端详情展示，不落库、不告警。
+     */
+    public MonitorSnapshotModel collectOne(ProjectModel project, NodeModel node, boolean persist) {
+        // 以最近一次快照为基线做「合并」而非「覆盖」：心跳已上报的进程 PID / 进程指标
+        // 不应被补充采集（可能因 Agent 短暂不可达或 deployDir 不匹配）清空为 null，
+        // 否则前端详情会间歇性出现「进程未运行或 PID 未知」。
+        MonitorSnapshotModel latest = snapshotMapper.findLatest(project.getId(), node.getId());
+        MonitorSnapshotModel snap = (latest != null) ? latest : new MonitorSnapshotModel();
+        snap.setId(null); // 复制后作为新行插入，避免主键冲突
         snap.setProjectId(project.getId());
         snap.setNodeId(node.getId());
         snap.setCollectTime(System.currentTimeMillis());
+
+        boolean isFrontendApp = "frontend".equalsIgnoreCase(project.getProjectType());
 
         String deployDir = resolveDeployDir(project);
         String jarName = project.getJarName();
@@ -301,25 +316,63 @@ public class MonitorCollectorService {
             jarName = project.getName() + ".jar";
         }
 
-        Map<String, String> statusParams = new HashMap<String, String>();
-        statusParams.put("deployDir", deployDir);
-        statusParams.put("jarName", jarName);
-        Map<String, Object> statusData = agentClient.get(node.getId(), "/process/status", statusParams);
-        if (statusData == null) {
-            statusData = new HashMap<String, Object>();
+        boolean agentReached = false;
+        boolean alive = false;
+        Integer pid = null;
+
+        if (!isFrontendApp) {
+            // 后端应用：通过项目配置的「部署目录 + jar 名（即应用名称）」精确匹配自身进程 PID，
+            // 每个项目只取自己进程的 PID，绝不串用同节点其它应用的 PID。
+            Map<String, String> statusParams = new HashMap<String, String>();
+            statusParams.put("deployDir", deployDir);
+            statusParams.put("jarName", jarName);
+            Map<String, Object> statusData = agentClient.get(node.getId(), "/process/status", statusParams);
+            agentReached = (statusData != null && !statusData.isEmpty());
+            if (statusData == null) {
+                statusData = new HashMap<String, Object>();
+            }
+            alive = Boolean.TRUE.equals(statusData.get("alive"));
+            pid = toInt(statusData.get("pid"));
+        } else {
+            // 前端静态资源应用没有 Java 进程：不查进程状态、不写 PID、不采集堆内存，
+            // 进程状态标记 N/A，避免把「无进程」误当成异常或串用后端应用 PID。
+            snap.setProcessStatus("N/A");
+            snap.setProcessPid(null);
         }
 
-        boolean alive = Boolean.TRUE.equals(statusData.get("alive"));
-        Integer pid = toInt(statusData.get("pid"));
-        snap.setProcessStatus(alive ? "RUNNING" : "STOPPED");
-        snap.setProcessPid(pid);
+        // 决定进程状态与 PID（关键：绝不能把心跳已上报的 PID 误清空）
+        //  - Agent 可达且 alive=true：进程确实在跑。PID 用本次探测结果；若本次未带 PID（如 deployDir 解析偏差），
+        //    则沿用最近一次快照（多为心跳扫描文件系统所得，最可靠）的 PID。
+        //  - Agent 可达且 alive=false：进程真的停了，状态 STOPPED；持久化采集时清空 PID，
+        //    但展示型采集(persist=false，详情页实时刷新)保留基线 PID，避免瞬时探测失败导致「PID 未知」。
+        //  - Agent 不可达：无法确认，沿用基线快照的 processPid/processStatus，绝不清空为 null（避免详情「PID 未知」）。
+        if (agentReached) {
+            if (alive) {
+                if (pid == null && latest != null && latest.getProcessPid() != null) {
+                    pid = latest.getProcessPid();
+                    log.info("[Monitor] 节点 {} 项目 {} /process/status 未返回 PID，沿用心跳基线 PID={}",
+                            node.getId(), project.getId(), pid);
+                }
+                snap.setProcessStatus("RUNNING");
+                snap.setProcessPid(pid); // 仅当基线也为 null 时才可能为 null
+            } else {
+                snap.setProcessStatus("STOPPED");
+                if (persist) {
+                    snap.setProcessPid(null);
+                }
+            }
+        }
+        // 不可达时 snap 已是基线(latest)拷贝，processPid/processStatus 保持基线值
 
         List<String> checkMethods = new ArrayList<String>();
         checkMethods.add("PS_GREP");
 
-        // 进程在运行 → 健康；进程不在 → 异常
-        String healthStatus = alive ? "UP" : "DOWN";
-        String healthDetail = alive ? "Shell检测: 进程运行中" : "Shell检测: 进程未运行";
+        // 前端静态资源应用没有 Java 进程，不能按「进程是否存活」判定健康，
+        // 否则必然被误判为 DOWN 并向所有用户推送「应用异常」告警（如【dist】节点 异常）。
+        // 静态资源只要已部署即视为正常（UP），且不参与进程存活告警。
+        String healthStatus = isFrontendApp ? "UP" : (alive ? "UP" : "DOWN");
+        String healthDetail = isFrontendApp ? "静态资源，无需进程存活监控"
+                : (alive ? "Shell检测: 进程运行中" : "Shell检测: 进程未运行");
         Integer responseMs = null;
 
         // HTTP 探针：只补充信息，不改变健康状态（进程活着就是健康）
@@ -353,8 +406,21 @@ public class MonitorCollectorService {
             }
         }
 
-        snap.setHealthStatus(healthStatus);
-        snap.setHealthDetail(healthDetail);
+        // 前端静态资源：健康状态恒为 UP，不依赖 Agent 进程探测，避免误报「应用异常」。
+        if (isFrontendApp) {
+            snap.setHealthStatus("UP");
+            snap.setHealthDetail("静态资源，无需进程存活监控");
+        } else if (agentReached) {
+            // 仅在 Agent 真正可达时才用本次探测结果覆盖健康状态；
+            // 不可达时沿用最近快照，避免误判为 DOWN。
+            snap.setHealthStatus(healthStatus);
+            snap.setHealthDetail(healthDetail);
+        } else if (latest != null) {
+            snap.setHealthStatus(latest.getHealthStatus());
+            snap.setHealthDetail("Agent 暂不可达，沿用上次采集: "
+                    + (latest.getHealthDetail() != null ? latest.getHealthDetail() : ""));
+            log.warn("[Monitor] 节点 {} 项目 {} Agent 不可达，沿用最近快照状态", node.getId(), project.getId());
+        }
         Map<String, Object> extra = new HashMap<String, Object>();
         extra.put("checkMethods", checkMethods);
         extra.put("deployDir", deployDir);
@@ -415,9 +481,11 @@ public class MonitorCollectorService {
             }
         }
 
-        snapshotMapper.insert(snap);
-        // 检查异常并生成通知
-        checkAndAlarm(snap, project, node);
+        if (persist) {
+            snapshotMapper.insert(snap);
+            // 检查异常并生成通知
+            checkAndAlarm(snap, project, node);
+        }
         return snap;
     }
 
@@ -565,8 +633,8 @@ public class MonitorCollectorService {
         if (project.getDeployDir() != null && !project.getDeployDir().trim().isEmpty()) {
             return project.getDeployDir().trim();
         }
-        // 与 DeployController 默认路径一致
-        return globalPathProperties.resolveAgentVersionDir(project.getId(), null);
+        // 与 LogMgmtService / DeployController 默认路径一致：deployBaseDir + "/" + slug
+        return globalPathProperties.resolveDeployDir(project.getName());
     }
 
     private ProjectHealthProbeModel resolveProbe(ProjectModel project) {

@@ -49,6 +49,7 @@ export interface NodeModel {
 export interface ProjectModel {
   id: string
   name: string
+  projectType?: 'backend' | 'frontend'
   startScript?: string
   stopScript?: string
   restartScript?: string
@@ -56,12 +57,15 @@ export interface ProjectModel {
   envVars?: string
   jarName?: string
   deployDir?: string
+  frontendDirName?: string
   frontendDeployDir?: string
   nodeIds?: string
   healthCheckEnabled?: boolean
   healthCheckPort?: number
   healthCheckPath?: string
   healthCheckKeyword?: string
+  monitorIntervalSec?: number
+  status?: number
   createTime?: string
   updateTime?: string
 }
@@ -207,6 +211,57 @@ export interface ConfigCompareResult {
   }>
 }
 
+/** 全局脚本文件定义（不绑定项目，管理所有 Agent 节点的脚本） */
+export interface GlobalScriptFileModel {
+  id?: number
+  projectId?: number      // 项目ID（可选，全局脚本为空）
+  fileName: string
+  filePath: string        // 文件路径（Agent 节点上的绝对路径）
+  fileType?: string       // 文件类型：sh/conf/cron/service/yaml/yml/properties/other
+  description?: string
+  isExecutable?: number   // 是否需要可执行权限：0-否 1-是
+  autoBackup?: number     // 分发前是否自动备份：0-否 1-是
+  createTime?: number
+  updateTime?: number
+}
+
+/** 全局脚本快照查询结果 */
+export interface GlobalScriptSnapshotResult {
+  scriptFile: GlobalScriptFileModel
+  nodes: GlobalNodeScriptSnapshotModel[]
+  allSame: boolean
+}
+
+/** 全局脚本节点快照 */
+export interface GlobalNodeScriptSnapshotModel {
+  id?: number
+  nodeId: number
+  scriptFileId: number
+  contentHash?: string
+  contentSize?: number
+  fileMode?: number       // 文件权限（八进制）
+  syncStatus?: number     // 0-未知 1-一致 2-差异 3-定制
+  lastSyncTime?: number
+  updateTime?: number
+  nodeName?: string
+  nodeIp?: string
+  nodeStatus?: number     // 节点状态：0-离线 1-在线
+}
+
+/** 脚本分发结果 */
+export interface ScriptDistributeResult {
+  recordId: number
+  totalNodes: number
+  successCount: number
+  failCount: number
+  results: Array<{
+    nodeId: number
+    nodeName?: string
+    success: boolean
+    error?: string
+  }>
+}
+
 /** 项目日志配置 */
 export interface ProjectLogProfileModel {
   id?: number
@@ -315,10 +370,13 @@ export interface AppMonitorNodeInfo {
   healthDetail?: string
   processStatus?: string
   processPid?: number
+  agentPid?: number
   cpuPercent?: number
   memoryMb?: number
   heapUsedMb?: number
   heapMaxMb?: number
+  gcCount?: number
+  gcTimeMs?: number
   hostCpuPercent?: number
   hostMemoryPercent?: number
   diskUsagePercent?: number
@@ -375,6 +433,76 @@ export interface MonitorSnapshotModel {
   memoryMb?: number
   responseMs?: number
   collectTime?: number
+}
+
+/** 线程 CPU Top 项 */
+export interface ThreadTopItem {
+  tid: number
+  name?: string
+  javaName?: string
+  cpuPercent: number
+  memPercent?: number
+  state?: string
+}
+
+/** 线程 CPU Top 结果 */
+export interface ThreadTopResult {
+  pid: number
+  totalThreads: number
+  totalCpuPercent: number
+  topThreads: ThreadTopItem[]
+  stateDistribution: Record<string, number>
+}
+
+/** 线程栈信息 */
+export interface ThreadDetailItem {
+  name: string
+  state: string
+  stack?: string[]
+}
+
+/** 线程详情结果 */
+export interface ThreadInfoResult {
+  pid: number
+  totalThreads: number
+  stateDistribution: Record<string, number>
+  deadlock: {
+    detected: boolean
+    threads: string[]
+    detail?: string
+  }
+  threads: ThreadDetailItem[]
+}
+
+/** JVM 详情结果 */
+export interface JvmDetailResult {
+  pid: number
+  heapUsedMb?: number
+  heapMaxMb?: number
+  edenUsedMb?: number
+  edenCapacityMb?: number
+  survivorUsedMb?: number
+  oldUsedMb?: number
+  oldCapacityMb?: number
+  metaspaceUsedMb?: number
+  metaspaceCapacityMb?: number
+  compressedClassUsedMb?: number
+  compressedClassCapacityMb?: number
+  gcYoungCount?: number
+  gcFullCount?: number
+  gcYoungTimeMs?: number
+  gcFullTimeMs?: number
+  gcTotalTimeMs?: number
+  classLoaded?: number
+  classUnloaded?: number
+  jitCompileTimeMs?: number
+  threadCount?: number
+  procThreadCount?: number
+  fdCount?: number
+  fdLimit?: number
+  rssKb?: number
+  vmSizeKb?: number
+  vmPeakKb?: number
 }
 
 /** HTTP 健康探针配置 */
@@ -604,6 +732,7 @@ export interface AgentStatusItem {
   hostCpuPercent?: number
   hostMemoryPercent?: number
   diskUsagePercent?: number
+  agentPid?: number
 }
 
 /** Agent 状态列表响应 */

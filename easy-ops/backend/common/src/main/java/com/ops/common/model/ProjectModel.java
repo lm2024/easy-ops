@@ -14,6 +14,8 @@ public class ProjectModel implements Serializable {
 
     private Long id;
     private String name;
+    /** 项目类型：backend(后端,默认) / frontend(前端) */
+    private String projectType;
     private String nodeIds;
     private String startScript;
     private String stopScript;
@@ -22,6 +24,8 @@ public class ProjectModel implements Serializable {
     private String envVars;
     private String jarName;
     private String deployDir;
+    /** 前端应用：解压后的目录名（必填），用于在 deployDir 下创建子目录 */
+    private String frontendDirName;
     /** 前端 dist.zip 解压目标目录（可在应用管理中配置） */
     private String frontendDeployDir;
     /** 部署后是否执行健康检查，默认 true；置 false 可跳过健康检查直接判定部署成功 */

@@ -12,7 +12,7 @@
           <a-select
             v-model:value="selectedProjectId"
             style="width: 220px"
-            placeholder="选择应用"
+            placeholder="选择应用（应用配置需要）"
             allow-clear
             @change="onProjectChange"
           >
@@ -20,171 +20,222 @@
               {{ p.name }}
             </a-select-option>
           </a-select>
-          <a-button type="primary" size="small" :disabled="!selectedProjectId" @click="showAddModal">
-            <plus-outlined /> 新建配置
-          </a-button>
         </a-space>
       </template>
 
-      <!-- 未选择应用 -->
-      <a-empty v-if="!selectedProjectId" description="请先选择一个应用" style="margin: 80px 0" />
+      <!-- Tab 切换（始终显示） -->
+      <a-tabs v-model:activeKey="activeTab" @change="onTabChange">
+        <!-- Tab 1: 应用配置 -->
+        <a-tab-pane key="config" tab="应用配置">
+          <template #tab>
+            <span>
+              <SettingOutlined />
+              应用配置
+            </span>
+          </template>
+          
+          <!-- 未选择应用 -->
+          <a-empty v-if="!selectedProjectId" description="请先在右上角选择一个应用" style="margin: 80px 0" />
 
-      <!-- 已选择应用 -->
-      <template v-else>
-        <!-- 扫描中 -->
-        <div v-if="scanning" style="text-align:center;margin:80px 0">
-          <a-spin size="large" />
-          <div style="margin-top:16px;color:#888">正在扫描 Agent 节点上的配置文件...</div>
-        </div>
-
-        <!-- 配置文件列表为空（无扫描结果） -->
-        <a-empty v-else-if="!loading && configFiles.length === 0" description="未在该应用的 Agent 节点上发现配置文件" style="margin: 80px 0">
-          <div style="font-size:12px;color:#888;margin-bottom:12px;line-height:1.6">
-            <div>扫描完成，Agent 节点 <code>{{ deployDirText }}/config/</code> 下未发现配置文件。</div>
-            <div>请先将配置文件放置到节点对应目录，或点击下方按钮手动新建。</div>
-          </div>
-          <a-space>
-            <a-button type="primary" @click="showAddModal"><plus-outlined /> 新建配置</a-button>
-            <a-button @click="handleScan" :loading="scanning"><reload-outlined /> 重新扫描</a-button>
-          </a-space>
-        </a-empty>
-
-        <!-- 左右分栏 -->
-        <a-row v-else-if="!scanning" :gutter="16" style="min-height: 500px">
-          <!-- 左侧：配置文件列表 -->
-          <a-col :span="6">
-            <div style="border-right: 1px solid #f0f0f0; padding-right: 12px">
-              <div style="font-weight: 500; margin-bottom: 8px; color: #666">配置文件 ({{ configFiles.length }})</div>
-              <div
-                v-for="file in configFiles"
-                :key="file.id"
-                class="config-file-item"
-                :class="{ active: selectedFile?.id === file.id }"
-                @click="selectFile(file)"
-              >
-                <div style="display: flex; align-items: center; justify-content: space-between">
-                  <div>
-                    <file-text-outlined style="margin-right: 4px; color: #1890ff" />
-                    <span style="font-weight: 500">{{ file.fileName }}</span>
-                  </div>
-                  <a-space size="small">
-                    <a-tooltip title="删除">
-                      <a-popconfirm title="确认删除此配置文件定义？" @confirm="handleDeleteFile(file.id!)">
-                        <delete-outlined style="color: #ff4d4f; cursor: pointer" />
-                      </a-popconfirm>
-                    </a-tooltip>
-                  </a-space>
-                </div>
-                <div style="font-size: 11px; color: #999; margin-top: 2px">{{ file.relativePath }}</div>
-                <!-- 同步状态 -->
-                <div v-if="fileSyncStatus[file.id!]" style="margin-top: 4px">
-                  <a-tag :color="fileSyncStatus[file.id!].allSame ? 'green' : 'orange'" size="small">
-                    {{ fileSyncStatus[file.id!].syncLabel }}
-                  </a-tag>
-                </div>
-              </div>
-            </div>
-          </a-col>
-
-          <!-- 右侧：编辑器 -->
-          <a-col :span="18">
-            <template v-if="selectedFile">
-              <!-- 文件名 + 节点配置状态 -->
-              <div style="margin-bottom: 8px">
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
-                  <a-space>
-                    <span style="font-weight: 600; font-size: 15px">{{ selectedFile.fileName }}</span>
-                    <span style="color: #999; font-size: 12px">{{ selectedFile.relativePath }}</span>
-                  </a-space>
-                  <a-button size="small" @click="loadContentAuto" :loading="contentLoading">
-                    <reload-outlined /> 刷新
+          <!-- 已选择应用 -->
+          <template v-else>
+            <!-- 应用配置内容 -->
+            <div>
+              <div style="margin-bottom: 16px; text-align: right">
+                <a-space>
+                  <a-button size="small" @click="handleScan" :loading="scanning">
+                    <reload-outlined /> 扫描
                   </a-button>
-                </div>
-
-                <!-- 节点配置状态条：一眼看出哪些节点配置一致/不同 -->
-                <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
-                  <div
-                    v-for="n in nodeConfigStatus"
-                    :key="n.nodeId"
-                    class="node-status-chip"
-                    :class="{ active: editNodeId === n.nodeId, online: n.online, offline: !n.online }"
-                    @click="switchNode(n)"
-                  >
-                    <a-badge :status="n.online ? (n.hashOk ? 'success' : 'warning') : 'default'" />
-                    <span>{{ n.nodeName }}</span>
-                    <span v-if="!n.online" style="color: #999; font-size: 10px">(离线)</span>
-                  </div>
-                </div>
-
-                <!-- 当前读取状态 -->
-                <a-alert v-if="contentSource === 'manual' && editContent" type="warning" show-icon style="margin-bottom: 8px" :banner="true">
-                  <template #message>内容已手动修改，分发前请确认</template>
-                </a-alert>
-                <a-alert v-if="contentError" type="error" show-icon style="margin-bottom: 8px">
-                  <template #message>{{ contentError }}</template>
-                </a-alert>
-                <a-alert v-if="!editContent && !contentLoading && !contentError" type="info" show-icon style="margin-bottom: 8px">
-                  <template #message>
-                    <span v-if="editNodeId">该节点上此配置文件为空或不存在，请编辑后分发</span>
-                    <span v-else>所有节点均无此配置文件，请编辑后分发</span>
-                  </template>
-                </a-alert>
-                <div v-if="editNodeId && editContent && !contentError" style="font-size: 12px; color: #52c41a; margin-bottom: 8px">
-                  ✓ 已从 <b>{{ currentEditNodeName }}</b> 读取配置内容
-                </div>
+                  <a-button size="small" @click="handleBatchDownload" :disabled="checkedConfigIds.length === 0">
+                    <download-outlined /> 下载选中 ({{ checkedConfigIds.length }})
+                  </a-button>
+                  <a-button type="primary" size="small" @click="showAddModal">
+                    <plus-outlined /> 新建配置
+                  </a-button>
+                </a-space>
               </div>
 
-              <!-- 编辑器 -->
-              <a-textarea
-                v-model:value="editContent"
-                :rows="22"
-                placeholder="配置内容..."
-                style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6"
-                @input="onContentEdit"
-              />
+              <!-- 扫描中 -->
+              <div v-if="scanning" style="text-align:center;margin:80px 0">
+                <a-spin size="large" />
+                <div style="margin-top:16px;color:#888">正在扫描 Agent 节点上的配置文件...</div>
+              </div>
 
-              <!-- 分发面板 -->
-              <a-card size="small" style="margin-top: 12px" title="📤 分发配置">
-                <a-row :gutter="16" align="middle">
-                  <a-col :span="14">
-                    <div style="color: #888; font-size: 12px; margin-bottom: 4px">分发到节点：</div>
-                    <a-checkbox-group v-model:value="distributeNodeIds">
-                      <a-checkbox v-for="n in projectNodes" :key="n.id" :value="n.id">
-                        {{ n.name }}
-                      </a-checkbox>
-                    </a-checkbox-group>
-                  </a-col>
-                  <a-col :span="4">
-                    <a-checkbox v-model:checked="restartAfterDistribute">分发后重启</a-checkbox>
-                  </a-col>
-                  <a-col :span="6" style="text-align: right">
-                    <a-button
-                      type="primary"
-                      @click="handleDistribute"
-                      :loading="distributing"
-                      :disabled="distributeNodeIds.length === 0 || !editContent"
-                    >
-                      <send-outlined /> 保存并分发
-                    </a-button>
-                  </a-col>
-                </a-row>
-
-                <!-- 分发结果 -->
-                <div v-if="distributeResult" style="margin-top: 8px">
-                  <a-divider style="margin: 8px 0" />
-                  <div v-for="(r, i) in distributeResult" :key="i" style="font-size: 12px; margin-bottom: 2px">
-                    <check-circle-outlined v-if="r.success" style="color: #52c41a; margin-right: 4px" />
-                    <close-circle-outlined v-else style="color: #ff4d4f; margin-right: 4px" />
-                    {{ r.nodeName }}: {{ r.message }}
-                  </div>
+              <!-- 配置文件列表为空（无扫描结果） -->
+              <a-empty v-else-if="!loading && configFiles.length === 0" description="未在该应用的 Agent 节点上发现配置文件" style="margin: 80px 0">
+                <div style="font-size:12px;color:#888;margin-bottom:12px;line-height:1.6">
+                  <div>扫描完成，Agent 节点 <code>{{ deployDirText }}/config/</code> 下未发现配置文件。</div>
+                  <div>请先将配置文件放置到节点对应目录，或点击下方按钮手动新建。</div>
                 </div>
-              </a-card>
-            </template>
+                <a-space>
+                  <a-button type="primary" @click="showAddModal"><plus-outlined /> 新建配置</a-button>
+                  <a-button @click="handleScan" :loading="scanning"><reload-outlined /> 重新扫描</a-button>
+                </a-space>
+              </a-empty>
 
-            <a-empty v-else description="请从左侧选择一个配置文件" style="margin: 80px 0" />
-          </a-col>
-        </a-row>
-      </template>
+              <!-- 左右分栏 -->
+              <a-row v-else-if="!scanning" :gutter="16" style="min-height: 500px">
+                <!-- 左侧：配置文件列表 -->
+                <a-col :span="6">
+                  <div style="border-right: 1px solid #f0f0f0; padding-right: 12px">
+                    <div style="font-weight: 500; margin-bottom: 8px; color: #666">配置文件 ({{ configFiles.length }})</div>
+                    <div
+                      v-for="file in configFiles"
+                      :key="file.id"
+                      class="config-file-item"
+                      :class="{ active: selectedFile?.id === file.id }"
+                      @click="selectFile(file)"
+                    >
+                      <div style="display: flex; align-items: center; justify-content: space-between">
+                        <div style="display: flex; align-items: center; gap: 6px">
+                          <a-checkbox
+                            :checked="checkedConfigIds.includes(file.id!)"
+                            @change="(e: any) => toggleCheck(file.id!, e.target.checked)"
+                            @click.stop
+                            style="margin-right: 2px"
+                          />
+                          <file-text-outlined style="color: #1890ff" />
+                          <span style="font-weight: 500">{{ file.fileName }}</span>
+                        </div>
+                        <a-space size="small">
+                          <a-tooltip title="下载">
+                            <download-outlined
+                              style="color: #1890ff; cursor: pointer"
+                              @click.stop="handleDownloadSingle(file.id!)"
+                            />
+                          </a-tooltip>
+                          <a-tooltip title="删除">
+                            <a-popconfirm title="确认删除此配置文件定义？" @confirm="handleDeleteFile(file.id!)">
+                              <delete-outlined style="color: #ff4d4f; cursor: pointer" />
+                            </a-popconfirm>
+                          </a-tooltip>
+                        </a-space>
+                      </div>
+                      <div style="font-size: 11px; color: #999; margin-top: 2px">{{ file.relativePath }}</div>
+                      <!-- 同步状态 -->
+                      <div v-if="fileSyncStatus[file.id!]" style="margin-top: 4px">
+                        <a-tag :color="fileSyncStatus[file.id!].allSame ? 'green' : 'orange'" size="small">
+                          {{ fileSyncStatus[file.id!].syncLabel }}
+                        </a-tag>
+                      </div>
+                    </div>
+                  </div>
+                </a-col>
+
+                <!-- 右侧：编辑器 -->
+                <a-col :span="18">
+                  <template v-if="selectedFile">
+                    <!-- 文件名 + 节点配置状态 -->
+                    <div style="margin-bottom: 8px">
+                      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px">
+                        <a-space>
+                          <span style="font-weight: 600; font-size: 15px">{{ selectedFile.fileName }}</span>
+                          <span style="color: #999; font-size: 12px">{{ selectedFile.relativePath }}</span>
+                        </a-space>
+                        <a-button size="small" @click="loadContentAuto" :loading="contentLoading">
+                          <reload-outlined /> 刷新
+                        </a-button>
+                      </div>
+
+                      <!-- 节点配置状态条：一眼看出哪些节点配置一致/不同 -->
+                      <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px">
+                        <div
+                          v-for="n in nodeConfigStatus"
+                          :key="n.nodeId"
+                          class="node-status-chip"
+                          :class="{ active: editNodeId === n.nodeId, online: n.online, offline: !n.online }"
+                          @click="switchNode(n)"
+                        >
+                          <a-badge :status="n.online ? (n.hashOk ? 'success' : 'warning') : 'default'" />
+                          <span>{{ n.nodeName }}</span>
+                          <span v-if="!n.online" style="color: #999; font-size: 10px">(离线)</span>
+                        </div>
+                      </div>
+
+                      <!-- 当前读取状态 -->
+                      <a-alert v-if="contentSource === 'manual' && editContent" type="warning" show-icon style="margin-bottom: 8px" :banner="true">
+                        <template #message>内容已手动修改，分发前请确认</template>
+                      </a-alert>
+                      <a-alert v-if="contentError" type="error" show-icon style="margin-bottom: 8px">
+                        <template #message>{{ contentError }}</template>
+                      </a-alert>
+                      <a-alert v-if="!editContent && !contentLoading && !contentError" type="info" show-icon style="margin-bottom: 8px">
+                        <template #message>
+                          <span v-if="editNodeId">该节点上此配置文件为空或不存在，请编辑后分发</span>
+                          <span v-else>所有节点均无此配置文件，请编辑后分发</span>
+                        </template>
+                      </a-alert>
+                      <div v-if="editNodeId && editContent && !contentError" style="font-size: 12px; color: #52c41a; margin-bottom: 8px">
+                        ✓ 已从 <b>{{ currentEditNodeName }}</b> 读取配置内容
+                      </div>
+                    </div>
+
+                    <!-- 编辑器 -->
+                    <a-textarea
+                      v-model:value="editContent"
+                      :rows="22"
+                      placeholder="配置内容..."
+                      style="font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; line-height: 1.6"
+                      @input="onContentEdit"
+                    />
+
+                    <!-- 分发面板 -->
+                    <a-card size="small" style="margin-top: 12px" title="📤 分发配置">
+                      <a-row :gutter="16" align="middle">
+                        <a-col :span="14">
+                          <div style="color: #888; font-size: 12px; margin-bottom: 4px">分发到节点：</div>
+                          <a-checkbox-group v-model:value="distributeNodeIds">
+                            <a-checkbox v-for="n in projectNodes" :key="n.id" :value="n.id">
+                              {{ n.name }}
+                            </a-checkbox>
+                          </a-checkbox-group>
+                        </a-col>
+                        <a-col :span="4">
+                          <a-checkbox v-model:checked="restartAfterDistribute">分发后重启</a-checkbox>
+                        </a-col>
+                        <a-col :span="6" style="text-align: right">
+                          <a-button
+                            type="primary"
+                            @click="handleDistribute"
+                            :loading="distributing"
+                            :disabled="distributeNodeIds.length === 0 || !editContent"
+                          >
+                            <send-outlined /> 保存并分发
+                          </a-button>
+                        </a-col>
+                      </a-row>
+
+                      <!-- 分发结果 -->
+                      <div v-if="distributeResult" style="margin-top: 8px">
+                        <a-divider style="margin: 8px 0" />
+                        <div v-for="(r, i) in distributeResult" :key="i" style="font-size: 12px; margin-bottom: 2px">
+                          <check-circle-outlined v-if="r.success" style="color: #52c41a; margin-right: 4px" />
+                          <close-circle-outlined v-else style="color: #ff4d4f; margin-right: 4px" />
+                          {{ r.nodeName }}: {{ r.message }}
+                        </div>
+                      </div>
+                    </a-card>
+                  </template>
+
+                  <a-empty v-else description="请从左侧选择一个配置文件" style="margin: 80px 0" />
+                </a-col>
+              </a-row>
+            </div>
+          </template>
+        </a-tab-pane>
+
+        <!-- Tab 2: 全局脚本管理 -->
+        <a-tab-pane key="script" tab="全局脚本">
+          <template #tab>
+            <span>
+              <CodeOutlined />
+              全局脚本
+            </span>
+          </template>
+          
+          <GlobalScriptManagePanel />
+        </a-tab-pane>
+      </a-tabs>
     </a-card>
 
     <!-- 新建配置弹窗 -->
@@ -213,14 +264,16 @@ import type { ProjectConfigFileModel } from '../types'
 import {
   listConfigFiles, createConfigFile, deleteConfigFile,
   getConfigSnapshot, getConfigContent, getConfigContentAuto, distributeConfig,
-  scanConfigFiles
+  scanConfigFiles, downloadConfigFile, downloadConfigFilesBatch
 } from '../api/configMgmt'
 import { getProjects } from '../api/project'
 import { getNodes } from '../api/node'
 import {
-  SettingOutlined, PlusOutlined, FileTextOutlined, DeleteOutlined,
-  ReloadOutlined, SendOutlined, CheckCircleOutlined, CloseCircleOutlined
+  SettingOutlined, PlusOutlined, FileTextOutlined, DeleteOutlined, DownloadOutlined,
+  ReloadOutlined, SendOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  CodeOutlined
 } from '@ant-design/icons-vue'
+import GlobalScriptManagePanel from './GlobalScriptManagePanel.vue'
 
 // ====== 状态 ======
 const projects = ref<any[]>([])
@@ -228,6 +281,7 @@ const selectedProjectId = ref<number>()
 const configFiles = ref<ProjectConfigFileModel[]>([])
 const loading = ref(false)
 const scanning = ref(false)
+const activeTab = ref<string>('config')
 
 // 文件同步状态
 const fileSyncStatus = ref<Record<number, { allSame: boolean; syncLabel: string; totalNodes: number; sameCount: number }>>({})
@@ -252,6 +306,59 @@ const distributeResult = ref<Array<{ nodeName: string; success: boolean; message
 // 新建配置
 const addModalVisible = ref(false)
 const addLoading = ref(false)
+const checkedConfigIds = ref<number[]>([])
+
+function toggleCheck(id: number, checked: boolean) {
+  if (checked) {
+    checkedConfigIds.value.push(id)
+  } else {
+    checkedConfigIds.value = checkedConfigIds.value.filter(i => i !== id)
+  }
+}
+
+async function handleDownloadSingle(configFileId: number) {
+  if (!selectedProjectId.value) return
+  const nodeId = editNodeId.value
+  if (!nodeId) {
+    message.warning('请先在右侧选择一个在线节点')
+    return
+  }
+  try {
+    const res = await downloadConfigFile(selectedProjectId.value, nodeId, configFileId)
+    triggerBlobDownload(res as any, `config_${configFileId}.txt`)
+    message.success('下载成功')
+  } catch {
+    message.error('下载失败')
+  }
+}
+
+async function handleBatchDownload() {
+  if (!selectedProjectId.value || checkedConfigIds.value.length === 0) return
+  const nodeId = editNodeId.value
+  if (!nodeId) {
+    message.warning('请先在右侧选择一个在线节点')
+    return
+  }
+  try {
+    const res = await downloadConfigFilesBatch(selectedProjectId.value, checkedConfigIds.value, nodeId)
+    triggerBlobDownload(res as any, `configs_${Date.now()}.zip`)
+    message.success('下载成功')
+  } catch {
+    message.error('批量下载失败')
+  }
+}
+
+function triggerBlobDownload(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 const newFile = reactive<ProjectConfigFileModel>({
   projectId: 0,
   fileName: '',
@@ -344,6 +451,10 @@ async function onProjectChange() {
   if (configFiles.value.length > 0) {
     selectFile(configFiles.value[0])
   }
+}
+
+function onTabChange(key: string) {
+  activeTab.value = key
 }
 
 async function handleScan() {
