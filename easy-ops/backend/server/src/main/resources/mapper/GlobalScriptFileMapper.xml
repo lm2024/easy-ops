@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.GlobalScriptFileMapper">
+    <select id="findById" resultType="com.ops.common.model.GlobalScriptFileModel">
+        SELECT * FROM global_script_file WHERE id = #{id}
+    </select>
+    <select id="findAll" resultType="com.ops.common.model.GlobalScriptFileModel">
+        SELECT * FROM global_script_file ORDER BY file_type, id ASC
+    </select>
+    <select id="findByFilePath" resultType="com.ops.common.model.GlobalScriptFileModel">
+        SELECT * FROM global_script_file WHERE file_path = #{filePath}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO global_script_file (file_name, file_path, file_type, description, is_executable, auto_backup, create_time, update_time)
+        VALUES (#{fileName}, #{filePath}, #{fileType}, #{description}, #{isExecutable}, #{autoBackup}, #{createTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE global_script_file
+        SET file_name = #{fileName}, file_path = #{filePath}, file_type = #{fileType},
+            description = #{description}, is_executable = #{isExecutable}, auto_backup = #{autoBackup},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM global_script_file WHERE id = #{id}
+    </delete>
+</mapper>

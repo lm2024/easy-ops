@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.GlobalScriptSnapshotMapper">
+    <select id="findById" resultType="com.ops.common.model.GlobalScriptSnapshotModel">
+        SELECT * FROM global_script_snapshot WHERE id = #{id}
+    </select>
+    <select id="findByNodeAndFile" resultType="com.ops.common.model.GlobalScriptSnapshotModel">
+        SELECT * FROM global_script_snapshot WHERE node_id = #{nodeId} AND script_file_id = #{scriptFileId}
+    </select>
+    <select id="findByScriptFileId" resultType="com.ops.common.model.GlobalScriptSnapshotModel">
+        SELECT * FROM global_script_snapshot WHERE script_file_id = #{scriptFileId}
+    </select>
+    <select id="findByNodeId" resultType="com.ops.common.model.GlobalScriptSnapshotModel">
+        SELECT * FROM global_script_snapshot WHERE node_id = #{nodeId}
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO global_script_snapshot (node_id, script_file_id, content_hash, content_size, file_mode, sync_status, last_sync_time, update_time)
+        VALUES (#{nodeId}, #{scriptFileId}, #{contentHash}, #{contentSize}, #{fileMode}, #{syncStatus}, #{lastSyncTime}, #{updateTime})
+    </insert>
+    <update id="update">
+        UPDATE global_script_snapshot
+        SET content_hash = #{contentHash}, content_size = #{contentSize}, file_mode = #{fileMode},
+            sync_status = #{syncStatus}, last_sync_time = #{lastSyncTime}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM global_script_snapshot WHERE id = #{id}
+    </delete>
+    <delete id="deleteByScriptFileId">
+        DELETE FROM global_script_snapshot WHERE script_file_id = #{scriptFileId}
+    </delete>
+</mapper>
