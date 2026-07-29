@@ -36,4 +36,7 @@ public interface UserNotificationStateMapper {
     int clearRead(@Param("userId") Long userId, @Param("now") Long now);
 
     int deleteByNotificationIds(@Param("notificationIds") java.util.List<Long> notificationIds);
+
+    /** 清理孤儿记录：删除 notification_record 中已不存在的通知状态 */
+    int deleteOrphan();
 }

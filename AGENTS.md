@@ -138,3 +138,29 @@ Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 - **心跳进程状态误判**：`NodeController.saveMonitorSnapshot()` 原逻辑先无条件设 `processStatus=RUNNING`（仅因 Agent 在线），再检查 `processes` 列表；若列表为空（未找到应用进程），状态保持 RUNNING 但 PID 为 null。修复：默认应设为 `STOPPED`，仅当 processes 列表中 `alive=true` 时才设为 RUNNING
 
 启动后查日志关键字 **`启动路径`** 核对。
+
+## 数据清理维护
+
+`DataCleanupScheduler` 统一管理 16 张流水表的定时清理（默认凌晨 2:00，保留 3 天）。cron、保留天数均在 `application.yml` 的 `easyops.data.cleanup` 下配置。
+
+### 新增清理表（需改 3 处）
+
+| 顺序 | 文件 | 改动 |
+|------|------|------|
+| 1 | `easyops.data.cleanup.table-retain-days` 加一行 | 声明保留天数 |
+| 2 | `DataCleanupScheduler.buildTasks()` 加一行 `tasks.add(task(...))` | 注册清理逻辑 |
+| 3 （仅新表） | 对应 `*Mapper.java` + `*Mapper.xml` 补充 `deleteBefore(Long cutoff)` | 如已有则跳过 |
+
+若表不是按 `create_time` 驱动（如 `notification_record` 按 `expire_time`），用 `task(name, IntSupplier)` 重载。
+
+### 修改保留天数
+
+改 `application.yml` 中 `easyops.data.cleanup.retain-days` 即可，重启生效。需要按表单独设的改 `table-retain-days` 下对应值。
+
+### 删除清理表
+
+从 `DataCleanupScheduler.buildTasks()` 移除对应行即可，YML 配置项可同步删除。
+
+### H2DataController 手动清理
+
+`/api/db/cleanup` 手动接口也有一份表列表，新增表时同步更新。

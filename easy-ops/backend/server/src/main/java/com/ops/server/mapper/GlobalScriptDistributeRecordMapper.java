@@ -23,4 +23,6 @@ public interface GlobalScriptDistributeRecordMapper {
     int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("resultDetail") String resultDetail);
 
     int deleteById(@Param("id") Long id);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

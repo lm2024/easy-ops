@@ -27,4 +27,6 @@ public interface AgentUpgradeRecordMapper {
     int updateStatusByBatchId(@Param("batchId") String batchId, @Param("status") Integer status);
 
     List<AgentUpgradeRecordModel> findLatestByNodeId(@Param("limit") Integer limit);
+
+    int deleteBefore(@Param("cutoff") Long cutoff);
 }

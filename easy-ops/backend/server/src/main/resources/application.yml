@@ -102,3 +102,34 @@ ops:
     log-sub-dir: logs
     config-sub-dir: config
     frontend-sub-dir: frontend
+
+# =============================================================================
+# 数据清理配置（定时删除过期流水数据，防止 H2 数据库膨胀）
+# =============================================================================
+# 所有高频流水表统一在此管理，新增表只需加一行配置即可。
+# 清理策略：
+#   - 普通流水表：按 create_time 删除超过 retain-days 天的记录
+#   - notification_record：按 expire_time 删除已过期通知
+#   - user_notification_state：级联删除通知已不存在的孤儿记录
+#   - kb_document_lock / scheduler_lock：删除已过期的锁
+# =============================================================================
+easyops:
+  data:
+    cleanup:
+      # 每日清理执行时间（Quartz cron 表达式），默认凌晨 2:00
+      cron: "0 0 2 * * ?"
+      # 默认保留天数（最小 1 天），应用到所有按 create_time 清理的表
+      retain-days: 3
+      # 按表单独覆盖保留天数（可选），key 为表名，value 为保留天数
+      table-retain-days:
+        operation_log: 3
+        file_access_log: 3
+        monitor_snapshot: 3
+        alarm_record: 3
+        self_heal_event: 3
+        deploy_record: 3
+        config_distribute_record: 3
+        ai_diagnosis_record: 3
+        kb_recent_access: 3
+        agent_upgrade_record: 3
+        global_script_distribute_record: 3

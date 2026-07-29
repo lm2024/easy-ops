@@ -22,4 +22,8 @@
     <delete id="deleteById">
         DELETE FROM global_script_distribute_record WHERE id = #{id}
     </delete>
+
+    <delete id="deleteBefore">
+        DELETE FROM global_script_distribute_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

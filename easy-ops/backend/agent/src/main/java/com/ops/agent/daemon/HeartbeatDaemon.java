@@ -437,9 +437,12 @@ public class HeartbeatDaemon implements CommandLineRunner {
                 String deployDir = appDir.getAbsolutePath();
                 String jarName = jars[0].getName(); // 取第一个 jar
 
-                // 查找进程 PID
+                // 查找进程 PID（jps + ps + cwd 三保险交叉验证）
                 Long pid = processStatusChecker.findPid(deployDir, jarName);
-                if (pid == null) continue;
+                if (pid == null) {
+                    System.err.println("[Agent Heartbeat] WARN: findPid failed for " + jarName + " in " + deployDir + " — process may be stopped or detection missed");
+                    continue;
+                }
 
                 Map<String, Object> proc = new HashMap<>();
                 proc.put("deployDir", deployDir);

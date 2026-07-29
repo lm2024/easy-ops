@@ -50,4 +50,8 @@
         ORDER BY a.create_time DESC
         LIMIT #{limit}
     </select>
+
+    <delete id="deleteBefore">
+        DELETE FROM agent_upgrade_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>
