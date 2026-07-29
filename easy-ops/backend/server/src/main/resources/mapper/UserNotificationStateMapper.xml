@@ -65,4 +65,10 @@
             #{id}
         </foreach>
     </delete>
+
+    <!-- 清理孤儿记录：notification_record 中已不存在的通知状态 -->
+    <delete id="deleteOrphan">
+        DELETE FROM user_notification_state
+        WHERE notification_id NOT IN (SELECT id FROM notification_record)
+    </delete>
 </mapper>

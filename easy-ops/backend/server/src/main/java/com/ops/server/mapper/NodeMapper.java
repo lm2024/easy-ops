@@ -37,4 +37,7 @@ public interface NodeMapper {
     List<String> getProjectNamesByNodeId(@Param("nodeId") Long nodeId);
 
     List<Long> getProjectIdsByNodeId(@Param("nodeId") Long nodeId);
+
+    /** 批量查询节点，避免 N+1 */
+    List<NodeModel> findByIds(@Param("ids") List<Long> ids);
 }

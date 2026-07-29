@@ -594,7 +594,8 @@ public class H2DataController {
             "operation_log", "file_access_log", "monitor_snapshot",
             "alarm_record", "self_heal_event", "deploy_record",
             "config_distribute_record", "ai_diagnosis_record",
-            "notification_record", "kb_recent_access"
+            "notification_record", "kb_recent_access",
+            "agent_upgrade_record", "global_script_distribute_record"
         };
         for (String table : tables) {
             try {
