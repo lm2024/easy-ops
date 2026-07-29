@@ -35,8 +35,6 @@ public class MonitorCollectorScheduler implements SchedulingConfigurer {
             long intervalMs = configService.getIntervalSec() * 1000L;
             return new PeriodicTrigger(intervalMs, TimeUnit.MILLISECONDS).nextExecutionTime(triggerContext);
         });
-
-        registrar.addCronTask(this::purgeSafely, "0 0 3 * * ?");
     }
 
     private void collectSafely() {
@@ -51,18 +49,6 @@ public class MonitorCollectorScheduler implements SchedulingConfigurer {
             log.error("Monitor collection failed: {}", e.getMessage());
         } finally {
             distributedLock.releaseLock(LOCK_NAME);
-        }
-    }
-
-    private void purgeSafely() {
-        if (!distributedLock.tryLock(LOCK_NAME + "_purge")) {
-            return;
-        }
-        try {
-            int deleted = collectorService.purgeOldSnapshots(7);
-            log.info("Purged {} old monitor snapshots", deleted);
-        } finally {
-            distributedLock.releaseLock(LOCK_NAME + "_purge");
         }
     }
 }

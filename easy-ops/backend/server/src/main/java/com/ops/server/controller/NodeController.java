@@ -423,18 +423,8 @@ public class NodeController {
                 snap.setDiskUsagePercent(((Number) diskUsage).intValue());
             }
 
-            // 设置健康状态（基于CPU和内存）
-            double cpuPercent = snap.getHostCpuPercent() != null ? snap.getHostCpuPercent().doubleValue() : 0;
-            int memPercent = snap.getHostMemoryPercent() != null ? snap.getHostMemoryPercent() : 0;
-            if (cpuPercent > 90 || memPercent > 90) {
-                snap.setHealthStatus("DEGRADED");
-                snap.setHealthDetail("CPU=" + cpuPercent + "%, Memory=" + memPercent + "%");
-            } else {
-                snap.setHealthStatus("UP");
-                snap.setHealthDetail("Agent主动上报");
-            }
-
-            // 进程状态默认未知，由下方 processes 列表决定
+            // ======================== 进程状态（先确定） ========================
+            // 默认 STOPPED，由 processes 列表或上次快照覆盖
             snap.setProcessStatus("STOPPED");
 
             // 解析应用进程指标（Agent 心跳上报）
@@ -472,19 +462,72 @@ public class NodeController {
                             snap.setProcessStatus("STOPPED");
                         }
                     }
+                } else {
+                    // processes 列表为空，沿用上一次快照状态，防止误切换
+                    inheritPreviousStatus(snap);
+                }
+            } else {
+                // processes 字段不存在，沿用上一次快照状态
+                inheritPreviousStatus(snap);
+            }
+
+            // ======================== 健康状态（进程状态确定后再判断） ========================
+            // 三个字段联动：进程状态 ↔ 健康状态 ↔ 应用PID
+            // - RUNNING → 看资源：CPU/内存高 → DEGRADED，正常 → UP
+            // - STOPPED → DOWN
+            if ("STOPPED".equals(snap.getProcessStatus())) {
+                snap.setHealthStatus("DOWN");
+                snap.setHealthDetail("应用进程已停止");
+                snap.setProcessPid(null); // STOPPED 时清空 PID，保证前端三个字段一致
+            } else {
+                // RUNNING：根据主机资源判断
+                double cpuPercent = snap.getHostCpuPercent() != null ? snap.getHostCpuPercent().doubleValue() : 0;
+                int memPercent = snap.getHostMemoryPercent() != null ? snap.getHostMemoryPercent() : 0;
+                if (cpuPercent > 90 || memPercent > 90) {
+                    snap.setHealthStatus("DEGRADED");
+                    snap.setHealthDetail("CPU=" + cpuPercent + "%, Memory=" + memPercent + "%");
+                } else {
+                    snap.setHealthStatus("UP");
+                    snap.setHealthDetail("Agent主动上报");
                 }
             }
 
             // 存储到数据库
             snapshotMapper.insert(snap);
-            log.debug("Saved monitor snapshot for node {}: CPU={}%, Memory={}%", nodeId, cpuPercent, memPercent);
+            log.debug("Saved monitor snapshot for node {}: process={}, health={}",
+                    nodeId, snap.getProcessStatus(), snap.getHealthStatus());
         } catch (Exception e) {
             log.warn("Failed to save monitor snapshot for node {}: {}", nodeId, e.getMessage());
         }
     }
 
     /**
-     * 通过WebSocket广播监控数据更新
+     * processes 列表为空时，沿用上次快照的进程状态，避免 Agent 瞬时 PID 检测失败导致抖动。
+     * 注意：按 nodeId（不按 projectId）查找最近快照，因为多项目节点可能每次心跳取到不同 projectId。
+     */
+    private void inheritPreviousStatus(com.ops.common.model.MonitorSnapshotModel snap) {
+        try {
+            // 不按 projectId 查 —— 多项目节点时 projectIds.get(0) 不稳定
+            java.util.List<Long> nodeIds = java.util.Collections.singletonList(snap.getNodeId());
+            java.util.List<com.ops.common.model.MonitorSnapshotModel> prevList =
+                    snapshotMapper.findLatestByNodeIds(nodeIds);
+            if (prevList != null && !prevList.isEmpty()) {
+                com.ops.common.model.MonitorSnapshotModel prev = prevList.get(0);
+                if ("RUNNING".equals(prev.getProcessStatus())) {
+                    snap.setProcessStatus("RUNNING");
+                    snap.setProcessPid(prev.getProcessPid());
+                    log.debug("Inherited RUNNING status from previous snapshot for node {}",
+                            snap.getNodeId());
+                }
+            }
+        } catch (Exception e) {
+            // 静默失败，保留默认 STOPPED
+        }
+    }
+
+    /**
+     * 通过WebSocket广播监控数据更新。
+     * 补充 processStatus/processPid/healthStatus 计算，前端无需等待 HTTP 轮询。
      */
     private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics) {
         try {
@@ -494,11 +537,67 @@ public class NodeController {
             message.put("metrics", metrics);
             message.put("timestamp", System.currentTimeMillis());
 
+            // 从 metrics 中计算 processStatus + healthStatus，前端 WS 通道即可拿到完整状态
+            computeAndAttachStatus(metrics, message);
+
             String json = com.alibaba.fastjson2.JSON.toJSONString(message);
             monitorHandler.broadcast("monitor", json);
         } catch (Exception e) {
             log.warn("Failed to broadcast monitor update for node {}: {}", nodeId, e.getMessage());
         }
+    }
+
+    /**
+     * 从 metrics 的 processes 列表中提取进程状态和健康状态，附加到 message 中。
+     */
+    @SuppressWarnings("unchecked")
+    private void computeAndAttachStatus(Map<String, Object> metrics, Map<String, Object> message) {
+        String processStatus = "STOPPED";
+        Integer processPid = null;
+
+        Object processesObj = metrics.get("processes");
+        if (processesObj instanceof List) {
+            List<?> processes = (List<?>) processesObj;
+            if (!processes.isEmpty()) {
+                Object first = processes.get(0);
+                if (first instanceof Map) {
+                    Map<String, Object> proc = (Map<String, Object>) first;
+                    if (Boolean.TRUE.equals(proc.get("alive"))) {
+                        processStatus = "RUNNING";
+                        Object pidObj = proc.get("pid");
+                        if (pidObj instanceof Number) {
+                            processPid = ((Number) pidObj).intValue();
+                        }
+                    }
+                }
+            }
+        }
+
+        message.put("processStatus", processStatus);
+        message.put("processPid", processPid);
+
+        // 健康状态：STOPPED → DOWN，RUNNING → 根据 CPU/内存判断
+        if ("STOPPED".equals(processStatus)) {
+            message.put("healthStatus", "DOWN");
+        } else {
+            double cpu = toDouble(metrics.get("cpuUsagePercent"));
+            int mem = toInt(metrics.get("memoryUsagePercent"));
+            if (cpu > 90 || mem > 90) {
+                message.put("healthStatus", "DEGRADED");
+            } else {
+                message.put("healthStatus", "UP");
+            }
+        }
+    }
+
+    private double toDouble(Object val) {
+        if (val instanceof Number) return ((Number) val).doubleValue();
+        return 0;
+    }
+
+    private int toInt(Object val) {
+        if (val instanceof Number) return ((Number) val).intValue();
+        return 0;
     }
 
     private String[] parseCsvLine(String line) {

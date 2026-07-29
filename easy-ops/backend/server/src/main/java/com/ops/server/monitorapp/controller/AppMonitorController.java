@@ -103,11 +103,15 @@ public class AppMonitorController {
             allNodeIds.addAll(nodeIds);
         }
 
-        // 批量查询所有节点
+        // 批量查询所有节点（一次 SQL 避免 N+1）
         Map<Long, NodeModel> nodeMap = new HashMap<>();
-        for (Long nodeId : allNodeIds) {
-            NodeModel node = nodeMapper.findById(nodeId);
-            if (node != null) nodeMap.put(nodeId, node);
+        if (!allNodeIds.isEmpty()) {
+            List<NodeModel> allNodes = nodeMapper.findByIds(new ArrayList<>(allNodeIds));
+            if (allNodes != null) {
+                for (NodeModel node : allNodes) {
+                    nodeMap.put(node.getId(), node);
+                }
+            }
         }
 
         // 批量查询所有最新快照（一次查询代替N次），按 (项目, 节点) 维度取各自最新，

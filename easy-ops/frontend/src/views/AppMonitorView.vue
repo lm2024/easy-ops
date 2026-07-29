@@ -740,10 +740,13 @@ function connectWebSocket() {
         const data = JSON.parse(event.data)
         if (data.type === 'monitor_update' && data.nodeId && data.metrics) {
           wsMsgCount.value++
-          // 实时更新监控数据
-          updateMonitorData(data.nodeId, data.metrics)
+          // 实时更新监控数据（包含 processStatus/processPid/healthStatus）
+          updateMonitorData(data.nodeId, data.metrics, {
+            processStatus: data.processStatus,
+            processPid: data.processPid,
+            healthStatus: data.healthStatus
+          })
           lastUpdateTime.value = Date.now()
-          console.log('[Monitor WebSocket] Received update #' + wsMsgCount.value + ' for node', data.nodeId, 'CPU:', data.metrics.cpuUsagePercent)
         }
       } catch (e) {
         console.warn('[Monitor WebSocket] Parse error:', e)
@@ -780,7 +783,7 @@ function disconnectWebSocket() {
   }
 }
 
-function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
+function updateMonitorData(nodeId: number, metrics: Record<string, any>, status?: { processStatus?: string; processPid?: number; healthStatus?: string }) {
   // O(1) 查找：通过索引直接定位节点
   const entry = nodeIndexMap.get(nodeId)
   if (entry) {
@@ -792,9 +795,14 @@ function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
     node.heapUsedMb = metrics.heapUsedMB
     node.heapMaxMb = metrics.heapMaxMB
     node.collectTime = Date.now()
+    // WS 通道补全进程/健康状态（无需等 HTTP 轮询）
+    if (status) {
+      if (status.processStatus !== undefined) node.processStatus = status.processStatus
+      if (status.processPid !== undefined) node.processPid = status.processPid
+      if (status.healthStatus !== undefined) node.healthStatus = status.healthStatus
+    }
     lastCollectTime.value = Date.now()
     lastUpdateTime.value = Date.now()
-    console.log('[Monitor] Patched node', nodeId, 'CPU:', metrics.cpuUsagePercent, 'Memory:', metrics.memoryUsagePercent)
   } else {
     console.warn('[Monitor] Node not found in index:', nodeId)
   }
