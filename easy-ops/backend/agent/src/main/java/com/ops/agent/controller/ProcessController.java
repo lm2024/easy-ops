@@ -87,6 +87,10 @@ public class ProcessController {
         }
 
         try {
+            // 确保部署目录存在（兼容从未成功启动过、目录尚未创建的情况）
+            File dir = new File(deployDir);
+            if (!dir.exists()) dir.mkdirs();
+
             // 如果有 stopScript 就执行
             if (stopScript != null && !stopScript.isEmpty()) {
                 writeScript(deployDir, "stop.sh", stopScript);

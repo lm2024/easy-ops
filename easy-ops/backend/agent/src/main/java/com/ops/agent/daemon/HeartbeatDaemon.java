@@ -427,7 +427,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
         List<Map<String, Object>> processes = new ArrayList<>();
         long agentPid = getAgentPid();
 
-        // jps -lm 列出所有 Java 进程
+        // ps 列出所有 Java 进程
         List<Long> javaPids = listJavaProcesses();
         if (javaPids.isEmpty()) {
             log.warn("进程发现失败: jps/ps 未找到任何Java进程");
@@ -484,28 +484,12 @@ public class HeartbeatDaemon implements CommandLineRunner {
         return processes;
     }
 
-    /** 用 jps -lm 或 ps 列出本机所有 Java 进程 PID */
+    /** 用 ps 列出本机所有 Java 进程 PID（不依赖 jps，更可靠） */
     private List<Long> listJavaProcesses() {
         List<Long> pids = new ArrayList<>();
-        // 优先 jps
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{"jps", "-lm"});
-            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
-            String line;
-            while ((line = r.readLine()) != null) {
-                String[] parts = line.trim().split("\\s+");
-                if (parts.length >= 2) {
-                    try { pids.add(Long.parseLong(parts[0])); } catch (NumberFormatException ignored) {}
-                }
-            }
-            r.close();
-            p.waitFor();
-            if (!pids.isEmpty()) return pids;
-        } catch (Exception ignored) {}
-
-        // 回退 ps
-        try {
-            Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "ps aux | grep '[j]ava' | awk '{print $2}'"});
+            Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c",
+                    "ps -eo pid,args | grep '[j]ava' | awk '{print $1}'"});
             java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
             String line;
             while ((line = r.readLine()) != null) {

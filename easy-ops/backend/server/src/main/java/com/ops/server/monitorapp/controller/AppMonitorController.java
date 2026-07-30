@@ -450,6 +450,13 @@ public class AppMonitorController {
         }
         if (snap.getExtraJson() != null) {
             info.put("extraJson", snap.getExtraJson());
+            // 从 extraJson 中提取 xmxMb（JVM -Xmx 上限）
+            try {
+                Map<String, Object> extra = com.alibaba.fastjson2.JSON.parseObject(snap.getExtraJson(), Map.class);
+                if (extra != null && extra.containsKey("xmxMb")) {
+                    info.put("xmxMb", extra.get("xmxMb"));
+                }
+            } catch (Exception ignored) {}
         }
         return info;
     }

@@ -83,7 +83,59 @@ public class ProcessMetricsHelper {
                 process.destroy();
             }
         }
+        // 从 /proc/{pid}/cmdline 提取 -Xmx 作为 JVM 堆上限参考值
+        int xmxMb = readXmxFromCmdline(pid);
+        if (xmxMb > 0) {
+            result.put("xmxMb", xmxMb);
+        }
         return result;
+    }
+
+    /**
+     * 从 /proc/{pid}/cmdline 读取 -Xmx 参数，返回 MB 值。未找到返回 0。
+     */
+    private int readXmxFromCmdline(long pid) {
+        BufferedReader reader = null;
+        try {
+            java.io.File cmdlineFile = new java.io.File("/proc/" + pid + "/cmdline");
+            if (!cmdlineFile.exists()) return 0;
+            reader = new BufferedReader(new java.io.FileReader(cmdlineFile));
+            String line = reader.readLine();
+            if (line == null) return 0;
+            // cmdline 以 \0 分隔参数
+            String[] args = line.split("\0");
+            for (String arg : args) {
+                // 匹配 -Xmx512m、-Xmx1g、-Xmx1024M 等
+                if (arg.startsWith("-Xmx")) {
+                    return parseXmxToMb(arg.substring(4));
+                }
+            }
+        } catch (Exception ignored) {
+            // /proc 不可用或非 Linux 跳过
+        } finally {
+            closeQuietly(reader);
+        }
+        return 0;
+    }
+
+    /**
+     * 解析 Xmx 值为 MB，支持 m/M/g/G 后缀
+     */
+    private int parseXmxToMb(String val) {
+        if (val == null || val.isEmpty()) return 0;
+        val = val.trim().toLowerCase();
+        try {
+            if (val.endsWith("g")) {
+                return (int) (Double.parseDouble(val.substring(0, val.length() - 1)) * 1024);
+            } else if (val.endsWith("m")) {
+                return Integer.parseInt(val.substring(0, val.length() - 1));
+            } else {
+                // 纯数字，按 KB 转 MB（JVM 默认单位是 KB）
+                return (int) (Long.parseLong(val) / 1024);
+            }
+        } catch (NumberFormatException e) {
+            return 0;
+        }
     }
 
     private void fillPsMetrics(long pid, Map<String, Object> result) {

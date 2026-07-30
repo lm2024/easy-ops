@@ -132,14 +132,15 @@
         :pagination="pagination"
         :row-selection="{ selectedRowKeys, onChange: (keys: any) => selectedRowKeys = keys }"
         size="middle"
+        :row-class-name="rowClassName"
         :scroll="{ x: 1400 }"
         @change="handleTableChange"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'projectName'">
-            <router-link :to="`/projects/${record.projectId}`" style="font-weight:500">
+            <a @click.prevent="openDetail(record)" style="font-weight:500;cursor:pointer;color:#1890ff">
               {{ record.projectName }}
-            </router-link>
+            </a>
           </template>
           <template v-if="column.key === 'nodeName'">
             <div>{{ record.nodeName }}</div>
@@ -262,7 +263,6 @@ interface MonitorTableRow extends AppMonitorNodeInfo {
   projectName: string
   jarName?: string
   nodeIp?: string
-  xmxMb?: number
 }
 
 const dashboard = ref<AppMonitorDashboard | null>(null)
@@ -306,6 +306,26 @@ const probeProjectId = ref<number>()
 const selectedRowKeys = ref<string[]>([])
 const nodeIpMap = ref<Record<string, string>>({})
 let collecting = false
+
+// 行闪烁动效：记录刚更新的 rowKey，1.2秒后自动清除
+const changedRowKeys = ref(new Set<string>())
+let flashTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
+
+function flashRow(rowKey: string) {
+  changedRowKeys.value.add(rowKey)
+  // 触发响应式更新
+  changedRowKeys.value = new Set(changedRowKeys.value)
+  if (flashTimers.has(rowKey)) clearTimeout(flashTimers.get(rowKey)!)
+  flashTimers.set(rowKey, setTimeout(() => {
+    changedRowKeys.value.delete(rowKey)
+    changedRowKeys.value = new Set(changedRowKeys.value)
+    flashTimers.delete(rowKey)
+  }, 1200))
+}
+
+function rowClassName(record: any) {
+  return changedRowKeys.value.has(record.rowKey) ? 'row-flash' : ''
+}
 
 // nodeId → { node, rowKey } 索引，用于 O(1) 查找
 const nodeIndexMap = new Map<number, { node: any; rowKey: string }>()
@@ -615,16 +635,19 @@ function mergeDashboard(newData: any) {
         old.healthDetail = n.healthDetail
         old.nodeName = n.nodeName
         old.jarName = n.jarName
-        // 实时指标：DB 更新时才更新（堆内存不在此列，走 DB 权威值）
+        // 实时指标：DB 更新时才更新
         if (n.collectTime && (!old.collectTime || n.collectTime > old.collectTime)) {
           old.hostCpuPercent = n.hostCpuPercent
           old.cpuPercent = n.cpuPercent
           old.hostMemoryPercent = n.hostMemoryPercent
           old.memoryMb = n.memoryMb
+          old.heapUsedMb = n.heapUsedMb
+          old.heapMaxMb = n.heapMaxMb
           old.diskUsagePercent = n.diskUsagePercent
           old.responseMs = n.responseMs
           old.collectTime = n.collectTime
         }
+        if (n.xmxMb !== undefined) old.xmxMb = n.xmxMb
         // 堆内存始终用 DB 值（WS 不推送应用的堆）
         old.heapUsedMb = n.heapUsedMb
         old.heapMaxMb = n.heapMaxMb
@@ -795,7 +818,7 @@ function connectWebSocket() {
         if (data.type === 'monitor_update' && data.nodeId && data.metrics) {
           wsMsgCount.value++
           // 实时更新监控指标（只更新 CPU/内存等高频数据，不覆盖状态字段）
-          updateMonitorData(data.nodeId, data.metrics)
+          updateMonitorData(data.nodeId, data.metrics, data.computed)
           lastUpdateTime.value = Date.now()
         }
       } catch (e) {
@@ -833,22 +856,42 @@ function disconnectWebSocket() {
   }
 }
 
-function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
-  // O(1) 查找：通过索引直接定位节点
+function updateMonitorData(nodeId: number, metrics: Record<string, any>, computed?: Record<string, any>) {
   const entry = nodeIndexMap.get(nodeId)
-  if (entry) {
-    const { node } = entry
-    // 只更新实时指标，不覆盖 processStatus/healthStatus/processPid（由 HTTP 轮询保证一致性）
-    // 注意：不更新 heapUsedMb/heapMaxMb —— metrics 根级别的是 Agent 自身堆，非应用进程堆
-    node.hostCpuPercent = metrics.cpuUsagePercent
-    node.hostMemoryPercent = metrics.memoryUsagePercent
-    node.diskUsagePercent = metrics.diskUsagePercent
-    node.collectTime = Date.now()
-    lastCollectTime.value = Date.now()
-    lastUpdateTime.value = Date.now()
-  } else {
-    console.warn('[Monitor] Node not found in index:', nodeId)
+  if (!entry) { console.warn('[Monitor] Node not found:', nodeId); return }
+  const { node, rowKey } = entry
+
+  // 检测数据是否有变化
+  let changed = false
+  if (node.hostCpuPercent !== metrics.cpuUsagePercent) changed = true
+  if (node.hostMemoryPercent !== metrics.memoryUsagePercent) changed = true
+
+  // 实时指标（CPU/内存/磁盘）
+  node.hostCpuPercent = metrics.cpuUsagePercent
+  node.hostMemoryPercent = metrics.memoryUsagePercent
+  node.diskUsagePercent = metrics.diskUsagePercent
+  node.collectTime = Date.now()
+
+  // 状态字段（与 DB 同源，saveMonitorSnapshot 计算结果）
+  if (computed) {
+    if (node.processStatus !== computed.processStatus) changed = true
+    if (node.healthStatus !== computed.healthStatus) changed = true
+    node.processStatus = computed.processStatus
+    node.processPid = computed.processPid
+    node.healthStatus = computed.healthStatus
+    node.healthDetail = computed.healthDetail
+    if (computed.cpuPercent !== undefined) node.cpuPercent = computed.cpuPercent
+    if (computed.memoryMb !== undefined) node.memoryMb = computed.memoryMb
+    if (computed.heapUsedMb !== undefined) node.heapUsedMb = computed.heapUsedMb
+    if (computed.heapMaxMb !== undefined) node.heapMaxMb = computed.heapMaxMb
+    if (computed.xmxMb !== undefined) node.xmxMb = computed.xmxMb
   }
+
+  // 数据变化时触发行闪烁
+  if (changed) flashRow(rowKey)
+
+  lastCollectTime.value = Date.now()
+  lastUpdateTime.value = Date.now()
 }
 
 async function openProbe(projectId: number) {
@@ -946,4 +989,14 @@ function stopAutoRefreshCycle() {
 
 <style scoped>
 .error-text { color: #ff4d4f; font-size: 12px; }
+
+/* 表格行数据更新闪烁：1.2s 柔和蓝色背景脉冲 */
+:deep(.row-flash) {
+  animation: row-flash-anim 1.2s ease-out;
+}
+@keyframes row-flash-anim {
+  0%   { background-color: rgba(24, 144, 255, 0.12); }
+  50%  { background-color: rgba(24, 144, 255, 0.05); }
+  100% { background-color: transparent; }
+}
 </style>
