@@ -174,7 +174,13 @@
           <template v-if="column.key === 'memory'">
             <div>总: <b>{{ record.hostMemoryPercent != null ? record.hostMemoryPercent + '%' : '-' }}</b></div>
             <div v-if="record.processStatus === 'N/A'" style="font-size:11px;color:#bfbfbf">堆: -</div>
-            <div v-else style="font-size:11px;color:#888">堆: {{ record.heapUsedMb || 0 }}/{{ record.heapMaxMb || 0 }}MB</div>
+            <div v-else style="font-size:11px;color:#888">
+              堆: {{ record.heapUsedMb || 0 }}/{{ record.heapMaxMb || 0 }}MB
+              <a-tooltip v-if="record.xmxMb">
+                <template #title>当前分配 {{ record.heapMaxMb || 0 }}MB，JVM 上限(-Xmx) {{ record.xmxMb }}MB。堆会根据需要自动扩展，最多到 -Xmx 设置值。</template>
+                <info-circle-outlined style="font-size:12px;color:#1890ff;margin-left:4px;cursor:pointer" />
+              </a-tooltip>
+            </div>
           </template>
           <template v-if="column.key === 'responseMs'">
             <span :style="{ color: (record.responseMs || 0) > 3000 ? '#ff4d4f' : (record.responseMs || 0) > 1000 ? '#faad14' : '#52c41a', fontWeight: 600 }">
@@ -246,7 +252,7 @@ import {
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode, getProcessTaskStatus } from '../api/project'
-import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, MoreOutlined } from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, MoreOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import InstanceDetailDrawer from '../components/InstanceDetailDrawer.vue'
 import dayjs from 'dayjs'
 
@@ -256,6 +262,7 @@ interface MonitorTableRow extends AppMonitorNodeInfo {
   projectName: string
   jarName?: string
   nodeIp?: string
+  xmxMb?: number
 }
 
 const dashboard = ref<AppMonitorDashboard | null>(null)
