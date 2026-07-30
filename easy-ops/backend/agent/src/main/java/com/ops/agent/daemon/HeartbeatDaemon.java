@@ -470,6 +470,10 @@ public class HeartbeatDaemon implements CommandLineRunner {
                     if (gcTime instanceof Number) proc.put("gcTimeMs", ((Number) gcTime).intValue());
                 }
 
+                // 从 cmdline 提取 -Xmx 作为 JVM 上限参考值
+                int xmxMb = parseXmx(cmdline);
+                if (xmxMb > 0) proc.put("xmxMb", xmxMb);
+
                 processes.add(proc);
                 found++;
             } catch (Exception e) {
@@ -534,5 +538,20 @@ public class HeartbeatDaemon implements CommandLineRunner {
             return slash >= 0 ? jar.substring(slash + 1) : jar;
         }
         return cmdline.length() > 80 ? cmdline.substring(0, 80) : cmdline;
+    }
+
+    /** 从命令行中提取 -Xmx 值（单位 MB），如 -Xmx3g → 3072 */
+    private int parseXmx(String cmdline) {
+        if (cmdline == null) return -1;
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-Xmx(\\d+)([gGmMkK]?)").matcher(cmdline);
+        if (m.find()) {
+            long val = Long.parseLong(m.group(1));
+            String unit = m.group(2).toLowerCase();
+            if ("g".equals(unit)) return (int)(val * 1024);
+            if ("m".equals(unit)) return (int) val;
+            if ("k".equals(unit)) return (int)(val / 1024);
+            return (int)(val / (1024 * 1024));
+        }
+        return -1;
     }
 }
