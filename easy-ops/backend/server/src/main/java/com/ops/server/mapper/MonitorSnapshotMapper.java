@@ -9,6 +9,7 @@ import java.util.List;
 @Mapper
 public interface MonitorSnapshotMapper {
     int insert(MonitorSnapshotModel snapshot);
+    int update(MonitorSnapshotModel snapshot);
     MonitorSnapshotModel findLatest(@Param("projectId") Long projectId, @Param("nodeId") Long nodeId);
     List<MonitorSnapshotModel> findLatestByProject(@Param("projectId") Long projectId);
     List<MonitorSnapshotModel> findLatestByNodeIds(@Param("nodeIds") List<Long> nodeIds);

@@ -487,17 +487,22 @@ public class HeartbeatDaemon implements CommandLineRunner {
     /** 用 ps 列出本机所有 Java 进程 PID（不依赖 jps，更可靠） */
     private List<Long> listJavaProcesses() {
         List<Long> pids = new ArrayList<>();
+        Process p = null;
+        java.io.BufferedReader r = null;
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c",
-                    "ps -eo pid,args | grep '[j]ava' | awk '{print $1}'"});
-            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c",
+                    "ps -eo pid:10000,args:10000 2>/dev/null | grep '[j]ava' | awk '{print $1}'"});
+            r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
             String line;
             while ((line = r.readLine()) != null) {
                 try { pids.add(Long.parseLong(line.trim())); } catch (NumberFormatException ignored) {}
             }
-            r.close();
             p.waitFor();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        } finally {
+            try { if (r != null) r.close(); } catch (Exception ignored) {}
+            if (p != null) p.destroy();
+        }
         return pids;
     }
 
@@ -511,17 +516,17 @@ public class HeartbeatDaemon implements CommandLineRunner {
         }
     }
 
-    /** 从命令行中提取 jar 文件名 */
+    /** 从命令行中提取 jar 文件名，非 -jar 方式启动时返回空字符串 */
     private String extractJarName(String cmdline) {
         if (cmdline == null) return "";
-        // 匹配 -jar xxx.jar
         java.util.regex.Matcher m = java.util.regex.Pattern.compile("-jar\\s+(\\S+\\.jar)").matcher(cmdline);
         if (m.find()) {
             String jar = m.group(1);
             int slash = jar.lastIndexOf('/');
             return slash >= 0 ? jar.substring(slash + 1) : jar;
         }
-        return cmdline.length() > 80 ? cmdline.substring(0, 80) : cmdline;
+        // 非 -jar 启动（如 java -cp MainClass），返回空避免错误匹配
+        return "";
     }
 
     /** 从命令行中提取 -Xmx 值（单位 MB），如 -Xmx3g → 3072 */
