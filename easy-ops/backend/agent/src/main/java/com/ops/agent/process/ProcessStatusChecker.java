@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  */
 public class ProcessStatusChecker {
 
-    private static final String CHECK_METHOD = "JPS_PS_CWD";
+    private static final String CHECK_METHOD = "PS_CWD";
     private static final Pattern PID_PATTERN = Pattern.compile("^\\s*(\\d+)");
 
     /**
@@ -47,17 +47,11 @@ public class ProcessStatusChecker {
     /**
      * 查找匹配进程的 PID，未找到返回 null。
      *
-     * 策略：ps 查找 + cwd 验证，不依赖 jps（jps 在 Docker 中不可靠）。
+     * 策略：ps 查找 jarName + /proc/pid/cwd 验证 deployDir，不依赖 jps。
      */
     public Long findPid(String deployDir, String jarName) {
-        // === 第一道：ps 按 deployDir + jarName 精确匹配 ===
-        Long pid = findPidByPs(buildPsCommand(deployDir, jarName));
-        if (pid != null && verifyByWorkingDir(pid, deployDir)) {
-            return pid;
-        }
-
-        // === 第二道：ps 只匹配 jarName（宽匹配）+ cwd 验证 ===
-        pid = findPidByPs("ps -eo pid,args | grep '[j]ava' | grep " + shellEscape(jarName));
+        // === ps 按 jarName 匹配 + cwd 验证工作目录 ===
+        Long pid = findPidByPs("ps -eo pid:10000,args:10000 2>/dev/null | grep '[j]ava' | grep " + shellEscape(jarName));
         if (pid != null && verifyByWorkingDir(pid, deployDir)) {
             return pid;
         }
@@ -66,20 +60,23 @@ public class ProcessStatusChecker {
         return findPidFromFile(deployDir, jarName);
     }
 
-    // ======================== ps 查找 ========================
-
-    private String buildPsCommand(String deployDir, String jarName) {
-        return "ps -eo pid,args | grep " + shellEscape(deployDir)
-                + " | grep " + shellEscape(jarName)
-                + " | grep -v grep";
-    }
-
     private Long findPidByPs(String cmd) {
         Process process = null;
         BufferedReader reader = null;
         try {
             process = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmd});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            // 消费 stderr 防止 buffer 满导致 waitFor 挂起
+            final Process proc = process;
+            Thread drainErr = new Thread(() -> {
+                java.io.BufferedReader err = null;
+                try {
+                    err = new java.io.BufferedReader(new InputStreamReader(proc.getErrorStream()));
+                    while (err.readLine() != null) {}
+                } catch (Exception ignored) {} finally { closeQuietly(err); }
+            });
+            drainErr.setDaemon(true);
+            drainErr.start();
             String line;
             while ((line = reader.readLine()) != null) {
                 Long pid = parsePid(line);
@@ -109,7 +106,6 @@ public class ProcessStatusChecker {
         Process process = null;
         BufferedReader reader = null;
         try {
-            // ps -p <pid> -o args= 直接输出该进程的完整命令行
             process = Runtime.getRuntime().exec(
                     new String[]{"/bin/sh", "-c", "ps -p " + pid + " -o args= 2>/dev/null"});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));

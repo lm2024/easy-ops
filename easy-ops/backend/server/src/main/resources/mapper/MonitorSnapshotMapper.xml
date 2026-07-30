@@ -9,6 +9,15 @@
             #{processPid}, #{cpuPercent}, #{memoryMb}, #{heapUsedMb}, #{heapMaxMb}, #{gcCount}, #{gcTimeMs},
             #{responseMs}, #{hostCpuPercent}, #{hostMemoryPercent}, #{diskUsagePercent}, #{extraJson}, #{collectTime})
     </insert>
+    <update id="update">
+        UPDATE monitor_snapshot SET health_status=#{healthStatus}, health_detail=#{healthDetail},
+            process_status=#{processStatus}, process_pid=#{processPid}, cpu_percent=#{cpuPercent},
+            memory_mb=#{memoryMb}, heap_used_mb=#{heapUsedMb}, heap_max_mb=#{heapMaxMb},
+            gc_count=#{gcCount}, gc_time_ms=#{gcTimeMs}, response_ms=#{responseMs},
+            host_cpu_percent=#{hostCpuPercent}, host_memory_percent=#{hostMemoryPercent},
+            disk_usage_percent=#{diskUsagePercent}, extra_json=#{extraJson}, collect_time=#{collectTime}
+        WHERE id=#{id}
+    </update>
     <select id="findLatest" resultType="com.ops.common.model.MonitorSnapshotModel">
         SELECT * FROM monitor_snapshot WHERE project_id = #{projectId} AND node_id = #{nodeId}
         ORDER BY collect_time DESC LIMIT 1
