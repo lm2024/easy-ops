@@ -608,18 +608,19 @@ function mergeDashboard(newData: any) {
         old.healthDetail = n.healthDetail
         old.nodeName = n.nodeName
         old.jarName = n.jarName
-        // 实时指标：DB 更新时才更新
+        // 实时指标：DB 更新时才更新（堆内存不在此列，走 DB 权威值）
         if (n.collectTime && (!old.collectTime || n.collectTime > old.collectTime)) {
           old.hostCpuPercent = n.hostCpuPercent
           old.cpuPercent = n.cpuPercent
           old.hostMemoryPercent = n.hostMemoryPercent
           old.memoryMb = n.memoryMb
-          old.heapUsedMb = n.heapUsedMb
-          old.heapMaxMb = n.heapMaxMb
           old.diskUsagePercent = n.diskUsagePercent
           old.responseMs = n.responseMs
           old.collectTime = n.collectTime
         }
+        // 堆内存始终用 DB 值（WS 不推送应用的堆）
+        old.heapUsedMb = n.heapUsedMb
+        old.heapMaxMb = n.heapMaxMb
       }
       // 新节点直接追加（首次出现）
     }
@@ -831,11 +832,10 @@ function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
   if (entry) {
     const { node } = entry
     // 只更新实时指标，不覆盖 processStatus/healthStatus/processPid（由 HTTP 轮询保证一致性）
+    // 注意：不更新 heapUsedMb/heapMaxMb —— metrics 根级别的是 Agent 自身堆，非应用进程堆
     node.hostCpuPercent = metrics.cpuUsagePercent
     node.hostMemoryPercent = metrics.memoryUsagePercent
     node.diskUsagePercent = metrics.diskUsagePercent
-    node.heapUsedMb = metrics.heapUsedMB
-    node.heapMaxMb = metrics.heapMaxMB
     node.collectTime = Date.now()
     lastCollectTime.value = Date.now()
     lastUpdateTime.value = Date.now()
