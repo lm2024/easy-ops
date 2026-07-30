@@ -3,6 +3,8 @@ package com.ops.agent.daemon;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ops.agent.process.ProcessMetricsHelper;
 import com.ops.agent.process.ProcessStatusChecker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.http.*;
@@ -30,6 +32,8 @@ import java.util.UUID;
  */
 @Component
 public class HeartbeatDaemon implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(HeartbeatDaemon.class);
 
     @Value("${agent.server-url:http://localhost:8081/api}")
     private String serverUrl;
@@ -171,10 +175,11 @@ public class HeartbeatDaemon implements CommandLineRunner {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
 
             if (response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("[Agent Heartbeat] Sent OK for " + nodeName + " (" + ip + "), CPU=" + metrics.get("cpuUsagePercent") + "%, Memory=" + metrics.get("memoryUsagePercent") + "%");
+                log.debug("心跳成功 节点={} IP={} CPU={}% 内存={}%",
+                        nodeName, ip, metrics.get("cpuUsagePercent"), metrics.get("memoryUsagePercent"));
             }
         } catch (Exception e) {
-            System.err.println("[Agent Heartbeat] Failed: " + e.getMessage());
+            log.warn("心跳失败 节点={}", nodeName, e);
         }
     }
 
@@ -231,7 +236,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
                         memoryUsagePercent = ((memTotalKb - memAvailableKb) * 100.0) / memTotalKb;
                     }
                 } catch (Exception e) {
-                    System.err.println("[Agent Metrics] Failed to read /proc/meminfo: " + e.getMessage());
+                    log.warn("读取内存信息失败 /proc/meminfo", e);
                 }
             } else if (os.contains("mac") || os.contains("darwin")) {
                 // macOS: 通过 sysctl 获取总内存，vm_stat 获取使用量
@@ -273,7 +278,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
                         memoryUsagePercent = (usedPages * 100.0) / totalPages;
                     }
                 } catch (Exception e) {
-                    System.err.println("[Agent Metrics] Failed to get macOS memory: " + e.getMessage());
+                    log.warn("读取内存信息失败 macOS vm_stat", e);
                 }
             }
 
@@ -308,7 +313,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
             metrics.put("processes", collectProcessMetrics());
 
         } catch (Exception e) {
-            System.err.println("[Agent Metrics] Failed to collect metrics: " + e.getMessage());
+            log.warn("指标采集异常", e);
         }
 
         return metrics;
@@ -415,52 +420,41 @@ public class HeartbeatDaemon implements CommandLineRunner {
     }
 
     /**
-     * 扫描本地部署目录，查找应用进程并采集指标。
-     * 扫描 {agentDataPath}/apps/ 下的每个子目录，查找 jar 文件对应的进程。
+     * 通过 jps/ps 直接发现本机所有 Java 进程（排除 Agent 自身）。
+     * 不依赖目录扫描 —— 只要进程在跑就能发现。
      */
     private List<Map<String, Object>> collectProcessMetrics() {
         List<Map<String, Object>> processes = new ArrayList<>();
-        File appsDir = new File(agentDataPath, "apps");
-        if (!appsDir.isDirectory()) {
+        long agentPid = getAgentPid();
+
+        // jps -lm 列出所有 Java 进程
+        List<Long> javaPids = listJavaProcesses();
+        if (javaPids.isEmpty()) {
+            log.warn("进程发现失败: jps/ps 未找到任何Java进程");
             return processes;
         }
-        File[] appDirs = appsDir.listFiles(File::isDirectory);
-        if (appDirs == null) {
-            return processes;
-        }
-        for (File appDir : appDirs) {
+
+        int found = 0;
+        for (Long pid : javaPids) {
+            if (pid == agentPid) continue; // 排除 Agent 自身
+
             try {
-                // 查找目录下的 jar 文件
-                File[] jars = appDir.listFiles((dir, name) -> name.endsWith(".jar"));
-                if (jars == null || jars.length == 0) continue;
-
-                String deployDir = appDir.getAbsolutePath();
-                String jarName = jars[0].getName(); // 取第一个 jar
-
-                // 查找进程 PID（jps + ps + cwd 三保险交叉验证）
-                Long pid = processStatusChecker.findPid(deployDir, jarName);
-                if (pid == null) {
-                    System.err.println("[Agent Heartbeat] WARN: findPid failed for " + jarName + " in " + deployDir + " — process may be stopped or detection missed");
-                    continue;
-                }
-
                 Map<String, Object> proc = new HashMap<>();
-                proc.put("deployDir", deployDir);
-                proc.put("jarName", jarName);
                 proc.put("pid", pid.intValue());
                 proc.put("alive", true);
 
-                // 采集进程 CPU/内存
-                Map<String, Object> metricsResult = processMetricsHelper.getProcessMetrics(deployDir, jarName);
+                // 从 /proc/<pid>/cmdline 读取命令行，提取 jar 名作为标识
+                String cmdline = readCmdline(pid);
+                proc.put("command", cmdline);
+                proc.put("jarName", extractJarName(cmdline));
+
+                // 采集 CPU/内存
+                Map<String, Object> metricsResult = processMetricsHelper.getProcessMetricsByPid(pid);
                 if (Boolean.TRUE.equals(metricsResult.get("found"))) {
                     Object cpu = metricsResult.get("cpuPercent");
                     if (cpu instanceof Number) proc.put("cpuPercent", ((Number) cpu).doubleValue());
                     Object mem = metricsResult.get("memoryMb");
                     if (mem instanceof Number) proc.put("memoryMb", ((Number) mem).intValue());
-                    Object rss = metricsResult.get("rssKb");
-                    if (rss instanceof Number) proc.put("rssKb", ((Number) rss).longValue());
-                    Object memPct = metricsResult.get("memPercent");
-                    if (memPct instanceof Number) proc.put("memPercent", ((Number) memPct).doubleValue());
                 }
 
                 // 采集 JVM 指标
@@ -477,10 +471,68 @@ public class HeartbeatDaemon implements CommandLineRunner {
                 }
 
                 processes.add(proc);
+                found++;
             } catch (Exception e) {
-                System.err.println("[Agent Heartbeat] Failed to collect process metrics for " + appDir.getName() + ": " + e.getMessage());
+                log.warn("进程指标采集失败 PID={}", pid, e);
             }
         }
+        log.debug("进程发现完成: Java进程总数={} 上报数={}(已排除Agent自身)", javaPids.size(), found);
         return processes;
+    }
+
+    /** 用 jps -lm 或 ps 列出本机所有 Java 进程 PID */
+    private List<Long> listJavaProcesses() {
+        List<Long> pids = new ArrayList<>();
+        // 优先 jps
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"jps", "-lm"});
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            String line;
+            while ((line = r.readLine()) != null) {
+                String[] parts = line.trim().split("\\s+");
+                if (parts.length >= 2) {
+                    try { pids.add(Long.parseLong(parts[0])); } catch (NumberFormatException ignored) {}
+                }
+            }
+            r.close();
+            p.waitFor();
+            if (!pids.isEmpty()) return pids;
+        } catch (Exception ignored) {}
+
+        // 回退 ps
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", "ps aux | grep '[j]ava' | awk '{print $2}'"});
+            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            String line;
+            while ((line = r.readLine()) != null) {
+                try { pids.add(Long.parseLong(line.trim())); } catch (NumberFormatException ignored) {}
+            }
+            r.close();
+            p.waitFor();
+        } catch (Exception ignored) {}
+        return pids;
+    }
+
+    /** 读取 /proc/<pid>/cmdline */
+    private String readCmdline(Long pid) {
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(new File("/proc/" + pid + "/cmdline").toPath());
+            return new String(bytes, "UTF-8").replace('\0', ' ');
+        } catch (Exception e) {
+            return "pid=" + pid;
+        }
+    }
+
+    /** 从命令行中提取 jar 文件名 */
+    private String extractJarName(String cmdline) {
+        if (cmdline == null) return "";
+        // 匹配 -jar xxx.jar
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-jar\\s+(\\S+\\.jar)").matcher(cmdline);
+        if (m.find()) {
+            String jar = m.group(1);
+            int slash = jar.lastIndexOf('/');
+            return slash >= 0 ? jar.substring(slash + 1) : jar;
+        }
+        return cmdline.length() > 80 ? cmdline.substring(0, 80) : cmdline;
     }
 }
