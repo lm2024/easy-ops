@@ -6,6 +6,17 @@
     :bodyStyle="{ padding: '12px 16px' }"
     @close="$emit('close')"
   >
+    <template #extra>
+      <a-space v-if="!isAgentMode" size="small">
+        <a-spin v-if="autoRefreshing" size="small" />
+        <span style="color:#8c8c8c;font-size:11px">
+          {{ autoRefreshing ? '刷新中...' : (lastRefreshAgo || '') }}
+        </span>
+      </a-space>
+    </template>
+
+    <!-- 数据更新闪烁效果容器 -->
+    <div :class="{ 'detail-flash': dataJustUpdated }">
     <!-- 进程未运行时的警告 -->
     <a-alert
       v-if="!hasPid"
@@ -70,6 +81,9 @@
               <div style="text-align:center;margin-top:4px;color:#888;font-size:12px">
                 {{ basicData?.heapUsedMb ?? '--' }} / {{ basicData?.heapMaxMb ?? '--' }} MB
               </div>
+              <div v-if="basicData?.xmxMb" style="text-align:center;margin-top:2px;color:#1890ff;font-size:11px">
+                JVM 上限(-Xmx): {{ basicData.xmxMb }} MB
+              </div>
             </a-card>
           </a-col>
         </a-row>
@@ -86,6 +100,7 @@
           <a-descriptions-item label="磁盘使用">{{ basicData?.diskUsagePercent != null ? basicData.diskUsagePercent + '%' : '未采集' }}</a-descriptions-item>
           <a-descriptions-item label="GC 次数">{{ basicData?.gcCount ?? '未采集' }}</a-descriptions-item>
           <a-descriptions-item label="GC 耗时">{{ basicData?.gcTimeMs != null ? basicData.gcTimeMs + ' ms' : '未采集' }}</a-descriptions-item>
+          <a-descriptions-item label="JVM 上限(-Xmx)">{{ basicData?.xmxMb != null ? basicData.xmxMb + ' MB' : '未采集' }}</a-descriptions-item>
           <a-descriptions-item label="响应时间">
             <span v-if="basicData?.responseMs != null" :style="{ color: basicData.responseMs > 3000 ? '#ff4d4f' : basicData.responseMs > 1000 ? '#faad14' : '#52c41a' }">
               {{ basicData.responseMs }} ms
@@ -270,16 +285,17 @@
         </div>
       </a-tab-pane>
     </a-tabs>
+    </div><!-- /detail-flash wrapper -->
   </a-drawer>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import type {
   AppMonitorNodeInfo, ThreadTopResult, ThreadInfoResult, JvmDetailResult
 } from '../types'
-import { getThreadTop, getThreadInfo, getJvmDetail, refreshAppNodeDetail } from '../api/monitorApp'
+import { getThreadTop, getThreadInfo, getJvmDetail, refreshAppNodeDetail, getAppNodeDetail } from '../api/monitorApp'
 
 interface DrawerRecord extends AppMonitorNodeInfo {
   projectId: number
@@ -307,6 +323,79 @@ const threadInfo = ref<ThreadInfoResult | null>(null)
 const jvmDetail = ref<JvmDetailResult | null>(null)
 
 const localRecord = ref<DrawerRecord | null>(null)
+
+// ====== 自动刷新 + 更新动效 ======
+const autoRefreshing = ref(false)
+const dataJustUpdated = ref(false)
+const lastRefreshTime = ref<number>(0)
+const nowTick = ref<number>(Date.now()) // 每秒更新，驱动 ago 计算
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null
+let flashTimer: ReturnType<typeof setTimeout> | null = null
+let agoTimer: ReturnType<typeof setInterval> | null = null
+
+const lastRefreshAgo = computed(() => {
+  if (!lastRefreshTime.value) return ''
+  const sec = Math.round((nowTick.value - lastRefreshTime.value) / 1000)
+  if (sec < 3) return '刚刚更新'
+  if (sec < 60) return `${sec}秒前更新`
+  return `${Math.round(sec / 60)}分钟前更新`
+})
+
+function startAutoRefresh() {
+  stopAutoRefresh()
+  // 每 3 秒从 DB 拉取最新快照数据
+  autoRefreshTimer = setInterval(async () => {
+    const r = localRecord.value
+    if (!r?.projectId || !r?.nodeId) return
+    autoRefreshing.value = true
+    try {
+      const res = await getAppNodeDetail(r.projectId, r.nodeId)
+      if (res.data && localRecord.value) {
+        const fresh = res.data
+        // 检测数据是否有变化
+        const changed = hasDataChanged(localRecord.value, fresh)
+        // 合并：保留本地实时采集的 PID，其余用 DB 最新值
+        localRecord.value = { ...localRecord.value, ...fresh }
+        lastRefreshTime.value = Date.now()
+        if (changed) {
+          triggerFlash()
+        }
+      }
+    } catch { /* 静默失败，不影响抽屉展示 */ }
+    finally { autoRefreshing.value = false }
+  }, 3000)
+
+  // 每秒刷新 "N秒前" 文案
+  agoTimer = setInterval(() => {
+    nowTick.value = Date.now()
+  }, 1000)
+}
+
+function stopAutoRefresh() {
+  if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null }
+  if (agoTimer) { clearInterval(agoTimer); agoTimer = null }
+  if (flashTimer) { clearTimeout(flashTimer); flashTimer = null }
+}
+
+function triggerFlash() {
+  dataJustUpdated.value = true
+  if (flashTimer) clearTimeout(flashTimer)
+  flashTimer = setTimeout(() => { dataJustUpdated.value = false }, 1200)
+}
+
+function hasDataChanged(oldData: any, newData: any): boolean {
+  const keys = ['hostCpuPercent', 'cpuPercent', 'hostMemoryPercent', 'heapUsedMb',
+    'heapMaxMb', 'diskUsagePercent', 'processStatus', 'processPid', 'healthStatus',
+    'responseMs', 'memoryMb', 'gcCount', 'gcTimeMs', 'xmxMb']
+  for (const k of keys) {
+    if (oldData[k] !== newData[k]) return true
+  }
+  return false
+}
+
+onUnmounted(() => {
+  stopAutoRefresh()
+})
 
 // 是否为「Agent 自身」详情（无 projectId）；无 project 时跳过实时刷新、文案切换
 const isAgentMode = computed(() => !localRecord.value?.projectId)
@@ -428,6 +517,7 @@ watch(() => props.visible, (v) => {
     jvmDetail.value = null
     threadLoadAttempted.value = false
     jvmLoadAttempted.value = false
+    dataJustUpdated.value = false
     const r = props.record
     localRecord.value = r ? { ...r } : null
     if (r?.projectId && r?.nodeId) {
@@ -437,10 +527,16 @@ watch(() => props.visible, (v) => {
           if (fresh && localRecord.value) {
             // 以实时采集结果覆盖（含两个 PID 与实时指标），原记录缺字段时补齐
             localRecord.value = { ...localRecord.value, ...fresh }
+            lastRefreshTime.value = Date.now()
           }
         })
         .catch(() => { /* 实时采集失败则保留快照数据，不报错 */ })
+      // 启动自动刷新（每 3 秒从 DB 拉最新快照）
+      startAutoRefresh()
     }
+  } else {
+    // 关闭时停止自动刷新
+    stopAutoRefresh()
   }
 })
 
@@ -459,3 +555,16 @@ function stateColor(state: string): string {
   }
 }
 </script>
+
+<style scoped>
+/* 详情数据更新闪烁：1.2s 柔和蓝色边框脉冲 */
+.detail-flash {
+  animation: detail-flash-anim 1.2s ease-out;
+  border-radius: 4px;
+}
+@keyframes detail-flash-anim {
+  0%   { box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.35); }
+  50%  { box-shadow: 0 0 0 1px rgba(24, 144, 255, 0.15); }
+  100% { box-shadow: none; }
+}
+</style>

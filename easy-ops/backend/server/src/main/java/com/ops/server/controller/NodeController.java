@@ -382,22 +382,41 @@ public class NodeController {
     }
 
     /**
-     * 保存监控快照到数据库
+     * 保存监控快照到数据库（为节点上每个项目各生成一条快照）
      */
     private Map<String, Object> saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
         Map<String, Object> computed = new java.util.HashMap<>();
         try {
+            // 获取该节点关联的所有项目ID
+            List<Long> projectIds = nodeMapper.getProjectIdsByNodeId(nodeId);
+            if (projectIds == null || projectIds.isEmpty()) {
+                return computed;
+            }
+
+            // 为每个项目生成快照（跳过未配置 jarName 的项目，避免误标记为 STOPPED）
+            for (Long projectId : projectIds) {
+                String jarName = getExpectedJarName(projectId);
+                if (jarName == null || jarName.isEmpty()) {
+                    log.debug("[Monitor] 跳过未配置jarName的项目 节点={} 项目={}", nodeId, projectId);
+                    continue;
+                }
+                saveOneSnapshot(nodeId, projectId, metrics, computed);
+            }
+        } catch (Exception e) {
+            log.warn("监控快照保存失败 节点={}", nodeId, e);
+        }
+        return computed;
+    }
+
+    /**
+     * 为单个项目保存一条监控快照
+     */
+    private void saveOneSnapshot(Long nodeId, Long projectId, Map<String, Object> metrics, Map<String, Object> computed) {
+        try {
             com.ops.common.model.MonitorSnapshotModel snap = new com.ops.common.model.MonitorSnapshotModel();
             snap.setNodeId(nodeId);
+            snap.setProjectId(projectId);
             snap.setCollectTime(System.currentTimeMillis());
-
-            // 获取该节点关联的项目ID（取第一个）
-            List<Long> projectIds = nodeMapper.getProjectIdsByNodeId(nodeId);
-            if (projectIds != null && !projectIds.isEmpty()) {
-                snap.setProjectId(projectIds.get(0));
-            } else {
-                snap.setProjectId(0L); // 默认值
-            }
 
             // 解析CPU使用率（现在是真实的系统CPU使用率，不是负载转换值）
             Object cpuUsage = metrics.get("cpuUsagePercent");
@@ -436,18 +455,12 @@ public class NodeController {
             if (processesObj instanceof List) {
                 List<?> processes = (List<?>) processesObj;
                 if (!processes.isEmpty()) {
-                    // 尝试按 jarName 匹配
+                    // 按 jarName 匹配进程（jarName 为空的项目已在上层跳过）
                     String expectedJarName = getExpectedJarName(snap.getProjectId());
+                    // 尝试按 jarName 匹配
                     Map<?, ?> matched = findProcessByJarName(processes, expectedJarName);
-                    boolean matchedByJar = (matched != null);
-                    // 无匹配则 fallback 到 processes[0]
-                    if (!matchedByJar && !processes.isEmpty()) {
-                        matched = (Map<?, ?>) processes.get(0);
-                        log.warn("进程匹配失败 节点={} 期望jarName={} 实际进程列表={} 已fallback到PID={}",
-                                nodeId, expectedJarName,
-                                processes.stream().map(p -> ((Map<?,?>)p).get("jarName")).collect(java.util.stream.Collectors.toList()),
-                                matched.get("pid"));
-                    }
+                    // 不再 fallback — jarName 不匹配说明该应用没在运行，
+                    // fallback 到 processes[0] 会把 Agent 自身的数据当成应用数据
                     if (matched != null) {
                         Object pidObj = matched.get("pid");
                         if (pidObj instanceof Number) {
@@ -531,33 +544,21 @@ public class NodeController {
                     snap.getDiskUsagePercent(),
                     snap.getHealthDetail());
         } catch (Exception e) {
-            log.warn("监控快照保存失败 节点={}", nodeId, e);
+            log.warn("监控快照保存失败 节点={} 项目={}", nodeId, projectId, e);
         }
-        return computed;
     }
 
     /**
-     * processes 列表为空时，沿用上次快照的进程状态，避免 Agent 瞬时 PID 检测失败导致抖动。
-     * 注意：按 nodeId（不按 projectId）查找最近快照，因为多项目节点可能每次心跳取到不同 projectId。
+     * processes 列表为空时，直接标记 STOPPED。
+     * jps 列不出的进程就是没在运行，不需要继承旧状态。
+     * 注：旧版有 inheritPreviousStatus 逻辑（沿用上次 RUNNING 状态防止抖动），
+     * 但每次心跳都会刷新快照时间戳，导致继承永不超时——进程停了页面还一直显示"运行中"。
+     * 如果 jps 偶发漏报，下次心跳会立即修正回来，短暂的 STOPPED 抖动远好过永久的幽灵进程。
      */
     private void inheritPreviousStatus(com.ops.common.model.MonitorSnapshotModel snap) {
-        try {
-            // 不按 projectId 查 —— 多项目节点时 projectIds.get(0) 不稳定
-            java.util.List<Long> nodeIds = java.util.Collections.singletonList(snap.getNodeId());
-            java.util.List<com.ops.common.model.MonitorSnapshotModel> prevList =
-                    snapshotMapper.findLatestByNodeIds(nodeIds);
-            if (prevList != null && !prevList.isEmpty()) {
-                com.ops.common.model.MonitorSnapshotModel prev = prevList.get(0);
-                if ("RUNNING".equals(prev.getProcessStatus())) {
-                    snap.setProcessStatus("RUNNING");
-                    snap.setProcessPid(prev.getProcessPid());
-                    log.debug("Inherited RUNNING status from previous snapshot for node {}",
-                            snap.getNodeId());
-                }
-            }
-        } catch (Exception e) {
-            // 静默失败，保留默认 STOPPED
-        }
+        // 不再继承——进程列表为空即为 STOPPED
+        snap.setProcessStatus("STOPPED");
+        snap.setProcessPid(null);
     }
 
     /**

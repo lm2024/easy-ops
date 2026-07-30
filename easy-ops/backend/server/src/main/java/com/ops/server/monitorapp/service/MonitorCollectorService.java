@@ -457,6 +457,11 @@ public class MonitorCollectorService {
                     snap.setHeapMaxMb(toInt(jvm.get("heapMaxMb")));
                     snap.setGcCount(toInt(jvm.get("gcYoungCount")));
                     snap.setGcTimeMs(toInt(jvm.get("gcTimeMs")));
+                    // -Xmx 上限值（从进程 cmdline 提取）
+                    Object xmxMb = jvm.get("xmxMb");
+                    if (xmxMb != null) {
+                        extra.put("xmxMb", toInt(xmxMb));
+                    }
                 }
             }
         }
