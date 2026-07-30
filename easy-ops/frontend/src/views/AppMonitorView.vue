@@ -571,15 +571,61 @@ async function fetchDashboard() {
   loading.value = true
   try {
     const res = await getAppDashboard()
-    dashboard.value = res.data
     if (res.data?.collectIntervalSec) {
       collectIntervalSec.value = res.data.collectIntervalSec
     }
-    // 重建 nodeId 索引
+    // 合并而非替换：状态字段用 DB 权威值，实时指标保留 WS 已更新的最新值
+    mergeDashboard(res.data)
     rebuildNodeIndex()
   } finally {
     loading.value = false
   }
+}
+
+/** 合并仪表盘数据：状态字段（进程/健康/PID）用新数据，实时指标（CPU/内存等）保留已有 */
+function mergeDashboard(newData: any) {
+  if (!dashboard.value) {
+    dashboard.value = newData
+    return
+  }
+  // 构建旧 node 索引（projectId_nodeId → node）
+  const oldNodeMap = new Map<string, any>()
+  for (const p of dashboard.value.projects || []) {
+    for (const n of p.nodes || []) {
+      oldNodeMap.set(p.projectId + '_' + n.nodeId, n)
+    }
+  }
+  // 合并：每个新 node 的状态字段覆盖，实时指标保留旧值（WS 更实时）
+  for (const p of newData.projects || []) {
+    for (const n of p.nodes || []) {
+      const key = p.projectId + '_' + n.nodeId
+      const old = oldNodeMap.get(key)
+      if (old) {
+        // 状态字段用 DB（权威源）
+        old.processStatus = n.processStatus
+        old.processPid = n.processPid
+        old.healthStatus = n.healthStatus
+        old.healthDetail = n.healthDetail
+        old.nodeName = n.nodeName
+        old.jarName = n.jarName
+        // 实时指标：DB 更新时才更新
+        if (n.collectTime && (!old.collectTime || n.collectTime > old.collectTime)) {
+          old.hostCpuPercent = n.hostCpuPercent
+          old.cpuPercent = n.cpuPercent
+          old.hostMemoryPercent = n.hostMemoryPercent
+          old.memoryMb = n.memoryMb
+          old.heapUsedMb = n.heapUsedMb
+          old.heapMaxMb = n.heapMaxMb
+          old.diskUsagePercent = n.diskUsagePercent
+          old.responseMs = n.responseMs
+          old.collectTime = n.collectTime
+        }
+      }
+      // 新节点直接追加（首次出现）
+    }
+  }
+  // 更新顶层字段
+  dashboard.value.collectIntervalSec = newData.collectIntervalSec
 }
 
 // ====== Agent 状态 ======
