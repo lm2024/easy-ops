@@ -21,6 +21,17 @@ public class ProcessMetricsHelper {
     }
 
     /**
+     * 按 PID 直接采集进程 CPU/内存指标（不依赖 deployDir/jarName）。
+     */
+    public Map<String, Object> getProcessMetricsByPid(long pid) {
+        Map<String, Object> result = new HashMap<String, Object>();
+        result.put("pid", pid);
+        result.put("found", true);
+        fillPsMetrics(pid, result);
+        return result;
+    }
+
+    /**
      * 采集进程 CPU/内存指标。
      *
      * @param deployDir 部署目录

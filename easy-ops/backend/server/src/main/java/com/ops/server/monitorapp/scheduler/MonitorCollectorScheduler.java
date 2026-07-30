@@ -44,9 +44,9 @@ public class MonitorCollectorScheduler implements SchedulingConfigurer {
         try {
             // 使用异步采集，不阻塞调度线程
             String taskId = collectorService.collectAllAsync();
-            log.info("Monitor async collection started: taskId={}", taskId);
+            log.info("监控采集已启动 taskId={}", taskId);
         } catch (Exception e) {
-            log.error("Monitor collection failed: {}", e.getMessage());
+            log.error("监控采集失败", e);
         } finally {
             distributedLock.releaseLock(LOCK_NAME);
         }

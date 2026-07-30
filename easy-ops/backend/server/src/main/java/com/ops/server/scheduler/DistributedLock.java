@@ -39,7 +39,7 @@ public class DistributedLock {
 
     @PostConstruct
     public void init() {
-        log.info("DistributedLock initialized, instanceId={}", instanceId);
+        log.info("分布式锁初始化 instanceId={}", instanceId);
     }
 
     /**

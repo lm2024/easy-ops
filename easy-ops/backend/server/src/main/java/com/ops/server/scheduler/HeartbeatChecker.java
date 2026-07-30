@@ -71,7 +71,7 @@ public class HeartbeatChecker {
             }
 
             nodeMapper.updateStatusOffline(nodeId);
-            log.info("Node {} ({}) marked as OFFLINE", nodeName, nodeIp);
+            log.info("节点离线 名称={} IP={}", nodeName, nodeIp);
 
             // Trigger alarm
             String content = "节点[" + (nodeName != null ? nodeName : "?" ) + "] " + (nodeIp != null ? nodeIp : "?") + " 心跳超时，状态变更为离线";

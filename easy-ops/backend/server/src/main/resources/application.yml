@@ -75,13 +75,17 @@ logging:
   level:
     root: INFO
     com.ops.server: DEBUG
-    com.ops.server.mapper: DEBUG
+    # mapper DEBUG 会打印全部 SQL，生产建议 WARN；排查 SQL 问题时临时改为 DEBUG
+    com.ops.server.mapper: WARN
+    # 调度器分布式锁日志过于频繁，降为 INFO
+    com.ops.server.scheduler: INFO
   file:
     name: ${EASYOPS_SERVER_DATA:./data}/logs/server.log
   logback:
     rollingpolicy:
-      max-file-size: 100MB
-      max-history: 30
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 50MB
 
 # CORS：内网默认放行；生产可收紧为具体前端域名
 cors:

@@ -41,3 +41,10 @@ agent:
 logging:
   level:
     com.ops.agent: INFO
+  file:
+    name: ${AGENT_DATA_PATH:/app/data}/logs/agent.log
+  logback:
+    rollingpolicy:
+      max-file-size: 10MB
+      max-history: 7
+      total-size-cap: 30MB
