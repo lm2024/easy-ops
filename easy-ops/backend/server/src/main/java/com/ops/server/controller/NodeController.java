@@ -9,6 +9,7 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.MonitorSnapshotMapper;
+import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.service.AlarmService;
 import com.ops.server.service.AgentUpgradeService;
 import com.ops.server.util.SecurityContext;
@@ -67,6 +68,9 @@ public class NodeController {
 
     @Autowired
     private com.ops.server.client.AgentClient agentClient;
+
+    @Autowired
+    private GlobalPathProperties globalPathProperties;
 
     /**
      * GET /api/nodes - 节点列表 (支持分页和状态筛选)
@@ -394,12 +398,7 @@ public class NodeController {
             }
 
             for (Long projectId : projectIds) {
-                String jarName = getExpectedJarName(projectId);
-                if (jarName == null || jarName.isEmpty()) {
-                    log.debug("[Monitor] 跳过未配置jarName的项目 节点={} 项目={}", nodeId, projectId);
-                    continue;
-                }
-                // 每个项目独立的 computed，避免互相覆盖
+                // jarName 校验下沉到 saveOneSnapshot 内部，避免重复查 DB
                 Map<String, Object> projectComputed = saveOneSnapshot(nodeId, projectId, metrics);
                 if (projectComputed != null && !projectComputed.isEmpty()) {
                     computed = projectComputed; // 保留最后一个供 WS 广播
@@ -441,12 +440,6 @@ public class NodeController {
                 snap.setHostMemoryPercent(((Number) memUsage).intValue());
             }
 
-            // 解析堆内存（Agent 自身 JVM）
-            Object heapUsed = metrics.get("heapUsedMB");
-            Object heapMax = metrics.get("heapMaxMB");
-            if (heapUsed instanceof Number) snap.setHeapUsedMb(((Number) heapUsed).intValue());
-            if (heapMax instanceof Number) snap.setHeapMaxMb(((Number) heapMax).intValue());
-
             // 解析磁盘使用率
             Object diskUsage = metrics.get("diskUsagePercent");
             if (diskUsage instanceof Number) {
@@ -458,54 +451,69 @@ public class NodeController {
             snap.setProcessStatus("STOPPED");
 
             // 解析应用进程指标（Agent 心跳上报）
-            // 按项目配置的 jar_name 匹配正确的进程，避免多进程时取错数据
+            // 按 jarName + deployDir 双重匹配，避免同节点多应用时取错 PID/堆内存
             Object processesObj = metrics.get("processes");
             if (processesObj instanceof List) {
                 List<?> processes = (List<?>) processesObj;
                 if (!processes.isEmpty()) {
-                    // 按 jarName 匹配进程（jarName 为空的项目已在上层跳过）
-                    String expectedJarName = getExpectedJarName(snap.getProjectId());
-                    // 尝试按 jarName 匹配
-                    Map<?, ?> matched = findProcessByJarName(processes, expectedJarName);
-                    // 不再 fallback — jarName 不匹配说明该应用没在运行，
-                    // fallback 到 processes[0] 会把 Agent 自身的数据当成应用数据
-                    if (matched != null) {
-                        Object pidObj = matched.get("pid");
-                        if (pidObj instanceof Number) {
-                            snap.setProcessPid(((Number) pidObj).intValue());
-                        }
-                        Object procCpu = matched.get("cpuPercent");
-                        if (procCpu instanceof Number) {
-                            snap.setCpuPercent(new java.math.BigDecimal(((Number) procCpu).doubleValue()));
-                        }
-                        Object procMem = matched.get("memoryMb");
-                        if (procMem instanceof Number) {
-                            snap.setMemoryMb(((Number) procMem).intValue());
-                        }
-                        Object procHeapUsed = matched.get("heapUsedMb");
-                        if (procHeapUsed instanceof Number) snap.setHeapUsedMb(((Number) procHeapUsed).intValue());
-                        Object procHeapMax = matched.get("heapMaxMb");
-                        if (procHeapMax instanceof Number) snap.setHeapMaxMb(((Number) procHeapMax).intValue());
-                        Object xmxObj = matched.get("xmxMb");
-                        if (xmxObj instanceof Number) computed.put("xmxMb", ((Number) xmxObj).intValue());
-                        Object gcCount = matched.get("gcCount");
-                        if (gcCount instanceof Number) snap.setGcCount(((Number) gcCount).intValue());
-                        Object gcTime = matched.get("gcTimeMs");
-                        if (gcTime instanceof Number) snap.setGcTimeMs(((Number) gcTime).intValue());
-                        Object alive = matched.get("alive");
-                        if (Boolean.TRUE.equals(alive)) {
-                            snap.setProcessStatus("RUNNING");
+                    com.ops.common.model.ProjectModel project = getProject(snap.getProjectId());
+                    String expectedJarName = (project != null && project.getJarName() != null) ? project.getJarName().trim() : "";
+                    String expectedDeployDir = resolveDeployDir(project);
+                    if (expectedJarName.isEmpty()) {
+                        log.debug("[Monitor] 跳过未配置jarName的项目 节点={} 项目={}", nodeId, snap.getProjectId());
+                    } else {
+                        Map<?, ?> matched = findProcessByJarNameAndDeployDir(processes, expectedJarName, expectedDeployDir);
+                        if (matched != null) {
+                            Object pidObj = matched.get("pid");
+                            if (pidObj instanceof Number) {
+                                snap.setProcessPid(((Number) pidObj).intValue());
+                            }
+                            Object procCpu = matched.get("cpuPercent");
+                            if (procCpu instanceof Number) {
+                                snap.setCpuPercent(new java.math.BigDecimal(((Number) procCpu).doubleValue()));
+                            }
+                            Object procMem = matched.get("memoryMb");
+                            if (procMem instanceof Number) {
+                                snap.setMemoryMb(((Number) procMem).intValue());
+                            }
+                            Object procHeapUsed = matched.get("heapUsedMb");
+                            if (procHeapUsed instanceof Number) {
+                                snap.setHeapUsedMb(((Number) procHeapUsed).intValue());
+                            }
+                            // 无 heap 数据时保留已有值（jstat 可能暂时不可用，不覆盖 collectOne 的正确数据）
+                            Object procHeapMax = matched.get("heapMaxMb");
+                            if (procHeapMax instanceof Number) {
+                                snap.setHeapMaxMb(((Number) procHeapMax).intValue());
+                            }
+                            Object xmxObj = matched.get("xmxMb");
+                            if (xmxObj instanceof Number) computed.put("xmxMb", ((Number) xmxObj).intValue());
+                            Object gcCount = matched.get("gcCount");
+                            if (gcCount instanceof Number) snap.setGcCount(((Number) gcCount).intValue());
+                            Object gcTime = matched.get("gcTimeMs");
+                            if (gcTime instanceof Number) snap.setGcTimeMs(((Number) gcTime).intValue());
+                            Object alive = matched.get("alive");
+                            if (Boolean.TRUE.equals(alive)) {
+                                snap.setProcessStatus("RUNNING");
+                            } else {
+                                snap.setProcessStatus("STOPPED");
+                            }
                         } else {
-                            snap.setProcessStatus("STOPPED");
+                            // 未匹配到进程：清除堆内存，不能保留上一次快照的错误数据
+                            snap.setHeapUsedMb(null);
+                            snap.setHeapMaxMb(null);
                         }
                     }
                 } else {
                     // processes 列表为空，进程未运行
                     markStopped(snap);
+                    snap.setHeapUsedMb(null);
+                    snap.setHeapMaxMb(null);
                 }
             } else {
                 // processes 字段不存在，进程未运行
                 markStopped(snap);
+                snap.setHeapUsedMb(null);
+                snap.setHeapMaxMb(null);
             }
 
             // ======================== 健康状态（进程状态确定后再判断） ========================
@@ -598,29 +606,52 @@ public class NodeController {
         return val.setScale(1, java.math.RoundingMode.HALF_UP).toString();
     }
 
-    /** 获取项目配置的 jar 文件名 */
-    private String getExpectedJarName(Long projectId) {
+    /** 获取项目配置对象（缓存单次请求内重复查询） */
+    private com.ops.common.model.ProjectModel getProject(Long projectId) {
         if (projectId == null || projectId == 0L) return null;
         try {
-            com.ops.common.model.ProjectModel project = projectMapper.findById(projectId);
-            if (project != null && project.getJarName() != null && !project.getJarName().isEmpty()) {
-                return project.getJarName().trim();
-            }
-        } catch (Exception ignored) {}
-        return null;
+            return projectMapper.findById(projectId);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
-    /** 在 processes 列表中按 jarName 匹配进程 */
+    /** 解析项目的部署目录（与 MonitorCollectorService 保持一致） */
+    private String resolveDeployDir(com.ops.common.model.ProjectModel project) {
+        if (project == null) return "";
+        if (project.getDeployDir() != null && !project.getDeployDir().trim().isEmpty()) {
+            return project.getDeployDir().trim();
+        }
+        return globalPathProperties.resolveDeployDir(project.getName());
+    }
+
+    /** 在 processes 列表中按 jarName + deployDir 双重匹配进程 */
     @SuppressWarnings("unchecked")
-    private Map<?, ?> findProcessByJarName(List<?> processes, String expectedJarName) {
+    private Map<?, ?> findProcessByJarNameAndDeployDir(List<?> processes, String expectedJarName, String expectedDeployDir) {
         if (expectedJarName == null || expectedJarName.isEmpty()) return null;
+        boolean hasExpectedDeployDir = expectedDeployDir != null && !expectedDeployDir.isEmpty();
         for (Object obj : processes) {
             if (obj instanceof Map) {
                 Map<String, Object> proc = (Map<String, Object>) obj;
                 String jarName = (String) proc.get("jarName");
-                if (expectedJarName.equals(jarName)) {
-                    return proc;
+                if (!expectedJarName.equals(jarName)) continue;
+                // jarName 匹配后，有 deployDir 就用 deployDir 二次验证
+                if (hasExpectedDeployDir) {
+                    String procDeployDir = (String) proc.get("deployDir");
+                    if (procDeployDir != null && !procDeployDir.isEmpty()) {
+                        // 路径比较：支持精确匹配和子路径匹配
+                        if (procDeployDir.equals(expectedDeployDir)
+                                || procDeployDir.endsWith("/" + expectedDeployDir)
+                                || expectedDeployDir.endsWith("/" + procDeployDir)
+                                || procDeployDir.contains(expectedDeployDir)
+                                || expectedDeployDir.contains(procDeployDir)) {
+                            return proc;
+                        }
+                        continue; // deployDir 不匹配，跳过
+                    }
+                    // Agent 版本较旧没有 deployDir，回退到只按 jarName 匹配（降级兼容）
                 }
+                return proc;
             }
         }
         return null;

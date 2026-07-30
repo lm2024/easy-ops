@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS monitor_snapshot (
     collect_time BIGINT
 );
 CREATE INDEX IF NOT EXISTS idx_mon_proj_node_time ON monitor_snapshot(project_id, node_id, collect_time);
+CREATE INDEX IF NOT EXISTS idx_mon_node_proj_time ON monitor_snapshot(node_id, project_id, collect_time);
 CREATE INDEX IF NOT EXISTS idx_mon_collect ON monitor_snapshot(collect_time);
 
 CREATE TABLE IF NOT EXISTS ai_diagnosis_record (
