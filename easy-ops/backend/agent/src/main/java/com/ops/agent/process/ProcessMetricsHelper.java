@@ -65,9 +65,21 @@ public class ProcessMetricsHelper {
         try {
             process = Runtime.getRuntime().exec(new String[]{"jstat", "-gc", String.valueOf(pid)});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            // 消费 stderr 防止 buffer 满导致 waitFor 挂起
+            final Process p = process;
+            Thread drainErr = new Thread(() -> {
+                java.io.BufferedReader err = null;
+                try {
+                    err = new java.io.BufferedReader(new InputStreamReader(p.getErrorStream()));
+                    while (err.readLine() != null) {}
+                } catch (Exception ignored) {} finally { closeQuietly(err); }
+            });
+            drainErr.setDaemon(true);
+            drainErr.start();
             String header = reader.readLine();
             String values = reader.readLine();
             int exit = process.waitFor();
+            drainErr.join(2000); // 等 stderr 消费线程结束
             if (exit != 0 || header == null || values == null) {
                 result.put("available", false);
                 return result;
@@ -129,9 +141,11 @@ public class ProcessMetricsHelper {
                 return (int) (Double.parseDouble(val.substring(0, val.length() - 1)) * 1024);
             } else if (val.endsWith("m")) {
                 return Integer.parseInt(val.substring(0, val.length() - 1));
+            } else if (val.endsWith("k")) {
+                return (int) (Long.parseLong(val.substring(0, val.length() - 1)) / 1024);
             } else {
-                // 纯数字，按 KB 转 MB（JVM 默认单位是 KB）
-                return (int) (Long.parseLong(val) / 1024);
+                // 纯数字，JVM 默认单位是 bytes
+                return (int) (Long.parseLong(val) / (1024 * 1024));
             }
         } catch (NumberFormatException e) {
             return 0;
@@ -145,6 +159,7 @@ public class ProcessMetricsHelper {
             String cmd = "ps -p " + pid + " -o %cpu= -o %mem= -o rss= 2>/dev/null";
             process = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmd});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
+            // stderr 已通过 2>/dev/null 丢弃，无需额外消费
             String line = reader.readLine();
             process.waitFor();
             if (line == null || line.trim().isEmpty()) {

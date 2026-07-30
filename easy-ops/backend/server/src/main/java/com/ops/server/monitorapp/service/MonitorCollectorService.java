@@ -36,7 +36,6 @@ import java.util.concurrent.ForkJoinPool;
  * 默认使用 Shell(ps grep) 检测进程存活；配置探针后叠加 HTTP 健康检查。
  */
 @Service
-@Transactional(rollbackFor = Exception.class)
 public class MonitorCollectorService {
 
     private static final Logger log = LoggerFactory.getLogger(MonitorCollectorService.class);
@@ -289,6 +288,7 @@ public class MonitorCollectorService {
     /**
      * 采集单个项目-节点监控快照（写入并告警，供定时/手动采集使用）
      */
+    @Transactional(rollbackFor = Exception.class)
     public MonitorSnapshotModel collectOne(ProjectModel project, NodeModel node) {
         return collectOne(project, node, true);
     }
@@ -615,15 +615,17 @@ public class MonitorCollectorService {
         return rawDetail.length() > 80 ? rawDetail.substring(0, 80) + "..." : rawDetail;
     }
 
-    /** 检查是否在冷却期内，避免重复告警 */
+    /** 检查是否在冷却期内，避免重复告警（原子操作，线程安全） */
     private boolean shouldAlarm(String key, long cooldownMs) {
         long now = System.currentTimeMillis();
-        Long lastAlarm = alarmCooldown.get(key);
-        if (lastAlarm != null && (now - lastAlarm) < cooldownMs) {
-            return false;
-        }
-        alarmCooldown.put(key, now);
-        return true;
+        // 使用 compute 原子操作：检查 + 更新在一个锁内完成，避免竞态
+        long cutoff = now - cooldownMs;
+        return alarmCooldown.compute(key, (k, lastAlarm) -> {
+            if (lastAlarm != null && lastAlarm > cutoff) {
+                return lastAlarm; // 在冷却期内，不更新
+            }
+            return now; // 超出冷却期，更新时间戳
+        }) == now; // 如果返回 now，说明是本次更新的，应该告警
     }
 
     /**

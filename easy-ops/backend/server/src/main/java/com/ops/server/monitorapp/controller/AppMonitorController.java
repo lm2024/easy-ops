@@ -222,17 +222,30 @@ public class AppMonitorController {
         List<Long> projectIds = null;
         List<Long> nodeIds = null;
         if (body.containsKey("projectIds") && body.get("projectIds") != null) {
-            projectIds = ((List<Integer>) body.get("projectIds")).stream()
-                .map(Long::valueOf).collect(java.util.stream.Collectors.toList());
+            projectIds = toLongList(body.get("projectIds"));
         }
         if (body.containsKey("nodeIds") && body.get("nodeIds") != null) {
-            nodeIds = ((List<Integer>) body.get("nodeIds")).stream()
-                .map(Long::valueOf).collect(java.util.stream.Collectors.toList());
+            nodeIds = toLongList(body.get("nodeIds"));
         }
         String taskId = collectorService.collectFilteredAsync(projectIds, nodeIds);
         Map<String, Object> data = new HashMap<>();
         data.put("taskId", taskId);
         return Result.success(data);
+    }
+
+    /** 安全转换 JSON 数字列表为 List<Long>，兼容 Integer/Long/Double 等类型 */
+    @SuppressWarnings("unchecked")
+    private List<Long> toLongList(Object obj) {
+        if (obj instanceof List) {
+            List<Long> result = new ArrayList<>();
+            for (Object item : (List<?>) obj) {
+                if (item instanceof Number) {
+                    result.add(((Number) item).longValue());
+                }
+            }
+            return result;
+        }
+        return null;
     }
 
     /**
