@@ -57,6 +57,9 @@ public class NodeController {
     private MonitorSnapshotMapper snapshotMapper;
 
     @Autowired
+    private com.ops.server.mapper.ProjectMapper projectMapper;
+
+    @Autowired
     private SecurityContext securityContext;
 
     @Autowired
@@ -360,10 +363,9 @@ public class NodeController {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> metrics = com.alibaba.fastjson2.JSON.parseObject(metricsJson, Map.class);
                 if (metrics != null && !metrics.isEmpty()) {
-                    // 存储到MonitorSnapshot表
-                    saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
-                    // 通过WebSocket广播给前端
-                    broadcastMonitorUpdate(Long.parseLong(nodeId), metrics);
+                    // 存储到MonitorSnapshot表，同时返回计算结果用于WS推送
+                    Map<String, Object> computed = saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
+                    broadcastMonitorUpdate(Long.parseLong(nodeId), metrics, computed);
                 }
             } catch (Exception e) {
                 log.warn("监控指标解析失败 节点={}", nodeId, e);
@@ -382,7 +384,8 @@ public class NodeController {
     /**
      * 保存监控快照到数据库
      */
-    private void saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
+    private Map<String, Object> saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
+        Map<String, Object> computed = new java.util.HashMap<>();
         try {
             com.ops.common.model.MonitorSnapshotModel snap = new com.ops.common.model.MonitorSnapshotModel();
             snap.setNodeId(nodeId);
@@ -428,34 +431,47 @@ public class NodeController {
             snap.setProcessStatus("STOPPED");
 
             // 解析应用进程指标（Agent 心跳上报）
+            // 按项目配置的 jar_name 匹配正确的进程，避免多进程时取错数据
             Object processesObj = metrics.get("processes");
             if (processesObj instanceof List) {
                 List<?> processes = (List<?>) processesObj;
                 if (!processes.isEmpty()) {
-                    Object first = processes.get(0);
-                    if (first instanceof Map) {
-                        Map<?, ?> proc = (Map<?, ?>) first;
-                        Object pidObj = proc.get("pid");
+                    // 尝试按 jarName 匹配
+                    String expectedJarName = getExpectedJarName(snap.getProjectId());
+                    Map<?, ?> matched = findProcessByJarName(processes, expectedJarName);
+                    boolean matchedByJar = (matched != null);
+                    // 无匹配则 fallback 到 processes[0]
+                    if (!matchedByJar && !processes.isEmpty()) {
+                        matched = (Map<?, ?>) processes.get(0);
+                        log.warn("进程匹配失败 节点={} 期望jarName={} 实际进程列表={} 已fallback到PID={}",
+                                nodeId, expectedJarName,
+                                processes.stream().map(p -> ((Map<?,?>)p).get("jarName")).collect(java.util.stream.Collectors.toList()),
+                                matched.get("pid"));
+                    }
+                    if (matched != null) {
+                        Object pidObj = matched.get("pid");
                         if (pidObj instanceof Number) {
                             snap.setProcessPid(((Number) pidObj).intValue());
                         }
-                        Object procCpu = proc.get("cpuPercent");
+                        Object procCpu = matched.get("cpuPercent");
                         if (procCpu instanceof Number) {
                             snap.setCpuPercent(new java.math.BigDecimal(((Number) procCpu).doubleValue()));
                         }
-                        Object procMem = proc.get("memoryMb");
+                        Object procMem = matched.get("memoryMb");
                         if (procMem instanceof Number) {
                             snap.setMemoryMb(((Number) procMem).intValue());
                         }
-                        Object procHeapUsed = proc.get("heapUsedMb");
+                        Object procHeapUsed = matched.get("heapUsedMb");
                         if (procHeapUsed instanceof Number) snap.setHeapUsedMb(((Number) procHeapUsed).intValue());
-                        Object procHeapMax = proc.get("heapMaxMb");
+                        Object procHeapMax = matched.get("heapMaxMb");
                         if (procHeapMax instanceof Number) snap.setHeapMaxMb(((Number) procHeapMax).intValue());
-                        Object gcCount = proc.get("gcCount");
+                        Object xmxObj = matched.get("xmxMb");
+                        if (xmxObj instanceof Number) computed.put("xmxMb", ((Number) xmxObj).intValue());
+                        Object gcCount = matched.get("gcCount");
                         if (gcCount instanceof Number) snap.setGcCount(((Number) gcCount).intValue());
-                        Object gcTime = proc.get("gcTimeMs");
+                        Object gcTime = matched.get("gcTimeMs");
                         if (gcTime instanceof Number) snap.setGcTimeMs(((Number) gcTime).intValue());
-                        Object alive = proc.get("alive");
+                        Object alive = matched.get("alive");
                         if (Boolean.TRUE.equals(alive)) {
                             snap.setProcessStatus("RUNNING");
                         } else {
@@ -492,6 +508,16 @@ public class NodeController {
                 }
             }
 
+            // 收集计算结果，供 WS 推送（与 DB 同源，不会不一致）
+            computed.put("processStatus", snap.getProcessStatus());
+            computed.put("processPid", snap.getProcessPid());
+            computed.put("healthStatus", snap.getHealthStatus());
+            computed.put("healthDetail", snap.getHealthDetail());
+            if (snap.getCpuPercent() != null) computed.put("cpuPercent", snap.getCpuPercent());
+            if (snap.getMemoryMb() != null) computed.put("memoryMb", snap.getMemoryMb());
+            if (snap.getHeapUsedMb() != null) computed.put("heapUsedMb", snap.getHeapUsedMb());
+            if (snap.getHeapMaxMb() != null) computed.put("heapMaxMb", snap.getHeapMaxMb());
+
             // 存储到数据库
             snapshotMapper.insert(snap);
             log.debug("监控快照 节点={} 项目={} 进程={} 健康={} PID={} 主机CPU={}% 进程CPU={}% 主机内存={}% 进程内存={}MB 堆={}/{}MB 磁盘={}% 详情={}",
@@ -507,6 +533,7 @@ public class NodeController {
         } catch (Exception e) {
             log.warn("监控快照保存失败 节点={}", nodeId, e);
         }
+        return computed;
     }
 
     /**
@@ -535,15 +562,19 @@ public class NodeController {
 
     /**
      * 通过WebSocket广播监控实时指标（CPU/内存/磁盘等高频数据）。
-     * 注意：不推送 processStatus/healthStatus —— 状态由 HTTP 轮询 saveMonitorSnapshot 保证一致性。
+     * 同时推送 saveMonitorSnapshot 算好的状态字段，保证 WS 与 DB 同源一致。
      */
-    private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics) {
+    private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics, Map<String, Object> computed) {
         try {
             Map<String, Object> message = new java.util.HashMap<>();
             message.put("type", "monitor_update");
             message.put("nodeId", nodeId);
             message.put("metrics", metrics);
             message.put("timestamp", System.currentTimeMillis());
+            // 附上 saveMonitorSnapshot 算好的状态字段（与 DB 同源）
+            if (computed != null && !computed.isEmpty()) {
+                message.put("computed", computed);
+            }
 
             String json = com.alibaba.fastjson2.JSON.toJSONString(message);
             monitorHandler.broadcast("monitor", json);
@@ -556,6 +587,34 @@ public class NodeController {
     private String fmt(java.math.BigDecimal val) {
         if (val == null) return "?";
         return val.setScale(1, java.math.RoundingMode.HALF_UP).toString();
+    }
+
+    /** 获取项目配置的 jar 文件名 */
+    private String getExpectedJarName(Long projectId) {
+        if (projectId == null || projectId == 0L) return null;
+        try {
+            com.ops.common.model.ProjectModel project = projectMapper.findById(projectId);
+            if (project != null && project.getJarName() != null && !project.getJarName().isEmpty()) {
+                return project.getJarName().trim();
+            }
+        } catch (Exception ignored) {}
+        return null;
+    }
+
+    /** 在 processes 列表中按 jarName 匹配进程 */
+    @SuppressWarnings("unchecked")
+    private Map<?, ?> findProcessByJarName(List<?> processes, String expectedJarName) {
+        if (expectedJarName == null || expectedJarName.isEmpty()) return null;
+        for (Object obj : processes) {
+            if (obj instanceof Map) {
+                Map<String, Object> proc = (Map<String, Object>) obj;
+                String jarName = (String) proc.get("jarName");
+                if (expectedJarName.equals(jarName)) {
+                    return proc;
+                }
+            }
+        }
+        return null;
     }
 
     private String[] parseCsvLine(String line) {
