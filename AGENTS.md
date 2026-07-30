@@ -164,3 +164,38 @@ Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 ### H2DataController 手动清理
 
 `/api/db/cleanup` 手动接口也有一份表列表，新增表时同步更新。
+
+## 应用监控踩坑记录
+
+### 进程存活检测
+
+- **ps aux 输出截断导致 findPid 间歇失败**：`ps aux` 的 COMMAND 列有宽度限制，deployDir 路径长时会被截断，grep 匹配不稳定，导致进程状态在 RUNNING/STOPPED 间抖动。修复：`collectProcessMetrics` 改为直接 `jps -lm` + `ps aux | grep java` 发现所有 Java 进程（排除 Agent 自身），不再依赖目录扫描和 deployDir 匹配。**jps 不可用时自动回退 ps，其中任一找到即判定存活**。
+- **Docker 容器内 jps 输出不含 deployDir**：jps 只输出 `PID jar文件名`，没有完整路径。原 `getJpsCandidates` 要求同时匹配 deployDir+jarName，导致候选被全量过滤。修复：候选筛选只要求 jarName 匹配，deployDir 精准确认由后续 `/proc/<pid>/cwd` 完成。
+- **部署目录 ≠ 扫描目录**：`ProcessController` 默认部署到 `versions/{projectId}/`，旧代码 `collectProcessMetrics` 只扫描 `apps/`，导致生产环境进程扫不到。修复后已废弃目录扫描，改用 jps/ps 直接发现进程。
+
+### 监控状态一致性
+
+- **健康状态与进程状态不联动**：`saveMonitorSnapshot` 中健康状态在第 426 行就设好了（只看 CPU/内存），进程状态到第 470 行才确定——顺序反了。导致 "进程已停止 + 健康显示 UP" 的矛盾组合。修复：先确定进程状态，再根据进程状态决定健康（STOPPED→DOWN，RUNNING→看资源）。
+- **WS 推送覆盖 HTTP 状态**：`broadcastMonitorUpdate` 曾用 `computeAndAttachStatus` 计算 processStatus/healthStatus 并通过 WS 推前端，但该方法在 processes 为空时直接返回 STOPPED（缺少 `inheritPreviousStatus` 逻辑），覆盖前端 HTTP 加载的正确 RUNNING 状态。修复：WS 只推实时指标（CPU/内存/磁盘），状态字段统一走 HTTP 轮询。
+- **多项目节点快照继承错误**：`inheritPreviousStatus` 用 `projectIds.get(0)` 查上一个快照，多项目节点可能取到错误项目的状态。修复：改为按 nodeId 查（不按 projectId）。
+
+### 数据混淆
+
+- **WS 推送的堆内存是 Agent 自身的不是应用的**：`metrics.heapMaxMB` 是 Agent JVM 的堆，`metrics.processes[0].heapMaxMb` 才是应用进程的堆。前端 `updateMonitorData` 曾经拿 `metrics.heapMaxMB` 覆盖应用节点的堆显示，导致 3GB/10GB 交替跳动。修复：WS 不再更新 heapUsedMb/heapMaxMb，堆内存只走 HTTP/DB。
+- **主机 CPU 和进程 CPU 是两回事**：`hostCpuPercent` 来自 Agent 主机采集，`cpuPercent` 来自 processes[0]。前端已正确区分显示 "总:xx / 进程:xx"，WS 只更新 hostCpuPercent，进程 CPU 走 DB。
+
+### 前端刷新
+
+- **手动刷新时数值跳动**：`fetchDashboard` 用 `dashboard.value = res.data` 全量替换，DB 里的快照是上次心跳写入的（最老 30 秒前），WS 实时推送的最新 CPU/内存被覆盖成旧值。修复：改为 `mergeDashboard`，状态字段用 DB 权威值，实时指标保留 WS 已更新的最新值，只有当 DB 有更新且 collectTime 更大时才覆盖。
+
+### Docker 部署
+
+- **`entrypoint.sh` 只在首次运行时复制 jar**：持久化卷 `/app/data/agent.jar` 已存在时跳过复制，导致旧 jar 一直生效。每次更新镜像后需手动覆盖：`docker exec ops-agent-1 cp /app/agent.jar /app/data/agent.jar && docker restart ops-agent-1`。
+
+### 日志规范
+
+- **监控关键日志统一中文、补异常栈**：`saveMonitorSnapshot`、HeartbeatDaemon、DataCleanupScheduler、HeartbeatChecker 等全部改为中文。WARN/ERROR 必须传异常对象 `e` 而非 `e.getMessage()`。
+- **日志级别**：高频循环日志（心跳快照）用 DEBUG，关键运维事件（节点离线、清理完成）用 INFO，异常可恢复用 WARN，严重异常用 ERROR。
+- **日志大小控制**：Server 单文件 10MB/保留 7 天/总上限 50MB，Agent 单文件 10MB/保留 7 天/总上限 30MB。Agent 新增文件日志（之前只输出 stdout）。
+- **mapper SQL 日志降级**：`com.ops.server.mapper: WARN`，避免控制台被 SQL 刷屏。排查时临时改回 DEBUG。
+- **调度器日志降级**：`com.ops.server.scheduler: INFO`，避免分布式锁 DEBUG 刷屏。
