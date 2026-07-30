@@ -95,7 +95,7 @@ public class DataCleanupScheduler {
             retainDays = 1;
         }
         buildTasks();
-        log.info("DataCleanupScheduler initialized: retainDays={}, taskCount={}", retainDays, tasks.size());
+        log.info("定时清理初始化 保留{}天 表数={}", retainDays, tasks.size());
     }
 
     /**
@@ -147,28 +147,35 @@ public class DataCleanupScheduler {
     @Scheduled(cron = "${easyops.data.cleanup.cron:0 0 2 * * ?}")
     public void cleanupAll() {
         if (!distributedLock.tryLock(LOCK_NAME)) {
-            log.debug("DataCleanupScheduler: lock not acquired, skipping");
             return;
         }
         try {
             int safeRetainDays = Math.max(1, retainDays);
             long cutoff = System.currentTimeMillis() - safeRetainDays * 24L * 3600L * 1000L;
-            log.info("DataCleanupScheduler: starting cleanup, retainDays={}", safeRetainDays);
+            log.info("定时清理开始 保留{}天", safeRetainDays);
 
+            int totalDeleted = 0;
+            StringBuilder detail = new StringBuilder();
             for (CleanupTask task : tasks) {
                 try {
                     int count = task.action.apply(cutoff);
                     if (count > 0) {
-                        log.info("Cleaned {} {} records", count, task.tableName);
+                        totalDeleted += count;
+                        if (detail.length() > 0) detail.append(", ");
+                        detail.append(task.tableName).append("=").append(count);
                     }
                 } catch (Exception e) {
-                    log.warn("Failed to cleanup {}", task.tableName, e);
+                    log.warn("清理失败 表={} 原因={}", task.tableName, e.getMessage());
                 }
             }
 
-            log.info("DataCleanupScheduler: cleanup completed");
+            if (totalDeleted > 0) {
+                log.info("定时清理完成 共删除{}条 [{}]", totalDeleted, detail);
+            } else {
+                log.info("定时清理完成 无需清理");
+            }
         } catch (Exception e) {
-            log.error("DataCleanupScheduler: cleanup failed", e);
+            log.error("定时清理异常", e);
         } finally {
             distributedLock.releaseLock(LOCK_NAME);
         }

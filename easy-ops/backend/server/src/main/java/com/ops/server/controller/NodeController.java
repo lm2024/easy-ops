@@ -366,7 +366,7 @@ public class NodeController {
                     broadcastMonitorUpdate(Long.parseLong(nodeId), metrics);
                 }
             } catch (Exception e) {
-                log.warn("Failed to parse metrics from node {}: {}", nodeId, e.getMessage());
+                log.warn("监控指标解析失败 节点={}", nodeId, e);
             }
         }
 
@@ -494,10 +494,18 @@ public class NodeController {
 
             // 存储到数据库
             snapshotMapper.insert(snap);
-            log.debug("Saved monitor snapshot for node {}: process={}, health={}",
-                    nodeId, snap.getProcessStatus(), snap.getHealthStatus());
+            log.debug("监控快照 节点={} 项目={} 进程={} 健康={} PID={} 主机CPU={}% 进程CPU={}% 主机内存={}% 进程内存={}MB 堆={}/{}MB 磁盘={}% 详情={}",
+                    nodeId, snap.getProjectId(), snap.getProcessStatus(), snap.getHealthStatus(),
+                    snap.getProcessPid(),
+                    fmt(snap.getHostCpuPercent()),
+                    fmt(snap.getCpuPercent()),
+                    snap.getHostMemoryPercent(),
+                    snap.getMemoryMb(),
+                    snap.getHeapUsedMb(), snap.getHeapMaxMb(),
+                    snap.getDiskUsagePercent(),
+                    snap.getHealthDetail());
         } catch (Exception e) {
-            log.warn("Failed to save monitor snapshot for node {}: {}", nodeId, e.getMessage());
+            log.warn("监控快照保存失败 节点={}", nodeId, e);
         }
     }
 
@@ -526,8 +534,8 @@ public class NodeController {
     }
 
     /**
-     * 通过WebSocket广播监控数据更新。
-     * 补充 processStatus/processPid/healthStatus 计算，前端无需等待 HTTP 轮询。
+     * 通过WebSocket广播监控实时指标（CPU/内存/磁盘等高频数据）。
+     * 注意：不推送 processStatus/healthStatus —— 状态由 HTTP 轮询 saveMonitorSnapshot 保证一致性。
      */
     private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics) {
         try {
@@ -537,67 +545,17 @@ public class NodeController {
             message.put("metrics", metrics);
             message.put("timestamp", System.currentTimeMillis());
 
-            // 从 metrics 中计算 processStatus + healthStatus，前端 WS 通道即可拿到完整状态
-            computeAndAttachStatus(metrics, message);
-
             String json = com.alibaba.fastjson2.JSON.toJSONString(message);
             monitorHandler.broadcast("monitor", json);
         } catch (Exception e) {
-            log.warn("Failed to broadcast monitor update for node {}: {}", nodeId, e.getMessage());
+            log.warn("监控广播失败 节点={}", nodeId, e);
         }
     }
 
-    /**
-     * 从 metrics 的 processes 列表中提取进程状态和健康状态，附加到 message 中。
-     */
-    @SuppressWarnings("unchecked")
-    private void computeAndAttachStatus(Map<String, Object> metrics, Map<String, Object> message) {
-        String processStatus = "STOPPED";
-        Integer processPid = null;
-
-        Object processesObj = metrics.get("processes");
-        if (processesObj instanceof List) {
-            List<?> processes = (List<?>) processesObj;
-            if (!processes.isEmpty()) {
-                Object first = processes.get(0);
-                if (first instanceof Map) {
-                    Map<String, Object> proc = (Map<String, Object>) first;
-                    if (Boolean.TRUE.equals(proc.get("alive"))) {
-                        processStatus = "RUNNING";
-                        Object pidObj = proc.get("pid");
-                        if (pidObj instanceof Number) {
-                            processPid = ((Number) pidObj).intValue();
-                        }
-                    }
-                }
-            }
-        }
-
-        message.put("processStatus", processStatus);
-        message.put("processPid", processPid);
-
-        // 健康状态：STOPPED → DOWN，RUNNING → 根据 CPU/内存判断
-        if ("STOPPED".equals(processStatus)) {
-            message.put("healthStatus", "DOWN");
-        } else {
-            double cpu = toDouble(metrics.get("cpuUsagePercent"));
-            int mem = toInt(metrics.get("memoryUsagePercent"));
-            if (cpu > 90 || mem > 90) {
-                message.put("healthStatus", "DEGRADED");
-            } else {
-                message.put("healthStatus", "UP");
-            }
-        }
-    }
-
-    private double toDouble(Object val) {
-        if (val instanceof Number) return ((Number) val).doubleValue();
-        return 0;
-    }
-
-    private int toInt(Object val) {
-        if (val instanceof Number) return ((Number) val).intValue();
-        return 0;
+    /** BigDecimal 格式化为 1 位小数，null 返回 "?" */
+    private String fmt(java.math.BigDecimal val) {
+        if (val == null) return "?";
+        return val.setScale(1, java.math.RoundingMode.HALF_UP).toString();
     }
 
     private String[] parseCsvLine(String line) {
