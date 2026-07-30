@@ -47,59 +47,73 @@ public class ProcessStatusChecker {
     /**
      * 查找匹配进程的 PID，未找到返回 null。
      *
-     * 策略：ps 查找 jarName + /proc/pid/cwd 验证 deployDir，不依赖 jps。
+     * 策略：列出所有 Java 进程 → 从 /proc/pid/cmdline 提取 jarName 精确匹配 → cwd 验证 deployDir。
+     * 不再用 shell grep 子串匹配（demo.jar 会误匹配 demo-test-app.jar）。
      */
     public Long findPid(String deployDir, String jarName) {
-        // === ps 按 jarName 匹配 + cwd 验证工作目录 ===
-        Long pid = findPidByPs("ps -eo pid:10000,args:10000 2>/dev/null | grep '[j]ava' | grep " + shellEscape(jarName));
-        if (pid != null && verifyByWorkingDir(pid, deployDir)) {
-            return pid;
+        // 列出所有 Java 进程，在 Java 端按 jarName 精确匹配 + cwd 验证
+        List<Long> javaPids = listJavaPids();
+        for (Long pid : javaPids) {
+            String cmdline = readProcCmdline(pid);
+            String extractedJar = extractJarName(cmdline);
+            if (jarName.equals(extractedJar) && verifyByWorkingDir(pid, deployDir)) {
+                return pid;
+            }
         }
 
         // === 最后手段：pid 文件 ===
         return findPidFromFile(deployDir, jarName);
     }
 
-    private Long findPidByPs(String cmd) {
+    /** 列出所有 Java 进程的 PID（排除 grep 自身） */
+    private List<Long> listJavaPids() {
+        List<Long> pids = new ArrayList<Long>();
         Process process = null;
         BufferedReader reader = null;
         try {
-            process = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c", cmd});
+            process = Runtime.getRuntime().exec(
+                    new String[]{"/bin/sh", "-c",
+                            "ps -eo pid:10000,args:10000 2>/dev/null | grep '[j]ava' | awk '{print $1}'"});
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
-            // 消费 stderr 防止 buffer 满导致 waitFor 挂起
-            final Process proc = process;
-            Thread drainErr = new Thread(() -> {
-                java.io.BufferedReader err = null;
-                try {
-                    err = new java.io.BufferedReader(new InputStreamReader(proc.getErrorStream()));
-                    while (err.readLine() != null) {}
-                } catch (Exception ignored) {} finally { closeQuietly(err); }
-            });
-            drainErr.setDaemon(true);
-            drainErr.start();
             String line;
             while ((line = reader.readLine()) != null) {
-                Long pid = parsePid(line);
-                if (pid != null) {
-                    process.waitFor();
-                    return pid;
-                }
+                try { pids.add(Long.parseLong(line.trim())); } catch (NumberFormatException ignored) {}
             }
             process.waitFor();
         } catch (Exception ignored) {
         } finally {
             closeQuietly(reader);
-            if (process != null) {
-                process.destroy();
-            }
+            if (process != null) process.destroy();
         }
-        return null;
+        return pids;
+    }
+
+    /** 读取 /proc/<pid>/cmdline */
+    private String readProcCmdline(Long pid) {
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(new File("/proc/" + pid + "/cmdline").toPath());
+            return new String(bytes, "UTF-8").replace('\0', ' ');
+        } catch (Exception e) {
+            return "";
+        }
+    }
+
+    /** 从命令行中提取 jar 文件名（与 HeartbeatDaemon.extractJarName 一致） */
+    private String extractJarName(String cmdline) {
+        if (cmdline == null) return "";
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("-jar\\s+(\\S+\\.jar)").matcher(cmdline);
+        if (m.find()) {
+            String jar = m.group(1);
+            int slash = jar.lastIndexOf('/');
+            return slash >= 0 ? jar.substring(slash + 1) : jar;
+        }
+        return "";
     }
 
     // ======================== 交叉验证 ========================
 
     /**
-     * 用 ps -p <pid> 验证该进程的命令行参数是否包含 jarName。
+     * 用 ps -p <pid> 验证该进程的命令行中提取的 jarName 是否精确匹配。
      * ps -p 不受列宽限制，可以拿到完整命令行。
      */
     private boolean verifyByPsArgs(Long pid, String jarName) {
@@ -111,7 +125,8 @@ public class ProcessStatusChecker {
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String cmdline = reader.readLine();
             process.waitFor();
-            return cmdline != null && cmdline.contains(jarName);
+            if (cmdline == null) return false;
+            return jarName.equals(extractJarName(cmdline));
         } catch (Exception ignored) {
             return false;
         } finally {

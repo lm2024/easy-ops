@@ -327,16 +327,18 @@ function rowClassName(record: any) {
   return changedRowKeys.value.has(record.rowKey) ? 'row-flash' : ''
 }
 
-// nodeId → { node, rowKey } 索引，用于 O(1) 查找
-const nodeIndexMap = new Map<number, { node: any; rowKey: string }>()
+// nodeId → [{ node, rowKey }] 索引，支持同节点多项目（用数组避免覆盖）
+const nodeIndexMap = new Map<number, Array<{ node: any; rowKey: string }>>()
 function rebuildNodeIndex() {
   nodeIndexMap.clear()
   for (const project of dashboard.value?.projects || []) {
     for (const node of project.nodes || []) {
-      nodeIndexMap.set(node.nodeId, {
+      const list = nodeIndexMap.get(node.nodeId) || []
+      list.push({
         node,
         rowKey: project.projectId + '-' + node.nodeId
       })
+      nodeIndexMap.set(node.nodeId, list)
     }
   }
 }
@@ -857,38 +859,30 @@ function disconnectWebSocket() {
 }
 
 function updateMonitorData(nodeId: number, metrics: Record<string, any>, computed?: Record<string, any>) {
-  const entry = nodeIndexMap.get(nodeId)
-  if (!entry) { console.warn('[Monitor] Node not found:', nodeId); return }
-  const { node, rowKey } = entry
+  const entries = nodeIndexMap.get(nodeId)
+  if (!entries || entries.length === 0) { console.warn('[Monitor] Node not found:', nodeId); return }
 
-  // 检测数据是否有变化
-  let changed = false
-  if (node.hostCpuPercent !== metrics.cpuUsagePercent) changed = true
-  if (node.hostMemoryPercent !== metrics.memoryUsagePercent) changed = true
+  for (const entry of entries) {
+    const { node, rowKey } = entry
 
-  // 实时指标（CPU/内存/磁盘）
-  node.hostCpuPercent = metrics.cpuUsagePercent
-  node.hostMemoryPercent = metrics.memoryUsagePercent
-  node.diskUsagePercent = metrics.diskUsagePercent
-  node.collectTime = Date.now()
+    // 检测数据是否有变化
+    let changed = false
+    if (node.hostCpuPercent !== metrics.cpuUsagePercent) changed = true
+    if (node.hostMemoryPercent !== metrics.memoryUsagePercent) changed = true
 
-  // 状态字段（与 DB 同源，saveMonitorSnapshot 计算结果）
-  if (computed) {
-    if (node.processStatus !== computed.processStatus) changed = true
-    if (node.healthStatus !== computed.healthStatus) changed = true
-    node.processStatus = computed.processStatus
-    node.processPid = computed.processPid
-    node.healthStatus = computed.healthStatus
-    node.healthDetail = computed.healthDetail
-    if (computed.cpuPercent !== undefined) node.cpuPercent = computed.cpuPercent
-    if (computed.memoryMb !== undefined) node.memoryMb = computed.memoryMb
-    if (computed.heapUsedMb !== undefined) node.heapUsedMb = computed.heapUsedMb
-    if (computed.heapMaxMb !== undefined) node.heapMaxMb = computed.heapMaxMb
-    if (computed.xmxMb !== undefined) node.xmxMb = computed.xmxMb
+    // 实时指标（CPU/内存/磁盘）— 主机级数据，同节点所有项目共享
+    node.hostCpuPercent = metrics.cpuUsagePercent
+    node.hostMemoryPercent = metrics.memoryUsagePercent
+    node.diskUsagePercent = metrics.diskUsagePercent
+    node.collectTime = Date.now()
+
+    // 注意：不通过 WS 推送应用级数据（processPid/heapUsedMb/processStatus 等）
+    // 同节点多项目时 WS computed 只含最后一个项目的数据，会串到其他项目
+    // 应用级状态统一走 HTTP 轮询（fetchDashboard → mergeDashboard）
+
+    // 数据变化时触发行闪烁
+    if (changed) flashRow(rowKey)
   }
-
-  // 数据变化时触发行闪烁
-  if (changed) flashRow(rowKey)
 
   lastCollectTime.value = Date.now()
   lastUpdateTime.value = Date.now()
@@ -930,9 +924,15 @@ onMounted(async () => {
     const cfg = await getMonitorCollectConfig()
     if (cfg.data?.collectIntervalSec) collectIntervalSec.value = cfg.data.collectIntervalSec
   } catch { /* 默认 60 秒 */ }
-  await loadNodeIps()
-  // 直接从数据库读取最新数据（Agent已主动上报）
-  await fetchDashboard()
+  // 并行加载：节点IP 和 仪表盘数据 互不依赖，同时发起减少等待时间
+  const [, dashboardResult] = await Promise.allSettled([
+    loadNodeIps(),
+    fetchDashboard()
+  ])
+  // fetchDashboard 失败不影响 WebSocket 连接和自动刷新
+  if (dashboardResult.status === 'fulfilled') {
+    // 数据已在 fetchDashboard 内通过 mergeDashboard 处理
+  }
   // 连接WebSocket，接收实时更新
   connectWebSocket()
   // 启动兜底自动刷新（每 collectIntervalSec 秒轮询一次）

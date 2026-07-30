@@ -447,6 +447,8 @@ public class HeartbeatDaemon implements CommandLineRunner {
                 String cmdline = readCmdline(pid);
                 proc.put("command", cmdline);
                 proc.put("jarName", extractJarName(cmdline));
+                // 读取进程工作目录，用于 Server 端按 deployDir 精确定位（同一节点多应用 jar 同名时区分）
+                proc.put("deployDir", readCwd(pid));
 
                 // 采集 CPU/内存
                 Map<String, Object> metricsResult = processMetricsHelper.getProcessMetricsByPid(pid);
@@ -513,6 +515,15 @@ public class HeartbeatDaemon implements CommandLineRunner {
             return new String(bytes, "UTF-8").replace('\0', ' ');
         } catch (Exception e) {
             return "pid=" + pid;
+        }
+    }
+
+    /** 读取 /proc/<pid>/cwd 获取进程工作目录（用于按 deployDir 精确匹配应用进程） */
+    private String readCwd(Long pid) {
+        try {
+            return new File("/proc/" + pid + "/cwd").getCanonicalPath();
+        } catch (Exception e) {
+            return "";
         }
     }
 

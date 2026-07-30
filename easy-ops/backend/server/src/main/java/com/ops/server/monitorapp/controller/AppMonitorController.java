@@ -86,18 +86,23 @@ public class AppMonitorController {
     }
 
     /**
-     * GET /api/monitor/app/dashboard - 全部应用监控总览（优化：批量查询避免N+1）
+     * GET /api/monitor/app/dashboard - 全部应用监控总览
+     * 性能优化：预加载权限集合内存判断，避免每个项目逐条查询 user_project_relation
      */
     @GetMapping("/app/dashboard")
     public Result<?> dashboard() {
         List<ProjectModel> projects = projectMapper.findByFilters(null, null, null, 1, 1000);
         if (projects == null) projects = new ArrayList<>();
 
+        // 预加载当前用户有权限的项目 ID 集合，后续只用内存 contains 判断（避免 N 次 DB 查询）
+        List<Long> accessibleList = securityContext.getAccessibleProjectIds();
+        Set<Long> accessibleIds = (accessibleList != null) ? new HashSet<>(accessibleList) : Collections.emptySet();
+
         // 收集所有需要查询的节点ID
         Set<Long> allNodeIds = new HashSet<>();
         Map<Long, List<Long>> projectNodeMap = new HashMap<>();
         for (ProjectModel project : projects) {
-            if (project.getId() == null || !securityContext.hasProjectPermission(project.getId())) continue;
+            if (project.getId() == null || !accessibleIds.contains(project.getId())) continue;
             List<Long> nodeIds = parseNodeIds(project);
             projectNodeMap.put(project.getId(), nodeIds);
             allNodeIds.addAll(nodeIds);
@@ -131,7 +136,7 @@ public class AppMonitorController {
         int totalApps = 0, totalUp = 0, totalDown = 0, totalDegraded = 0;
 
         for (ProjectModel project : projects) {
-            if (project.getId() == null || !securityContext.hasProjectPermission(project.getId())) continue;
+            if (project.getId() == null || !accessibleIds.contains(project.getId())) continue;
             List<Long> nodeIds = projectNodeMap.getOrDefault(project.getId(), Collections.emptyList());
 
             int up = 0, down = 0, degraded = 0;
