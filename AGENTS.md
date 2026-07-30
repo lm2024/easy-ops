@@ -8,6 +8,9 @@
 
 ---
 
+你负责docker agent 打包发布管理等;只要是docker中的都归你管
+server,前端都归我管需要重启就告诉我
+
 # AGENTS.md — EasyOps AI 提示词
 
 ## 项目简介

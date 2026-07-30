@@ -375,6 +375,7 @@ export interface AppMonitorNodeInfo {
   memoryMb?: number
   heapUsedMb?: number
   heapMaxMb?: number
+  xmxMb?: number
   gcCount?: number
   gcTimeMs?: number
   hostCpuPercent?: number
