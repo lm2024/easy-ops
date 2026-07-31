@@ -35,6 +35,7 @@ import java.util.function.IntSupplier;
  *   - user_notification_state    级联清理孤儿记录
  *   - kb_document_lock           清理过期文档锁
  *   - scheduler_lock             清理过期分布式锁
+ *   - nginx_minute_stat          按 bucket_time 清理（保留天数见 easyops.nginx-traffic.minute-retain-days）
  * 
  * 配置项（application.yml）：easyops.data.cleanup
  *   - cron:        每日清理 cron 表达式，默认 "0 0 2 * * ?"
@@ -48,6 +49,9 @@ public class DataCleanupScheduler {
 
     @Value("${easyops.data.cleanup.retain-days:3}")
     private int retainDays;
+
+    @Value("${easyops.nginx-traffic.minute-retain-days:7}")
+    private int nginxMinuteRetainDays;
 
     // ======================== Mapper 注入 ========================
 
@@ -77,6 +81,8 @@ public class DataCleanupScheduler {
     private AgentUpgradeRecordMapper agentUpgradeRecordMapper;
     @Autowired
     private GlobalScriptDistributeRecordMapper globalScriptDistributeRecordMapper;
+    @Autowired
+    private NginxMinuteStatMapper nginxMinuteStatMapper;
     @Autowired
     private NotificationRecordMapper notificationRecordMapper;
     @Autowired
@@ -117,6 +123,15 @@ public class DataCleanupScheduler {
         tasks.add(task("global_script_distribute_record", c -> globalScriptDistributeRecordMapper.deleteBefore(c)));
 
         // ---- 特殊清理（非 create_time 驱动，cutoff 参数不使用） ----
+        tasks.add(task("nginx_minute_stat", c -> {
+            int days = Math.max(1, nginxMinuteRetainDays);
+            long bucketCutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            int deleted = nginxMinuteStatMapper.deleteBeforeBucketTime(bucketCutoff);
+            if (deleted > 0) {
+                log.info("清理 nginx_minute_stat 保留{}天 删除{}条 bucket_time<{}", days, deleted, bucketCutoff);
+            }
+            return deleted;
+        }));
         tasks.add(task("notification_record", c ->
                 notificationRecordMapper.deleteExpired(System.currentTimeMillis())));
         tasks.add(task("user_notification_state", c ->

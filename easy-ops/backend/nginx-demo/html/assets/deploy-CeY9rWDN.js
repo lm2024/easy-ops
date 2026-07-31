@@ -1,0 +1,1 @@
+import{s as t}from"./request-BzjnAjoW.js";function s(e,c=1,n=20){const o={page:c,pageSize:n};return t.get("/deploy",{params:o})}function d(e){return t.get(`/deploy/${e}`)}function a(e,c,n,o){const r={projectId:e,versionId:c};return o&&(r.scheduleTime=o),t.post("/deploy",r,{timeout:3e4})}function l(e){return t.post(`/deploy/${e}/cancel`)}export{l as a,d as b,a as c,s as g};

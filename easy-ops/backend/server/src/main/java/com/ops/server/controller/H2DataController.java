@@ -595,12 +595,18 @@ public class H2DataController {
             "alarm_record", "self_heal_event", "deploy_record",
             "config_distribute_record", "ai_diagnosis_record",
             "notification_record", "kb_recent_access",
-            "agent_upgrade_record", "global_script_distribute_record"
+            "agent_upgrade_record", "global_script_distribute_record",
+            "nginx_minute_stat"
         };
         for (String table : tables) {
             try {
-                int deleted = jdbc.update("DELETE FROM " + escapeTableName(table) +
-                    " WHERE create_time < ?", cutoff);
+                int deleted;
+                if ("nginx_minute_stat".equals(table)) {
+                    deleted = jdbc.update("DELETE FROM nginx_minute_stat WHERE bucket_time < ?", cutoff);
+                } else {
+                    deleted = jdbc.update("DELETE FROM " + escapeTableName(table) +
+                        " WHERE create_time < ?", cutoff);
+                }
                 if (deleted > 0) {
                     results.put(table, deleted);
                     log.info("Manual cleanup: deleted {} records from {}", deleted, table);
@@ -646,6 +652,10 @@ public class H2DataController {
                 deleted = jdbc.update(
                     "DELETE FROM " + safeTable + " WHERE expire_time < ?",
                     System.currentTimeMillis());
+            } else if ("nginx_minute_stat".equalsIgnoreCase(safeTable)) {
+                long bucketCutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
+                deleted = jdbc.update(
+                    "DELETE FROM " + safeTable + " WHERE bucket_time < ?", bucketCutoff);
             } else {
                 long cutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
                 deleted = jdbc.update(

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NginxTrafficAlarmRuleMapper">
+
+    <select id="findBySourceId" resultType="com.ops.common.model.NginxTrafficAlarmRuleModel">
+        SELECT * FROM nginx_traffic_alarm_rule WHERE source_id = #{sourceId} ORDER BY id ASC
+    </select>
+
+    <select id="findAllEnabled" resultType="com.ops.common.model.NginxTrafficAlarmRuleModel">
+        SELECT * FROM nginx_traffic_alarm_rule WHERE enabled = 1 ORDER BY source_id, id
+    </select>
+
+    <select id="findBySourceIdAndType" resultType="com.ops.common.model.NginxTrafficAlarmRuleModel">
+        SELECT * FROM nginx_traffic_alarm_rule
+        WHERE source_id = #{sourceId} AND rule_type = #{ruleType}
+        LIMIT 1
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO nginx_traffic_alarm_rule (
+            source_id, rule_type, enabled, window_minutes, threshold, level,
+            cooldown_minutes, require_ack, create_time, update_time
+        ) VALUES (
+            #{sourceId}, #{ruleType}, #{enabled}, #{windowMinutes}, #{threshold}, #{level},
+            #{cooldownMinutes}, #{requireAck}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE nginx_traffic_alarm_rule
+        SET enabled = #{enabled},
+            window_minutes = #{windowMinutes},
+            threshold = #{threshold},
+            level = #{level},
+            cooldown_minutes = #{cooldownMinutes},
+            require_ack = #{requireAck},
+            update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <delete id="deleteBySourceId">
+        DELETE FROM nginx_traffic_alarm_rule WHERE source_id = #{sourceId}
+    </delete>
+</mapper>
