@@ -53,6 +53,7 @@
           </template>
           <a-menu-item key="monitor"><dashboard-outlined /><span>仪表盘</span></a-menu-item>
           <a-menu-item key="app-monitor"><fund-outlined /><span>应用监控</span></a-menu-item>
+          <a-menu-item key="nginx-traffic"><line-chart-outlined /><span>Nginx 流量监控</span></a-menu-item>
           <a-menu-item key="alarms"><alert-outlined /><span>告警中心</span></a-menu-item>
           <a-menu-item key="alarm-config"><setting-outlined /><span>告警配置</span></a-menu-item>
           <a-menu-item key="self-heal"><medicine-box-outlined /><span>自愈策略</span></a-menu-item>
@@ -183,7 +184,7 @@ import {
   DashboardOutlined, AlertOutlined,
   DatabaseOutlined, BulbOutlined, TeamOutlined, AuditOutlined,
   FundOutlined, MedicineBoxOutlined,
-  SkinOutlined
+  SkinOutlined, LineChartOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -198,7 +199,7 @@ const siderTheme = computed(() => appStore.themeMode)
 const validMenuKeys = new Set([
   'nodes', 'projects', 'versions', 'deploy',
   'config-manage', 'log-manage',
-  'monitor', 'app-monitor', 'alarms', 'alarm-config', 'self-heal',
+  'monitor', 'app-monitor', 'nginx-traffic', 'alarms', 'alarm-config', 'self-heal',
   'db-manage', 'users', 'operations', 'batch-download'
 ])
 
@@ -211,7 +212,7 @@ function onUnackedAlerts(alerts: NotificationRecordModel[]) {
 const pathPrefixMap: Record<string, string> = {
   'nodes': 'nodes', 'projects': 'projects', 'versions': 'versions', 'deploy': 'deploy',
   'config-manage': 'config-manage', 'log-manage': 'log-manage',
-  'monitor': 'monitor', 'app-monitor': 'app-monitor', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
+  'monitor': 'monitor', 'app-monitor': 'app-monitor', 'nginx-traffic': 'nginx-traffic', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
   'self-heal': 'self-heal',
   'db-manage': 'db-manage', 'users': 'users', 'operations': 'operations',
   'batch-download': 'batch-download'
@@ -279,6 +280,7 @@ const toolsItems = [
 const monitorItems = [
   { key: 'monitor', title: '仪表盘', icon: DashboardOutlined },
   { key: 'app-monitor', title: '应用监控', icon: FundOutlined },
+  { key: 'nginx-traffic', title: 'Nginx 流量监控', icon: LineChartOutlined },
   { key: 'alarms', title: '告警中心', icon: AlertOutlined },
   { key: 'alarm-config', title: '告警配置', icon: SettingOutlined },
   { key: 'self-heal', title: '自愈策略', icon: MedicineBoxOutlined },

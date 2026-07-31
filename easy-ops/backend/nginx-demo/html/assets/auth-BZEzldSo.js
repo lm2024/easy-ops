@@ -1,0 +1,1 @@
+import{a2 as r,i as n}from"./index-DndwUIGM.js";const c=r("auth",()=>{const t=n(localStorage.getItem("token")||""),o=n(null);function u(e){t.value=e,localStorage.setItem("token",e)}function a(e){o.value=e}function l(){t.value="",o.value=null,localStorage.removeItem("token")}return{token:t,user:o,setToken:u,setUser:a,logout:l}});export{c as u};

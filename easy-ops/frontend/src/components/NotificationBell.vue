@@ -80,7 +80,7 @@ function levelColor(level: string) {
   const map: Record<string, string> = {
     CRITICAL: 'red', WARNING: 'orange', INFO: 'blue'
   }
-  return map[level] || 'default'
+  return map[level?.toUpperCase()] || 'default'
 }
 
 function formatTime(ts?: number) {

@@ -637,3 +637,61 @@ CREATE TABLE IF NOT EXISTS agent_upgrade_record (
 CREATE INDEX IF NOT EXISTS idx_upgrade_batch ON agent_upgrade_record(upgrade_batch_id);
 CREATE INDEX IF NOT EXISTS idx_upgrade_node ON agent_upgrade_record(node_id);
 CREATE INDEX IF NOT EXISTS idx_upgrade_time ON agent_upgrade_record(create_time);
+
+-- Nginx 流量监控：日志源配置
+CREATE TABLE IF NOT EXISTS nginx_access_source (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    node_id BIGINT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    log_path VARCHAR(500) NOT NULL,
+    log_format VARCHAR(50) DEFAULT 'main',
+    enabled TINYINT DEFAULT 1,
+    slow_threshold_sec DOUBLE DEFAULT 3,
+    max_keys_per_minute INT DEFAULT 2000,
+    last_offset BIGINT DEFAULT 0,
+    last_inode BIGINT DEFAULT 0,
+    last_report_time BIGINT,
+    last_error VARCHAR(500),
+    create_time BIGINT,
+    update_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_nginx_source_node ON nginx_access_source(node_id);
+
+-- Nginx 流量监控：分钟级统计（只存汇总，不存原文）
+CREATE TABLE IF NOT EXISTS nginx_minute_stat (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    bucket_time BIGINT NOT NULL,
+    client_ip VARCHAR(64) NOT NULL,
+    uri VARCHAR(500) NOT NULL,
+    method VARCHAR(16) NOT NULL,
+    request_count INT DEFAULT 0,
+    sum_request_time_ms BIGINT DEFAULT 0,
+    max_request_time_ms BIGINT DEFAULT 0,
+    sum_upstream_time_ms BIGINT DEFAULT 0,
+    status_2xx INT DEFAULT 0,
+    status_4xx INT DEFAULT 0,
+    status_5xx INT DEFAULT 0,
+    slow_count INT DEFAULT 0,
+    create_time BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_nginx_minute_dim ON nginx_minute_stat(source_id, bucket_time, client_ip, uri, method);
+CREATE INDEX IF NOT EXISTS idx_nginx_minute_bucket ON nginx_minute_stat(bucket_time);
+CREATE INDEX IF NOT EXISTS idx_nginx_minute_source ON nginx_minute_stat(source_id);
+
+-- Nginx 流量告警规则（按日志源）
+CREATE TABLE IF NOT EXISTS nginx_traffic_alarm_rule (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    rule_type VARCHAR(32) NOT NULL,
+    enabled TINYINT DEFAULT 0,
+    window_minutes INT DEFAULT 10,
+    threshold BIGINT DEFAULT 100,
+    level VARCHAR(16) DEFAULT 'WARNING',
+    cooldown_minutes INT DEFAULT 15,
+    require_ack TINYINT DEFAULT 0,
+    create_time BIGINT,
+    update_time BIGINT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_nginx_alarm_source_type ON nginx_traffic_alarm_rule(source_id, rule_type);
+CREATE INDEX IF NOT EXISTS idx_nginx_alarm_source ON nginx_traffic_alarm_rule(source_id);

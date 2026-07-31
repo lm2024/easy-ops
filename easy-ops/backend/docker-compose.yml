@@ -12,6 +12,7 @@ services:
       - "2123:2123"
     volumes:
       - agent1-data:/app/data
+      - nginx-access-logs:/var/log/nginx:ro
     environment:
       AGENT_TOKEN: agent-token-1
       AGENT_NODE_NAME: agent-1
@@ -19,6 +20,20 @@ services:
       AGENT_HOST_IP: 127.0.0.1
       AGENT_HOST_PORT: 2123
       JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  nginx-demo:
+    build:
+      context: nginx-demo
+      dockerfile: Dockerfile
+    image: easyops-nginx-demo:latest
+    container_name: ops-nginx-demo
+    restart: unless-stopped
+    ports:
+      - "3080:80"
+    volumes:
+      - nginx-access-logs:/var/log/nginx
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -68,3 +83,4 @@ volumes:
   agent1-data:
   agent2-data:
   agent3-data:
+  nginx-access-logs:
