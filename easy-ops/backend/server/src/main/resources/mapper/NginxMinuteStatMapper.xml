@@ -1,0 +1,238 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NginxMinuteStatMapper">
+
+    <update id="incrementStat">
+        UPDATE nginx_minute_stat
+        SET request_count = request_count + #{requestCount},
+            sum_request_time_ms = sum_request_time_ms + #{sumRequestTimeMs},
+            max_request_time_ms = CASE WHEN #{maxRequestTimeMs} &gt; max_request_time_ms THEN #{maxRequestTimeMs} ELSE max_request_time_ms END,
+            sum_upstream_time_ms = sum_upstream_time_ms + #{sumUpstreamTimeMs},
+            status_2xx = status_2xx + #{status2xx},
+            status_4xx = status_4xx + #{status4xx},
+            status_5xx = status_5xx + #{status5xx},
+            slow_count = slow_count + #{slowCount}
+        WHERE source_id = #{sourceId}
+          AND bucket_time = #{bucketTime}
+          AND client_ip = #{clientIp}
+          AND uri = #{uri}
+          AND method = #{method}
+    </update>
+
+    <insert id="insertStat">
+        INSERT INTO nginx_minute_stat (
+            source_id, bucket_time, client_ip, uri, method,
+            request_count, sum_request_time_ms, max_request_time_ms, sum_upstream_time_ms,
+            status_2xx, status_4xx, status_5xx, slow_count, create_time
+        ) VALUES (
+            #{sourceId}, #{bucketTime}, #{clientIp}, #{uri}, #{method},
+            #{requestCount}, #{sumRequestTimeMs}, #{maxRequestTimeMs}, #{sumUpstreamTimeMs},
+            #{status2xx}, #{status4xx}, #{status5xx}, #{slowCount}, #{createTime}
+        )
+    </insert>
+
+    <delete id="deleteBeforeBucketTime">
+        DELETE FROM nginx_minute_stat WHERE bucket_time &lt; #{cutoff}
+    </delete>
+
+    <select id="sumByIp" resultType="java.util.HashMap">
+        SELECT client_ip AS "clientIp",
+               SUM(request_count) AS "requestCount",
+               SUM(status_4xx) AS "status4xx",
+               SUM(status_5xx) AS "status5xx",
+               SUM(slow_count) AS "slowCount"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="keyword != null and keyword != ''">
+              AND client_ip LIKE '%' || #{keyword} || '%'
+          </if>
+        GROUP BY client_ip
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByIp" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT client_ip
+            FROM nginx_minute_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="keyword != null and keyword != ''">
+                  AND client_ip LIKE '%' || #{keyword} || '%'
+              </if>
+            GROUP BY client_ip
+        ) t
+    </select>
+
+    <select id="sumByUri" resultType="java.util.HashMap">
+        SELECT uri AS "uri",
+               SUM(request_count) AS "requestCount",
+               SUM(status_4xx) AS "status4xx",
+               SUM(status_5xx) AS "status5xx",
+               SUM(slow_count) AS "slowCount",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="keyword != null and keyword != ''">
+              AND uri LIKE '%' || #{keyword} || '%'
+          </if>
+        GROUP BY uri
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByUri" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT uri
+            FROM nginx_minute_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="keyword != null and keyword != ''">
+                  AND uri LIKE '%' || #{keyword} || '%'
+              </if>
+            GROUP BY uri
+        ) t
+    </select>
+
+    <select id="sumByIpUri" resultType="java.util.HashMap">
+        SELECT client_ip AS "clientIp",
+               uri AS "uri",
+               method AS "method",
+               SUM(request_count) AS "requestCount",
+               SUM(slow_count) AS "slowCount",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="clientIp != null and clientIp != ''">
+              AND client_ip LIKE '%' || #{clientIp} || '%'
+          </if>
+          <if test="uri != null and uri != ''">
+              AND uri LIKE '%' || #{uri} || '%'
+          </if>
+        GROUP BY client_ip, uri, method
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByIpUri" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT client_ip, uri, method
+            FROM nginx_minute_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="clientIp != null and clientIp != ''">
+                  AND client_ip LIKE '%' || #{clientIp} || '%'
+              </if>
+              <if test="uri != null and uri != ''">
+                  AND uri LIKE '%' || #{uri} || '%'
+              </if>
+            GROUP BY client_ip, uri, method
+        ) t
+    </select>
+
+    <select id="sumSlowByUri" resultType="java.util.HashMap">
+        SELECT uri AS "uri",
+               SUM(slow_count) AS "slowCount",
+               SUM(request_count) AS "requestCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          AND slow_count &gt; 0
+        GROUP BY uri
+        ORDER BY SUM(slow_count) DESC, MAX(max_request_time_ms) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countSlowByUri" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT uri
+            FROM nginx_minute_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              AND slow_count &gt; 0
+            GROUP BY uri
+        ) t
+    </select>
+
+    <select id="trendByMinute" resultType="java.util.HashMap">
+        SELECT bucket_time AS "bucketTime",
+               SUM(request_count) AS "requestCount",
+               SUM(status_4xx) AS "status4xx",
+               SUM(status_5xx) AS "status5xx"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+        GROUP BY bucket_time
+        ORDER BY bucket_time ASC
+    </select>
+
+    <select id="overview" resultType="java.util.HashMap">
+        SELECT COALESCE(SUM(request_count), 0) AS "totalRequests",
+               COALESCE(SUM(status_4xx), 0) AS "status4xx",
+               COALESCE(SUM(status_5xx), 0) AS "status5xx",
+               COALESCE(SUM(slow_count), 0) AS "slowCount"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+    </select>
+
+    <select id="listIpAboveThreshold" resultType="java.util.HashMap">
+        SELECT client_ip AS "clientIp", SUM(request_count) AS "requestCount"
+        FROM nginx_minute_stat
+        WHERE source_id = #{sourceId}
+          AND bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+        GROUP BY client_ip
+        HAVING SUM(request_count) &gt;= #{threshold}
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="listUriAboveThreshold" resultType="java.util.HashMap">
+        SELECT uri AS "uri", SUM(request_count) AS "requestCount"
+        FROM nginx_minute_stat
+        WHERE source_id = #{sourceId}
+          AND bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+        GROUP BY uri
+        HAVING SUM(request_count) &gt;= #{threshold}
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{limit}
+    </select>
+
+    <select id="sumStatusAndSlow" resultType="java.util.HashMap">
+        SELECT COALESCE(SUM(status_4xx), 0) AS "status4xx",
+               COALESCE(SUM(status_5xx), 0) AS "status5xx",
+               COALESCE(SUM(slow_count), 0) AS "slowCount",
+               COALESCE(SUM(request_count), 0) AS "totalRequests"
+        FROM nginx_minute_stat
+        WHERE source_id = #{sourceId}
+          AND bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+    </select>
+</mapper>

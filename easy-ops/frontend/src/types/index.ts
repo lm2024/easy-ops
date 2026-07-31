@@ -276,6 +276,39 @@ export interface ProjectLogProfileModel {
   updateTime?: number
 }
 
+/** Nginx 访问日志采集源 */
+export interface NginxAccessSourceModel {
+  id?: number
+  nodeId: number
+  name: string
+  logPath: string
+  logFormat?: string
+  enabled?: number
+  slowThresholdSec?: number
+  maxKeysPerMinute?: number
+  lastOffset?: number
+  lastInode?: number
+  lastReportTime?: number
+  lastError?: string
+  createTime?: number
+  updateTime?: number
+}
+
+/** Nginx 流量告警规则 */
+export interface NginxTrafficAlarmRuleModel {
+  id?: number
+  sourceId?: number
+  ruleType: string
+  enabled?: number
+  windowMinutes?: number
+  threshold?: number
+  level?: 'CRITICAL' | 'WARNING' | 'INFO' | string
+  cooldownMinutes?: number
+  requireAck?: number
+  createTime?: number
+  updateTime?: number
+}
+
 /** 日志文件信息 */
 export interface LogFileInfo {
   name: string
