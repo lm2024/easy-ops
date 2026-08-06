@@ -820,7 +820,7 @@ function connectWebSocket() {
         if (data.type === 'monitor_update' && data.nodeId && data.metrics) {
           wsMsgCount.value++
           // 实时更新监控指标（只更新 CPU/内存等高频数据，不覆盖状态字段）
-          updateMonitorData(data.nodeId, data.metrics, data.computed)
+          updateMonitorData(data.nodeId, data.metrics)
           lastUpdateTime.value = Date.now()
         }
       } catch (e) {
@@ -858,7 +858,7 @@ function disconnectWebSocket() {
   }
 }
 
-function updateMonitorData(nodeId: number, metrics: Record<string, any>, computed?: Record<string, any>) {
+function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
   const entries = nodeIndexMap.get(nodeId)
   if (!entries || entries.length === 0) { console.warn('[Monitor] Node not found:', nodeId); return }
 
