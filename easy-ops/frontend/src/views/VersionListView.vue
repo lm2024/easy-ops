@@ -51,6 +51,9 @@
           <template v-if="column.key === 'fileSize'">
             {{ formatSize(record.fileSize) }}
           </template>
+          <template v-if="column.key === 'createTime'">
+            {{ record.createTime ? fmtDate(record.createTime) : '-' }}
+          </template>
           <template v-if="column.key === 'action'">
             <a-popconfirm title="确定删除此版本?" @confirm="removeVersion(record.id)">
               <a-button type="link" size="small" danger>
@@ -104,6 +107,14 @@ import { getVersions, deleteVersion, uploadVersion } from '../api/version'
 import { UploadOutlined, DeleteOutlined, TagOutlined } from '@ant-design/icons-vue'
 
 const versions = ref<VersionModel[]>([])
+
+function fmtDate(ts: any): string {
+  if (!ts) return '-'
+  const d = new Date(typeof ts === 'string' ? Number(ts) : ts)
+  if (isNaN(d.getTime())) return String(ts)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+}
 const projects = ref<ProjectModel[]>([])
 const loading = ref(false)
 const projectId = ref('')
@@ -122,6 +133,7 @@ const columns = [
   { title: '类型', dataIndex: 'packageType', key: 'packageType', width: 90 },
   { title: '包名', dataIndex: 'jarName', key: 'jarName' },
   { title: '文件大小', dataIndex: 'fileSize', key: 'fileSize', width: 120 },
+  { title: '上传时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
   { title: '操作', key: 'action', width: 100, fixed: 'right' as const }
 ]
 

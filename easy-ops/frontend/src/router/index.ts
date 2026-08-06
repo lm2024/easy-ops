@@ -33,6 +33,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'config-editor', redirect: '/config-manage' },
       { path: 'config-manage', name: 'ConfigManage', component: () => import('../views/ConfigManageView.vue') },
       { path: 'app-monitor', name: 'AppMonitor', component: () => import('../views/AppMonitorView.vue') },
+      { path: 'agent-status', name: 'AgentStatus', component: () => import('../views/AgentStatusView.vue') },
       { path: 'nginx-traffic', name: 'NginxTraffic', component: () => import('../views/NginxTrafficView.vue') },
       { path: 'knowledge', name: 'Knowledge', component: () => import('../views/KnowledgeView.vue') },
       { path: 'self-heal', name: 'SelfHeal', component: () => import('../views/SelfHealPolicyView.vue') },

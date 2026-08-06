@@ -44,7 +44,7 @@ public class HeartbeatDaemon implements CommandLineRunner {
     @Value("${agent.node-name:default-node}")
     private String nodeName;
 
-    @Value("${agent.check-interval:30}")
+    @Value("${agent.check-interval:60}")
     private int checkInterval;
 
     @Value("${agent.host-ip:}")
@@ -61,6 +61,10 @@ public class HeartbeatDaemon implements CommandLineRunner {
 
     private final ProcessStatusChecker processStatusChecker = new ProcessStatusChecker();
     private final ProcessMetricsHelper processMetricsHelper = new ProcessMetricsHelper(processStatusChecker);
+
+    /** 心跳计数器，用于控制磁盘信息上报频率（每次心跳都上报磁盘信息） */
+    private int heartbeatCount = 0;
+    private static final int DISK_REPORT_INTERVAL = 1;
 
     /**
      * 从版本文件读取升级后的版本号，文件不存在则返回编译时版本
@@ -298,8 +302,18 @@ public class HeartbeatDaemon implements CommandLineRunner {
             ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
             metrics.put("threadCount", threadBean.getThreadCount());
 
-            // 磁盘使用率（根分区）
+            // 磁盘使用率（根分区）- 每次都上报，用于实时监控
             metrics.put("diskUsagePercent", getRootDiskUsagePercent());
+
+            // 所有磁盘详细信息
+            heartbeatCount++;
+            log.info("[Heartbeat] heartbeatCount={}, DISK_REPORT_INTERVAL={}", heartbeatCount, DISK_REPORT_INTERVAL);
+            if (heartbeatCount >= DISK_REPORT_INTERVAL) {
+                heartbeatCount = 0;
+                String diskJson = getAllDiskInfoJson();
+                metrics.put("diskInfoJson", diskJson);
+                log.info("[Heartbeat] 上报磁盘信息: {}", diskJson.length() > 100 ? diskJson.substring(0, 100) + "..." : diskJson);
+            }
 
             // 系统负载
             double cpuUsage = osBean.getSystemLoadAverage();
@@ -385,6 +399,74 @@ public class HeartbeatDaemon implements CommandLineRunner {
             // 忽略错误，返回0
         }
         return 0;
+    }
+
+    /**
+     * 获取所有磁盘信息（JSON格式）
+     * 过滤掉 < 2GB 的小分区
+     */
+    private String getAllDiskInfoJson() {
+        try {
+            String os = System.getProperty("os.name").toLowerCase();
+            Process p;
+            if (os.contains("linux") || os.contains("mac") || os.contains("darwin")) {
+                p = Runtime.getRuntime().exec("df -BG");
+            } else {
+                return "[]";
+            }
+
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
+            String line;
+            boolean firstLine = true;
+            List<Map<String, Object>> diskList = new ArrayList<>();
+
+            while ((line = reader.readLine()) != null) {
+                if (firstLine) {
+                    firstLine = false;
+                    continue;
+                }
+                // 格式：Filesystem 1G-blocks Used Available Use% Mounted
+                String[] parts = line.split("\\s+");
+                if (parts.length >= 6) {
+                    String mountPoint = parts[5];
+                    // 过滤虚拟文件系统和小分区
+                    if (mountPoint.startsWith("/proc") || mountPoint.startsWith("/sys") ||
+                        mountPoint.startsWith("/dev") || mountPoint.startsWith("/run")) {
+                        continue;
+                    }
+                    try {
+                        long totalGB = Long.parseLong(parts[1].replace("G", ""));
+                        long usedGB = Long.parseLong(parts[2].replace("G", ""));
+                        long freeGB = Long.parseLong(parts[3].replace("G", ""));
+                        double usagePercent = Double.parseDouble(parts[4].replace("%", ""));
+
+                        // 过滤 < 2GB 的小分区
+                        if (totalGB < 2) {
+                            continue;
+                        }
+
+                        Map<String, Object> disk = new HashMap<>();
+                        disk.put("mountPoint", mountPoint);
+                        disk.put("totalGB", totalGB);
+                        disk.put("usedGB", usedGB);
+                        disk.put("freeGB", freeGB);
+                        disk.put("usagePercent", Math.round(usagePercent * 10.0) / 10.0);
+                        diskList.add(disk);
+                    } catch (NumberFormatException e) {
+                        // 解析失败，跳过
+                    }
+                }
+            }
+            reader.close();
+
+            // 按使用率降序排列
+            diskList.sort((a, b) -> Double.compare((double)b.get("usagePercent"), (double)a.get("usagePercent")));
+
+            return new ObjectMapper().writeValueAsString(diskList);
+        } catch (Exception e) {
+            log.warn("获取磁盘信息失败", e);
+            return "[]";
+        }
     }
 
     private long getTotalMemoryMB() {

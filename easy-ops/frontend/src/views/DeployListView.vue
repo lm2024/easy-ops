@@ -10,7 +10,7 @@
 
       <a-form layout="inline" :model="form">
         <a-form-item label="选择应用">
-          <a-select v-model:value="form.projectId" style="width: 220px" placeholder="选择要部署的应用" @change="onProjectChange">
+          <a-select v-model:value="form.projectId" style="width: 320px" placeholder="选择要部署的应用" :dropdown-match-select-width="false" @change="onProjectChange">
             <a-select-option v-for="p in projects" :key="p.id" :value="p.id">
               {{ p.name }}
             </a-select-option>
@@ -18,7 +18,7 @@
         </a-form-item>
 
         <a-form-item label="选择版本">
-          <a-select v-model:value="form.versionId" style="width: 220px" placeholder="选择版本包" :disabled="!form.projectId">
+          <a-select v-model:value="form.versionId" style="width: 320px" placeholder="选择版本包" :disabled="!form.projectId" :dropdown-match-select-width="false">
             <a-select-option v-for="v in versionList" :key="v.id" :value="v.id">
               {{ v.version || v.jarName }}
               <span style="color:#888;font-size:12px"> — {{ v.jarName }}</span>

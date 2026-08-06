@@ -6,11 +6,9 @@ set -e
 PERSISTENT_JAR="/app/data/agent.jar"
 IMAGE_JAR="/app/agent.jar"
 
-# 首次运行：从镜像复制 jar 到持久化目录
-if [ ! -f "$PERSISTENT_JAR" ]; then
-    cp "$IMAGE_JAR" "$PERSISTENT_JAR"
-    echo "[entrypoint] 初始化 agent.jar 到 $PERSISTENT_JAR"
-fi
+# 每次启动都用镜像中的jar覆盖持久化目录，确保代码最新
+cp -f "$IMAGE_JAR" "$PERSISTENT_JAR"
+echo "[entrypoint] 更新 agent.jar 到 $PERSISTENT_JAR"
 
 exec java \
     -Dagent.jar-path="$PERSISTENT_JAR" \
