@@ -32,6 +32,8 @@ public interface NodeMapper {
     void updateStatusOffline(@Param("id") Long id);
     void updateTags(@Param("id") Long id, @Param("tags") String tags, @Param("updateTime") Long updateTime);
     void updatePort(@Param("id") Long id, @Param("port") Integer port, @Param("updateTime") Long updateTime);
+    void updateDiskInfo(@Param("id") Long id, @Param("diskInfoJson") String diskInfoJson);
+    void updateHostMetrics(@Param("id") Long id, @Param("cpuPercent") Double cpuPercent, @Param("memPercent") Integer memPercent, @Param("diskPercent") Integer diskPercent);
     List<NodeModel> getOfflineCandidates(@Param("cutoff") Long cutoff);
     int countByNodeId(@Param("nodeId") Long nodeId);
     List<String> getProjectNamesByNodeId(@Param("nodeId") Long nodeId);

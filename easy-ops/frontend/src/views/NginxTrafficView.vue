@@ -21,10 +21,11 @@
             <a-select-option value="last10m">近10分钟</a-select-option>
             <a-select-option value="last30m">近30分钟</a-select-option>
             <a-select-option value="last1h">近1小时</a-select-option>
+            <a-select-option value="last2h">近2小时</a-select-option>
+            <a-select-option value="last5h">近5小时</a-select-option>
+            <a-select-option value="last8h">近8小时</a-select-option>
             <a-select-option value="today">今天</a-select-option>
             <a-select-option value="yesterday">昨天</a-select-option>
-            <a-select-option value="dayBefore">前天</a-select-option>
-            <a-select-option value="last7d">近7天</a-select-option>
             <a-select-option value="custom">自定义</a-select-option>
           </a-select>
           <a-range-picker
@@ -307,7 +308,7 @@ import {
   getNginxRankIp, getNginxRankUri, getNginxRankIpUri, getNginxRankSlow
 } from '../api/nginxTraffic'
 
-type RangePreset = 'last10m' | 'last30m' | 'last1h' | 'today' | 'yesterday' | 'dayBefore' | 'last7d' | 'custom'
+type RangePreset = 'last10m' | 'last30m' | 'last1h' | 'last2h' | 'last5h' | 'last8h' | 'today' | 'yesterday' | 'custom'
 
 const OVERVIEW_TOP_N = 30
 const activeTab = ref('overview')
@@ -397,14 +398,16 @@ const timeQuery = computed((): NginxTimeQuery => {
       return { ...base, windowMinutes: 30 }
     case 'last1h':
       return { ...base, windowMinutes: 60 }
+    case 'last2h':
+      return { ...base, windowMinutes: 120 }
+    case 'last5h':
+      return { ...base, windowMinutes: 300 }
+    case 'last8h':
+      return { ...base, windowMinutes: 480 }
     case 'today':
       return { ...base, startTime: dayStart(0), endTime: Date.now() }
     case 'yesterday':
       return { ...base, startTime: dayStart(1), endTime: dayEnd(1) }
-    case 'dayBefore':
-      return { ...base, startTime: dayStart(2), endTime: dayEnd(2) }
-    case 'last7d':
-      return { ...base, startTime: dayStart(6), endTime: Date.now() }
     case 'custom':
       if (customRange.value?.[0] && customRange.value?.[1]) {
         return {
@@ -424,10 +427,11 @@ const rangeLabel = computed(() => {
     last10m: '近10分钟',
     last30m: '近30分钟',
     last1h: '近1小时',
+    last2h: '近2小时',
+    last5h: '近5小时',
+    last8h: '近8小时',
     today: '今天',
     yesterday: '昨天',
-    dayBefore: '前天',
-    last7d: '近7天',
     custom: '自定义'
   }
   return map[rangePreset.value]

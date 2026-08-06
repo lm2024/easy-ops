@@ -351,6 +351,21 @@ public class NodeController {
         nodeMapper.updateHeartbeat(Long.parseLong(nodeId), System.currentTimeMillis(),
                 ip, osInfo, javaVersion, cpuCores, totalMemoryMb, totalDiskMb, osArch, agentVersion, agentPid);
 
+        // 保存主机级实时指标到node_info（供Agent状态页面使用，不依赖monitor_snapshot）
+        if (metricsBase64 != null && !metricsBase64.isEmpty()) {
+            try {
+                String metricsJson = new String(java.util.Base64.getDecoder().decode(metricsBase64), "UTF-8");
+                @SuppressWarnings("unchecked")
+                Map<String, Object> metrics = com.alibaba.fastjson2.JSON.parseObject(metricsJson, Map.class);
+                if (metrics != null) {
+                    Double cpuPercent = metrics.get("cpuUsagePercent") instanceof Number ? ((Number) metrics.get("cpuUsagePercent")).doubleValue() : null;
+                    Integer memPercent = metrics.get("memoryUsagePercent") instanceof Number ? ((Number) metrics.get("memoryUsagePercent")).intValue() : null;
+                    Integer diskPercent = metrics.get("diskUsagePercent") instanceof Number ? ((Number) metrics.get("diskUsagePercent")).intValue() : null;
+                    nodeMapper.updateHostMetrics(Long.parseLong(nodeId), cpuPercent, memPercent, diskPercent);
+                }
+            } catch (Exception ignored) {}
+        }
+
         // 如果 Agent 上报了外部可访问的端口，更新节点端口
         if (nodePort != null && nodePort > 0) {
             nodeMapper.updatePort(Long.parseLong(nodeId), nodePort, System.currentTimeMillis());
@@ -367,6 +382,17 @@ public class NodeController {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> metrics = com.alibaba.fastjson2.JSON.parseObject(metricsJson, Map.class);
                 if (metrics != null && !metrics.isEmpty()) {
+                    // 保存磁盘信息到节点表
+                    String diskInfoJson = (String) metrics.get("diskInfoJson");
+                    log.info("[Heartbeat] 节点={} diskInfoJson={}", nodeId, diskInfoJson != null ? diskInfoJson.substring(0, Math.min(50, diskInfoJson.length())) : "null");
+                    if (diskInfoJson != null && !diskInfoJson.isEmpty()) {
+                        try {
+                            nodeMapper.updateDiskInfo(Long.parseLong(nodeId), diskInfoJson);
+                            log.info("[Heartbeat] updateDiskInfo成功 节点={}", nodeId);
+                        } catch (Exception ex) {
+                            log.error("[Heartbeat] updateDiskInfo失败 节点={}", nodeId, ex);
+                        }
+                    }
                     // 存储到MonitorSnapshot表，同时返回计算结果用于WS推送
                     Map<String, Object> computed = saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
                     broadcastMonitorUpdate(Long.parseLong(nodeId), metrics, computed);
@@ -447,6 +473,17 @@ public class NodeController {
             }
 
             // ======================== 进程状态（先确定） ========================
+            com.ops.common.model.ProjectModel snapProject = getProject(snap.getProjectId());
+            boolean isFrontend = snapProject != null && "frontend".equalsIgnoreCase(snapProject.getProjectType());
+            if (isFrontend) {
+                // 前端静态资源没有 Java 进程，直接标记 N/A
+                snap.setProcessStatus("N/A");
+                snap.setHealthStatus("UP");
+                snap.setHealthDetail("静态资源，无需进程存活监控");
+                // 前端项目不需要匹配进程，直接跳过进程处理
+                // 只更新主机级指标（CPU/内存/磁盘）
+                return computed;
+            }
             // 默认 STOPPED，由 processes 列表或上次快照覆盖
             snap.setProcessStatus("STOPPED");
 

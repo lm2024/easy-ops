@@ -35,17 +35,12 @@
               <rocket-outlined /> Agent 升级
             </a-button>
           </a-tooltip>
-          <a-tooltip title="新增一个 Agent 节点。如果 Agent 已启动并通过心跳注册，会自动显示在这里。">
-            <a-button type="primary" ghost @click="$router.push('/nodes/add')">
-              <plus-outlined /> 新增节点
-            </a-button>
-          </a-tooltip>
         </a-space>
       </template>
 
       <a-table :columns="columns" :data-source="nodes" :loading="loading" :pagination="pagination"
                :row-key="rowKey" @change="handleTableChange" v-model:expanded-row-keys="expandRowKeys"
-               @expand="onRowExpand" :row-selection="rowSelection">
+               @expand="onRowExpand" :row-selection="rowSelection" :scroll="{ x: 1800 }">
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'name'">
             <a-space>
@@ -100,6 +95,45 @@
                 <a-tag style="font-size:11px" v-if="record.osInfo">{{ record.osInfo.substring(0,14) }}</a-tag>
               </a-space>
             </a-tooltip>
+          </template>
+          <template v-if="column.key === 'diskInfo'">
+            <template v-if="nodeDetailData[rowKey(record)]?.disks && nodeDetailData[rowKey(record)].disks.length > 0">
+              <a-tooltip placement="topLeft">
+                <template #title>
+                  <div style="max-width: 350px">
+                    <div style="font-weight: 600; margin-bottom: 6px;">所有磁盘（按使用率排序）</div>
+                    <div v-for="(disk, di) in getSortedDisks(nodeDetailData[rowKey(record)].disks)" :key="di" style="margin-bottom: 4px; padding: 4px; background: rgba(255,255,255,0.05); border-radius: 4px;">
+                      <div style="display: flex; justify-content: space-between;">
+                        <span style="font-weight: 500">{{ disk.mountPoint || '未知' }}</span>
+                        <span :style="{ color: (disk.usagePercent||0) > 85 ? '#ff4d4f' : (disk.usagePercent||0) > 70 ? '#faad14' : '#52c41a', fontWeight: 600 }">{{ disk.usagePercent || 0 }}%</span>
+                      </div>
+                      <div style="font-size: 11px; color: #aaa;">{{ disk.usedGB || 0 }}GB / {{ disk.totalGB || 0 }}GB（剩余 {{ disk.freeGB || 0 }}GB）</div>
+                    </div>
+                  </div>
+                </template>
+                <div style="cursor: pointer">
+                  <div v-for="(disk, di) in getDisplayDisks(nodeDetailData[rowKey(record)].disks)" :key="di" style="margin-bottom: 3px;">
+                    <div style="display: flex; align-items: center; gap: 4px">
+                      <span style="font-size: 11px; color: #888; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" :title="disk.mountPoint">{{ disk.mountPoint || '/' }}</span>
+                      <a-progress
+                        :percent="parseInt(disk.usagePercent) || 0"
+                        size="small"
+                        :show-info="false"
+                        :status="(parseInt(disk.usagePercent)||0) > 85 ? 'exception' : (parseInt(disk.usagePercent)||0) > 70 ? 'active' : 'success'"
+                        style="flex: 1"
+                      />
+                      <span :style="{ fontSize: '11px', fontWeight: 700, color: (disk.usagePercent||0) > 85 ? '#ff4d4f' : (disk.usagePercent||0) > 70 ? '#faad14' : '#52c41a', minWidth: '32px', textAlign: 'right' }">
+                        {{ disk.usagePercent || 0 }}%
+                      </span>
+                    </div>
+                  </div>
+                  <div v-if="nodeDetailData[rowKey(record)]?.diskSyncTime" style="font-size: 10px; color: #999; margin-top: 2px;">
+                    同步于 {{ fmtDate(nodeDetailData[rowKey(record)].diskSyncTime) }}
+                  </div>
+                </div>
+              </a-tooltip>
+            </template>
+            <span v-else style="color: #bfbfbf; font-size: 12px">-</span>
           </template>
           <template v-if="column.key === 'lastHeartbeat'">
             <a-tooltip :title="record.lastHeartbeat ? fmtDate(record.lastHeartbeat) : '未收到'">
@@ -302,10 +336,13 @@ import {
 } from '@ant-design/icons-vue'
 
 /** Agent 向 Server 上报心跳间隔（秒），与 backend agent.check-interval 一致 */
-const AGENT_HEARTBEAT_SEC = 30
+const AGENT_HEARTBEAT_SEC = 60
+/** 磁盘信息同步间隔（次心跳），与 backend DISK_REPORT_INTERVAL 一致 */
+const DISK_SYNC_INTERVAL = 1 // 保留常量但不再用于倒计时
 /** 节点详情 CPU/内存 等指标的前端自动刷新间隔（秒），仅影响展示，不增加 Agent 心跳频率 */
 const DETAIL_REFRESH_SEC = 10
 const DETAIL_REFRESH_MS = DETAIL_REFRESH_SEC * 1000
+
 
 /** Agent 升级弹窗 */
 const showUpgradeModal = ref(false)
@@ -347,13 +384,14 @@ let detailRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const columns = [
   { title: '节点名称', dataIndex: 'name', key: 'name', width: 200 },
-  { title: '标签', dataIndex: 'tags', key: 'tags', width: 220, sorter: true },
+  { title: '标签', dataIndex: 'tags', key: 'tags', width: 200, sorter: true },
   { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: true },
-  { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 130 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100, sorter: true },
-  { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 270 },
+  { title: '磁盘', key: 'diskInfo', width: 300 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 80, sorter: true },
+  { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 110 },
+  { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 250 },
   { title: '最后心跳', dataIndex: 'lastHeartbeat', key: 'lastHeartbeat', width: 150 },
-  { title: '操作', key: 'action', width: 210, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 
 function fmtSize(mb?: number | null): string {
@@ -377,6 +415,20 @@ function getTagColor(tag: string): string {
   const colors = ['blue','green','orange','purple','cyan','geekblue','magenta','gold','lime']
   let h = 0; for (let i = 0; i < tag.length; i++) h = tag.charCodeAt(i) + ((h << 5) - h)
   return colors[Math.abs(h) % colors.length]
+}
+
+/** 过滤小分区（< 2GB）并按使用率降序排列 */
+function getSortedDisks(disks: any[]): any[] {
+  if (!disks) return []
+  return disks
+    .filter(d => (d.totalGB || 0) >= 2)
+    .sort((a, b) => (b.usagePercent || 0) - (a.usagePercent || 0))
+}
+
+/** 获取显示用的磁盘：最多显示3个，优先显示使用率高的 */
+function getDisplayDisks(disks: any[]): any[] {
+  const sorted = getSortedDisks(disks)
+  return sorted.slice(0, 3)
 }
 
 function startEditTags(r: NodeModel) {
@@ -478,8 +530,29 @@ async function fetchNodes() {
     loading.value = true
     const res = await getNodes(pagination.value.current, pagination.value.pageSize, keyword.value, filterStatus.value, sortField.value, sortOrder.value)
     nodes.value = res.data.list; pagination.value.total = res.data.total
+    // 解析磁盘信息（从心跳数据中读取，无需额外请求）
+    parseDiskInfo()
   } finally { loading.value = false }
 }
+
+/** 解析节点列表中的磁盘信息JSON */
+function parseDiskInfo() {
+  for (const node of nodes.value) {
+    const key = rowKey(node)
+    if ((node as any).diskInfoJson) {
+      try {
+        nodeDetailData[key] = {
+          ...nodeDetailData[key],
+          disks: JSON.parse((node as any).diskInfoJson),
+          diskSyncTime: (node as any).lastHeartbeat
+        }
+      } catch {
+        nodeDetailData[key] = { ...nodeDetailData[key], disks: [] }
+      }
+    }
+  }
+}
+
 
 function handleTableChange(pag: any, _filters: any, sorter: any) {
   pagination.value.current = pag.current
@@ -496,14 +569,18 @@ function handleTableChange(pag: any, _filters: any, sorter: any) {
 function editNode(r: NodeModel) { router.push(`/nodes/${r.id}/edit`) }
 async function deleteNodeAction(id: string) { await deleteNode(id); fetchNodes(); message.success('节点已删除') }
 
-onMounted(fetchNodes)
+onMounted(() => {
+  fetchNodes()
+})
 
 watch(expandRowKeys, (keys) => {
   if (keys.length > 0) startDetailRefresh()
   else stopDetailRefresh()
 }, { deep: true })
 
-onUnmounted(stopDetailRefresh)
+onUnmounted(() => {
+  stopDetailRefresh()
+})
 </script>
 
 <style scoped>

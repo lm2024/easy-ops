@@ -2,10 +2,10 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ops.server.mapper.NodeMapper">
     <select id="findById" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info WHERE id = #{id}
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info WHERE id = #{id}
     </select>
     <select id="findByName" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info WHERE name = #{name}
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info WHERE name = #{name}
     </select>
     <select id="getNodeIdByToken" resultType="string">
         SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = #{token} LIMIT 1
@@ -14,7 +14,7 @@
         SELECT token FROM node_info WHERE token = #{token} LIMIT 1
     </select>
     <select id="findByStatus" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info
         <where>
             <if test="status != null and status != ''">
                 AND status = #{status}
@@ -83,6 +83,12 @@
         agent_pid = #{agentPid},
         last_heartbeat = #{lastHeartbeat}, update_time = #{lastHeartbeat} WHERE id = #{id}
     </update>
+    <update id="updateDiskInfo">
+        UPDATE node_info SET disk_info = #{diskInfoJson} WHERE id = #{id}
+    </update>
+    <update id="updateHostMetrics">
+        UPDATE node_info SET host_cpu_percent = #{cpuPercent}, host_memory_percent = #{memPercent}, host_disk_percent = #{diskPercent} WHERE id = #{id}
+    </update>
     <update id="updatePort">
         UPDATE node_info SET port = #{port}, update_time = #{updateTime} WHERE id = #{id}
     </update>
@@ -108,7 +114,7 @@
     </select>
 
     <select id="findByIds" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info WHERE id IN
+        SELECT *, disk_info AS diskInfoJson FROM node_info WHERE id IN
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
         </foreach>

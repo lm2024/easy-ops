@@ -114,8 +114,8 @@ public class VersionController {
             return Result.error(1005, "项目不存在");
         }
 
-        // Generate version number
-        String versionName = projectName + "-v" + (versionPackageMapper.countByProjectId(projectId) + 1);
+        // Generate version number using date format
+        String versionName = projectName + "-" + new java.text.SimpleDateFormat("yyyyMMdd-HHmmss").format(new java.util.Date());
 
         // Save file
         File projectDir = new File(serverPath + "/versions/" + projectId + "/" + versionName);
