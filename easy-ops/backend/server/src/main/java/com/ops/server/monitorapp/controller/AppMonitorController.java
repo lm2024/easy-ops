@@ -532,6 +532,12 @@ public class AppMonitorController {
                     item.put("hostMemoryPercent", snap.getHostMemoryPercent());
                     item.put("diskUsagePercent", snap.getDiskUsagePercent());
                     item.put("collectTime", snap.getCollectTime());
+                } else {
+                    // 无项目绑定的节点：从 node_info 的心跳数据中读取主机指标
+                    item.put("hostCpuPercent", n.getHostCpuPercent());
+                    item.put("hostMemoryPercent", n.getHostMemoryPercent());
+                    item.put("diskUsagePercent", n.getDiskUsagePercent());
+                    item.put("collectTime", n.getLastHeartbeat());
                 }
                 agentList.add(item);
             }

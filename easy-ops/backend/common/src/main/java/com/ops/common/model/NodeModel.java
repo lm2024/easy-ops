@@ -43,4 +43,16 @@ public class NodeModel implements Serializable {
 
     /** Agent 进程 PID */
     private Long agentPid;
+
+    /** 磁盘信息JSON（心跳上报，格式：[{mountPoint,totalGB,usedGB,freeGB,usagePercent},...]） */
+    private String diskInfoJson;
+
+    /** 主机CPU使用率（心跳上报） */
+    private Double hostCpuPercent;
+
+    /** 主机内存使用率（心跳上报） */
+    private Integer hostMemoryPercent;
+
+    /** 主机磁盘使用率（心跳上报） */
+    private Integer diskUsagePercent;
 }

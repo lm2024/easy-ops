@@ -137,7 +137,7 @@ easyops:
         kb_recent_access: 3
         agent_upgrade_record: 3
         global_script_distribute_record: 3
-        nginx_minute_stat: 7
+        nginx_minute_stat: 2
 
   nginx-traffic:
-    minute-retain-days: 7
+    minute-retain-days: 2

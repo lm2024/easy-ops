@@ -5,6 +5,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -r
 
 WORKDIR /app
 
+# 创建数据目录
+RUN mkdir -p /app/data
+
 COPY easy-ops-agent-*.jar agent.jar
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

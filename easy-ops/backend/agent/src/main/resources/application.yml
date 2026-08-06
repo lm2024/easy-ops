@@ -32,19 +32,12 @@ agent:
   restart-mode: ${AGENT_RESTART_MODE:auto}
   restart-script: ${AGENT_RESTART_SCRIPT:}
   java-bin: ${AGENT_JAVA_BIN:}
-  check-interval: 30
+  check-interval: 60
   # 上报给 Server 的外部 IP（多网卡时填写，留空则自动检测；本地调试/Docker 环境填 127.0.0.1）
   host-ip: ${AGENT_HOST_IP:127.0.0.1}
   # 上报给 Server 的外部端口（留空或 0 则用 server.port）
   host-port: ${AGENT_HOST_PORT:0}
-
-# =============================================================================
-# Nginx 访问日志采集调度配置（agent 侧）
-# =============================================================================
-# 以下频率通过 application.yml 集中管理，方便生产环境调整而不用改 Java 代码。
-# 调整后可通过 restart.sh 重启 Agent 生效，或者等 Agent 热更新。
-# =============================================================================
-agent:
+  # Nginx 日志采集配置
   nginx-traffic:
     # 日志源刷新频率（毫秒）—— Agent 启动后 5 秒首次执行，之后每隔此间隔向 Server 拉取最新日志源列表（哪些节点、哪些路径、是否启用）。
     refresh-sources-interval: 30000
