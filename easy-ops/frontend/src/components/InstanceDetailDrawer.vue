@@ -405,7 +405,8 @@ const title = computed(() => {
   if (!r) return '实例详情'
   if (isAgentMode.value) {
     const pid = (r.agentPid != null && r.agentPid > 0) ? r.agentPid : '未知'
-    return `Agent · ${r.nodeName ?? '节点'} (PID: ${pid})`
+    const addr = `${r.ip ?? ''}:${r.port ?? ''}`
+    return `Agent · ${r.nodeName ?? '节点'} (${addr} | PID: ${pid})`
   }
   const procPid = (r.processPid != null && r.processPid > 0) ? r.processPid : '未知'
   const agentPid = (r.agentPid != null && r.agentPid > 0) ? r.agentPid : '未知'

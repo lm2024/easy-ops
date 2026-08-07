@@ -108,6 +108,14 @@ ops:
     frontend-sub-dir: frontend
 
 # =============================================================================
+# 白名单自动登录（调试 / 自动化专用）
+# 默认全部关闭：不启用、且不配置白名单 key 时，该接口等同于不存在，外网无法利用。
+# 仅需自动化/agent 登录时，把 AUTO_LOGIN_ENABLED 置 true 并下发 AUTO_LOGIN_WHITELIST 即可。
+# 调用：POST /api/auth/auto-login  { "key": "..." } 或请求头 X-Auto-Login-Key
+# 配置并入下方已有的 easyops 根节点（auth 与 data / nginx-traffic 同级）
+# =============================================================================
+
+# =============================================================================
 # 数据清理配置（定时删除过期流水数据，防止 H2 数据库膨胀）
 # =============================================================================
 # 所有高频流水表统一在此管理，新增表只需加一行配置即可。
@@ -141,3 +149,9 @@ easyops:
 
   nginx-traffic:
     minute-retain-days: 2
+
+  auth:
+    auto-login-enabled: ${AUTO_LOGIN_ENABLED:false}
+    auto-login-username: ${AUTO_LOGIN_USERNAME:admin}
+    # 逗号分隔的 key 白名单；命中其一即放行。建议用随机长字符串。
+    auto-login-whitelist: ${AUTO_LOGIN_WHITELIST:}

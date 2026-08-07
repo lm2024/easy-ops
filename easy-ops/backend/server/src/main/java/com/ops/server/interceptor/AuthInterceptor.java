@@ -46,7 +46,9 @@ public class AuthInterceptor implements HandlerInterceptor {
         String method = request.getMethod();
 
         // Skip heartbeat and login endpoints (already excluded in WebConfig)
-        if (uri.contains("/heartbeat") || uri.contains("/auth/login") || uri.contains("/auth/captcha")) {
+        // /auth/auto-login 是白名单自动登录接口，本身也必须放行，否则会被自身鉴权拦截形成死循环
+        if (uri.contains("/heartbeat") || uri.contains("/auth/login") || uri.contains("/auth/captcha")
+                || uri.contains("/auth/auto-login")) {
             return true;
         }
 
