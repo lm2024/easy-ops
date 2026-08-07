@@ -399,6 +399,8 @@ export interface LogSearchHit {
 export interface AppMonitorNodeInfo {
   nodeId: number
   nodeName?: string
+  ip?: string
+  port?: number
   healthStatus: 'UP' | 'DOWN' | 'DEGRADED' | string
   healthDetail?: string
   processStatus?: string
@@ -757,7 +759,8 @@ export interface AgentStatusItem {
   ip: string
   port: number
   status: number
-  lastHeartbeat?: string
+  lastHeartbeat?: number
+  collectTime?: number
   osInfo?: string
   cpuCores?: number
   totalMemoryMb?: number

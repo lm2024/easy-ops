@@ -14,6 +14,7 @@ import com.ops.server.service.LoginAttemptService;
 import com.ops.server.config.AdminConfig;
 import org.mindrot.jbcrypt.BCrypt;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
@@ -46,6 +47,16 @@ public class SystemController {
 
     @Autowired
     private AdminConfig adminConfig;
+
+    // ===== 白名单自动登录（调试/自动化专用，默认关闭） =====
+    @Value("${easyops.auth.auto-login-enabled:false}")
+    private boolean autoLoginEnabled;
+
+    @Value("${easyops.auth.auto-login-username:admin}")
+    private String autoLoginUsername;
+
+    @Value("${easyops.auth.auto-login-whitelist:}")
+    private String autoLoginWhitelistRaw;
 
     /**
      * GET /api/auth/captcha - 获取登录验证码
@@ -129,6 +140,76 @@ public class SystemController {
             System.err.println("[Auth] Failed to write login log: " + e.getMessage());
         }
 
+        return Result.success(data);
+    }
+
+    /**
+     * POST /api/auth/auto-login - 白名单自动登录（调试/自动化专用）
+     *
+     * 携带白名单内的 key（请求体 key 或请求头 X-Auto-Login-Key）即可直接拿到已登录 token，
+     * 完全跳过账号密码与验证码，返回结构与 /auth/login 一致。
+     *
+     * 安全约束（默认全部不满足，等同于不存在该接口）：
+     *   1. easyops.auth.auto-login-enabled 必须为 true（默认 false）
+     *   2. easyops.auth.auto-login-whitelist 必须配置至少一个非空 key
+     *   3. 请求携带的 key 必须精确命中白名单
+     * 三者任一不满足均直接拒绝，避免外网裸奔。
+     */
+    @PostMapping("/auto-login")
+    public Result<?> autoLogin(@RequestBody(required = false) Map<String, String> request,
+                               HttpServletRequest httpRequest) {
+        if (!autoLoginEnabled) {
+            return Result.error(ErrorCode.FORBIDDEN, "自动登录未启用（easyops.auth.auto-login-enabled=false）");
+        }
+        Set<String> whitelist = Arrays.stream(autoLoginWhitelistRaw.split(","))
+                .map(String::trim).filter(s -> !s.isEmpty())
+                .collect(java.util.stream.Collectors.toSet());
+        if (whitelist.isEmpty()) {
+            return Result.error(ErrorCode.FORBIDDEN, "自动登录白名单为空，拒绝请求");
+        }
+
+        String key = request != null ? request.get("key") : null;
+        if (key == null || key.isEmpty()) {
+            key = httpRequest.getHeader("X-Auto-Login-Key");
+        }
+        if (key == null || !whitelist.contains(key.trim())) {
+            return Result.error(ErrorCode.FORBIDDEN, "key 不在白名单内");
+        }
+
+        UserModel user = userMapper.findByUsername(autoLoginUsername);
+        if (user == null) {
+            return Result.error(ErrorCode.SERVER_ERROR, "自动登录目标用户不存在: " + autoLoginUsername);
+        }
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            return Result.error(ErrorCode.FORBIDDEN, "用户已禁用");
+        }
+
+        // 复用与正常登录一致的 token 生成/缓存逻辑，保证后续接口鉴权透明无差异
+        String token = generateToken();
+        Map<String, String> tokenData = new HashMap<>();
+        tokenData.put("userId", user.getId().toString());
+        tokenData.put("username", user.getUsername());
+        tokenData.put("role", user.getRole());
+        userTokenCache.put(token, tokenData);
+        authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
+
+        Map<String, Object> data = new HashMap<>();
+        data.put("token", token);
+        data.put("username", user.getUsername());
+        data.put("role", user.getRole());
+
+        try {
+            OperationLogModel logModel = new OperationLogModel();
+            logModel.setUserId(user.getId());
+            logModel.setModule("AUTH");
+            logModel.setAction("AUTO_LOGIN");
+            logModel.setContent("白名单自动登录: " + autoLoginUsername);
+            logModel.setIp(httpRequest.getRemoteAddr());
+            logModel.setCreateTime(System.currentTimeMillis());
+            operationLogMapper.insert(logModel);
+        } catch (Exception e) {
+            System.err.println("[Auth] Failed to write auto-login log: " + e.getMessage());
+        }
         return Result.success(data);
     }
 

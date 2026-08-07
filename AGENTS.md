@@ -79,7 +79,7 @@ Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 
 | 前缀 | 功能 |
 |------|------|
-| `/auth` | 登录/验证码 (带 captcha) |
+| `/auth` | 登录/验证码 (带 captcha)；`/auth/auto-login` 白名单免验证码自动登录（见下节） |
 | `/nodes` | 节点管理/心跳/Agent 升级 |
 | `/projects` `/versions` `/deploy` | 项目/版本/部署 |
 | `/files` | 文件浏览/下载/传输 |
@@ -109,6 +109,51 @@ Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 ### WebSocket
 
 `/ws/console` `/ws/deploy` `/ws/monitor` `/ws/notification` `/ws/kb-collab`
+
+## 自动化 / agent 自动登录（白名单免验证码）
+
+调试或自动化（agent 走系统 API 做部署等）时，每次都要解验证码太反人类。提供了**白名单自动登录**：携带白名单 key 直接拿已登录 token，跳过账号密码与验证码。
+
+- 接口：`POST /api/auth/auto-login`
+- 入参（二选一）：请求体 `{"key":"<白名单key>"}` 或请求头 `X-Auto-Login-Key: <白名单key>`
+- 返回：`{ token, username, role }`，与 `/auth/login` 结构一致，后续请求带 `Authorization: Bearer <token>`
+- 默认**全部关闭**，等同接口不存在；必须由配置显式开启，且必须配置白名单 key，否则一律拒绝。
+
+### 配置（三处，缺一不可）
+
+| 配置项（环境变量） | 作用 | 默认 |
+|-------------------|------|------|
+| `AUTO_LOGIN_ENABLED=true` | 总开关 | `false`（关闭） |
+| `AUTO_LOGIN_USERNAME=admin` | 自动登录后 impersonate 的账号 | `admin` |
+| `AUTO_LOGIN_WHITELIST=key1,key2` | 逗号分隔的 key 白名单，命中其一即放行 | 空（拒绝） |
+
+> 配置写在 `server/src/main/resources/application.yml` 的 `easyops.auth.*` 下，也支持同名环境变量覆盖。建议 `AUTO_LOGIN_WHITELIST` 用随机长字符串，仅内网/本机使用。
+
+### 启用示例（本机调试）
+
+在 `backend/server/scripts/start.sh` 或启动命令加：
+
+```bash
+export AUTO_LOGIN_ENABLED=true
+export AUTO_LOGIN_WHITELIST=ops-auto-login-2026
+```
+
+重启 server 后，agent 一行拿到 token：
+
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8081/api/auth/auto-login \
+  -H 'Content-Type: application/json' \
+  -d '{"key":"ops-auto-login-2026"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["token"])')
+echo "Bearer $TOKEN"
+```
+
+之后所有 API 直接带 `-H "Authorization: Bearer $TOKEN"` 即可，无需再碰验证码。
+
+### 安全边界
+
+- 开关关 / 白名单空 / key 不匹配 → 直接 403，外部无法利用。
+- 仅跳过"人肉验证码+密码"，仍走同一套 token 生成与缓存，权限与正常登录完全一致（默认 admin 角色）。
+- 仅用于内网调试与自动化，生产务必关闭或限制白名单 key。
 
 ## 数据库（H2，36 表）
 
