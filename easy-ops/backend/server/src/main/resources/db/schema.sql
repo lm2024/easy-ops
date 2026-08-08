@@ -1,6 +1,16 @@
 -- 注册 MySQL 兼容函数 FIND_IN_SET (H2 不原生支持)
 CREATE ALIAS IF NOT EXISTS FIND_IN_SET FOR "com.ops.server.util.H2CompatFunctions.findInSet";
 
+-- 多租户基础表。历史数据统一迁移到 code=default 的默认租户。
+CREATE TABLE IF NOT EXISTS tenant (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    code VARCHAR(64) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    status TINYINT DEFAULT 1,
+    create_time BIGINT,
+    update_time BIGINT
+);
+
 -- 节点信息表
 CREATE TABLE IF NOT EXISTS node_info (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -118,6 +128,23 @@ CREATE TABLE IF NOT EXISTS sys_user (
     update_time BIGINT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uk_user_name ON sys_user(username);
+
+CREATE TABLE IF NOT EXISTS tenant_user (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    tenant_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role VARCHAR(30) DEFAULT 'OPERATOR',
+    status TINYINT DEFAULT 1,
+    create_time BIGINT,
+    update_time BIGINT,
+    UNIQUE INDEX uk_tenant_user (tenant_id, user_id),
+    INDEX idx_tenant_user_user (user_id),
+    INDEX idx_tenant_user_tenant (tenant_id)
+);
+
+-- 节点明确归属一个租户，不能由心跳或项目 node_ids 推断。
+ALTER TABLE node_info ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE project_info ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
 
 -- 操作审计表
 CREATE TABLE IF NOT EXISTS operation_log (

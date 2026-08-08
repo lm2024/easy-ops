@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.TenantMapper">
+    <select id="findByCode" resultType="com.ops.common.model.TenantModel">
+        SELECT * FROM tenant WHERE code = #{code} AND status = 1 LIMIT 1
+    </select>
+    <select id="findById" resultType="com.ops.common.model.TenantModel">
+        SELECT * FROM tenant WHERE id = #{id} AND status = 1 LIMIT 1
+    </select>
+    <select id="findDefault" resultType="com.ops.common.model.TenantModel">
+        SELECT * FROM tenant WHERE code = 'default' AND status = 1 LIMIT 1
+    </select>
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO tenant (code, name, status, create_time, update_time)
+        VALUES (#{code}, #{name}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+    <insert id="insertMember" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO tenant_user (tenant_id, user_id, role, status, create_time, update_time)
+        VALUES (#{tenantId}, #{userId}, #{role}, #{status}, #{createTime}, #{updateTime})
+    </insert>
+    <select id="findMember" resultType="com.ops.common.model.TenantUserModel">
+        SELECT * FROM tenant_user
+        WHERE tenant_id = #{tenantId} AND user_id = #{userId} AND status = 1 LIMIT 1
+    </select>
+    <select id="findFirstActiveMember" resultType="com.ops.common.model.TenantUserModel">
+        SELECT * FROM tenant_user WHERE user_id = #{userId} AND status = 1
+        ORDER BY id ASC LIMIT 1
+    </select>
+    <select id="findTenantIdsByUserId" resultType="long">
+        SELECT tenant_id FROM tenant_user WHERE user_id = #{userId} AND status = 1 ORDER BY id ASC
+    </select>
+</mapper>

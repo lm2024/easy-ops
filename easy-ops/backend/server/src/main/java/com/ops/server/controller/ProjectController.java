@@ -39,8 +39,13 @@ public class ProjectController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<ProjectModel> projects = projectService.findByFilters(status, nodeId, keyword, page, pageSize);
-        Long total = projectService.countByFilters(status, nodeId, keyword);
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<Long> projectIds = securityContext.getAccessibleProjectIdsForQuery();
+        List<ProjectModel> projects = tenantId == null
+                ? projectService.findByFilters(status, nodeId, keyword, page, pageSize)
+                : projectService.findByFiltersInTenant(status, nodeId, keyword, page, pageSize, tenantId, projectIds);
+        Long total = tenantId == null ? projectService.countByFilters(status, nodeId, keyword)
+                : projectService.countByFiltersInTenant(status, nodeId, keyword, tenantId, projectIds);
         Map<String, Object> data = new HashMap<>();
         data.put("list", projects);
         data.put("total", total);
@@ -64,6 +69,9 @@ public class ProjectController {
      */
     @PostMapping
     public Result<?> createProject(@RequestBody ProjectModel project) {
+        if (securityContext.getCurrentTenantId() != null) {
+            project.setTenantId(securityContext.getCurrentTenantId());
+        }
         if (projectService.findByName(project.getName()) != null) {
             return Result.paramError("项目名称已存在");
         }
@@ -94,9 +102,17 @@ public class ProjectController {
         if (existing == null) {
             return Result.error(1005, "项目不存在");
         }
+        if (existing.getTenantId() != null && securityContext.getCurrentTenantId() != null
+                && !securityContext.isPlatformAdmin()
+                && !securityContext.getCurrentTenantId().equals(existing.getTenantId())) {
+            return Result.error(403, "无权修改该项目");
+        }
         // 自动修正 startScript 中 JAR_NAME 与 jarName 不一致的问题
         fixScriptJarName(project);
         project.setId(id);
+        if (securityContext.getCurrentTenantId() != null) {
+            project.setTenantId(existing.getTenantId());
+        }
         project.setCreateTime(existing.getCreateTime());
         project.setUpdateTime(System.currentTimeMillis());
         projectService.update(project);

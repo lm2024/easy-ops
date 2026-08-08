@@ -15,6 +15,13 @@ public interface ProjectMapper {
                                      @Param("page") Integer page, @Param("pageSize") Integer pageSize);
     Long countByFilters(@Param("status") String status, @Param("nodeId") Long nodeId,
                         @Param("keyword") String keyword);
+    List<ProjectModel> findByFiltersInTenant(@Param("status") String status, @Param("nodeId") Long nodeId,
+                                             @Param("keyword") String keyword, @Param("page") Integer page,
+                                             @Param("pageSize") Integer pageSize, @Param("tenantId") Long tenantId,
+                                             @Param("projectIds") List<Long> projectIds);
+    Long countByFiltersInTenant(@Param("status") String status, @Param("nodeId") Long nodeId,
+                                @Param("keyword") String keyword, @Param("tenantId") Long tenantId,
+                                @Param("projectIds") List<Long> projectIds);
     int insert(ProjectModel project);
     int update(ProjectModel project);
     int deleteById(@Param("id") Long id);

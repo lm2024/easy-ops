@@ -53,10 +53,22 @@ public class MonitorHandler extends TextWebSocketHandler {
      * 广播消息给所有连接的客户端。发送失败的 session 自动清理。
      */
     public void broadcast(String topic, String message) {
+        broadcast(topic, message, null);
+    }
+
+    public void broadcast(String topic, String message, Long tenantId) {
         // 使用 removeIf 清理死 session + 发送消息一趟完成
         monitorSessions.values().removeIf(session -> {
             if (!session.isOpen()) {
                 return true;
+            }
+            Object sessionTenant = session.getAttributes().get("tenantId");
+            if (tenantId != null && sessionTenant != null
+                    && !tenantId.toString().equals(String.valueOf(sessionTenant))) {
+                return false;
+            }
+            if (tenantId != null && sessionTenant == null) {
+                return false;
             }
             try {
                 session.sendMessage(new org.springframework.web.socket.TextMessage(message));

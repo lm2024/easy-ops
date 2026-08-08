@@ -7,6 +7,8 @@ import com.ops.server.mapper.VersionPackageMapper;
 import com.ops.server.mapper.ProjectMapper;
 import com.ops.server.monitorapp.service.VersionCleanupService;
 import com.ops.server.service.AuditLogService;
+import com.ops.server.service.TenantResourceAccessService;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -35,6 +37,11 @@ public class VersionController {
     @Autowired
     private VersionCleanupService versionCleanupService;
 
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
+    @Autowired
+    private SecurityContext securityContext;
+
     @Value("${server.path:./data}")
     private String serverPath;
 
@@ -46,8 +53,21 @@ public class VersionController {
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<VersionModel> versions = versionPackageMapper.findByProjectId(projectId, page, pageSize);
-        Long total = versionPackageMapper.countByProjectId(projectId);
+        List<VersionModel> versions;
+        Long total;
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            if (projectId != null && !resourceAccess.canAccessProject(projectMapper.findById(projectId))) {
+                return Result.error(403, "无权访问该项目");
+            }
+            List<Long> projectIds = projectId == null ? securityContext.getAccessibleProjectIdsForQuery()
+                    : java.util.Collections.singletonList(projectId);
+            versions = versionPackageMapper.findByProjectIds(projectIds, tenantId, page, pageSize);
+            total = versionPackageMapper.countByProjectIds(projectIds, tenantId);
+        } else {
+            versions = versionPackageMapper.findByProjectId(projectId, page, pageSize);
+            total = versionPackageMapper.countByProjectId(projectId);
+        }
         Map<String, Object> data = new java.util.HashMap<>();
         data.put("list", versions);
         data.put("total", total);
@@ -85,6 +105,7 @@ public class VersionController {
         if (project == null) {
             return Result.error(1005, "项目不存在");
         }
+        if (!resourceAccess.canAccessProject(project)) return Result.error(403, "无权访问该项目");
 
         boolean isFrontend = "frontend".equalsIgnoreCase(packageType)
                 || originalFilename.toLowerCase().endsWith(".zip");
@@ -161,6 +182,11 @@ public class VersionController {
     @DeleteMapping("/{id}")
     public Result<?> deleteVersion(@PathVariable Long id) {
         try {
+            VersionModel version = versionPackageMapper.findById(id);
+            if (version == null) return Result.error(1004, "版本不存在");
+            if (!resourceAccess.canAccessProject(projectMapper.findById(version.getProjectId()))) {
+                return Result.error(403, "无权删除该版本");
+            }
             versionCleanupService.deleteVersion(id);
             auditLog.log("VERSION", "DELETE", "删除版本包 ID=" + id);
             return Result.success();

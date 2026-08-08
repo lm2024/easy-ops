@@ -13,6 +13,7 @@ public class ProjectModel implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private Long id;
+    private Long tenantId;
     private String name;
     /** 项目类型：backend(后端,默认) / frontend(前端) */
     private String projectType;
