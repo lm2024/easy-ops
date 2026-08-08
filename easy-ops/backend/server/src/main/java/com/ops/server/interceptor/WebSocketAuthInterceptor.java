@@ -52,6 +52,8 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             attributes.put("token", token);
             attributes.put("userId", userAuth.getUserId());
             attributes.put("username", userAuth.getUsername());
+            attributes.put("role", userAuth.getRole());
+            attributes.put("tenantId", userAuth.getTenantId());
             log.debug("WebSocket authenticated successfully for user: {}", userAuth.getUsername());
             return true;
         }

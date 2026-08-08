@@ -22,6 +22,13 @@ public class ProjectService {
     public Long countByFilters(String status, Long nodeId, String keyword) {
         return projectMapper.countByFilters(status, nodeId, keyword);
     }
+    public List<ProjectModel> findByFiltersInTenant(String status, Long nodeId, String keyword, Integer page,
+                                                    Integer pageSize, Long tenantId, List<Long> projectIds) {
+        return projectMapper.findByFiltersInTenant(status, nodeId, keyword, page, pageSize, tenantId, projectIds);
+    }
+    public Long countByFiltersInTenant(String status, Long nodeId, String keyword, Long tenantId, List<Long> projectIds) {
+        return projectMapper.countByFiltersInTenant(status, nodeId, keyword, tenantId, projectIds);
+    }
     public int insert(ProjectModel project) { return projectMapper.insert(project); }
     public int update(ProjectModel project) { return projectMapper.update(project); }
     public int deleteById(Long id) { return projectMapper.deleteById(id); }

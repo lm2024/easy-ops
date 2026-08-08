@@ -13,6 +13,9 @@ public interface VersionPackageMapper {
     List<VersionModel> findByProjectId(@Param("projectId") Long projectId, @Param("page") Integer page,
                                        @Param("pageSize") Integer pageSize);
     Long countByProjectId(@Param("projectId") Long projectId);
+    List<VersionModel> findByProjectIds(@Param("projectIds") List<Long> projectIds, @Param("tenantId") Long tenantId,
+                                        @Param("page") Integer page, @Param("pageSize") Integer pageSize);
+    Long countByProjectIds(@Param("projectIds") List<Long> projectIds, @Param("tenantId") Long tenantId);
     int insert(VersionModel version);
     int deleteById(@Param("id") Long id);
     Long getLastId();

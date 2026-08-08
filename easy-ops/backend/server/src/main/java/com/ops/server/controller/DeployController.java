@@ -11,6 +11,7 @@ import com.ops.server.mapper.*;
 import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.websocket.DeployHandler;
 import com.ops.server.service.AuditLogService;
+import com.ops.server.service.TenantResourceAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -52,6 +53,9 @@ public class DeployController {
 
     @Autowired
     private AuditLogService auditLog;
+
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -100,6 +104,9 @@ public class DeployController {
         VersionModel version = versionPackageMapper.findById(versionId);
         if (project == null) { log.warn("[Deploy] 项目不存在: projectId={}", projectId); return Result.error(1005, "项目不存在"); }
         if (version == null) { log.warn("[Deploy] 版本不存在: versionId={}", versionId); return Result.error(1004, "版本不存在"); }
+        if (!resourceAccess.canAccessProject(project)) {
+            return Result.error(403, "无权访问该项目");
+        }
 
         // 获取目标节点
         String nodeIdsStr = project.getNodeIds();
@@ -114,6 +121,13 @@ public class DeployController {
             for (String s : nodeIdsStr.split(",")) {
                 String trimmed = s.trim();
                 if (!trimmed.isEmpty()) targetNodeIds.add(Long.parseLong(trimmed));
+            }
+        }
+
+        for (Long targetNodeId : targetNodeIds) {
+            NodeModel targetNode = nodeMapper.findById(targetNodeId);
+            if (!resourceAccess.canAccessProjectNode(project, targetNode, targetNodeId)) {
+                return Result.error(403, "项目与目标节点不属于当前租户或未绑定");
             }
         }
 

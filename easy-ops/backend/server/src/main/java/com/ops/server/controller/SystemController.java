@@ -9,6 +9,8 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.SysConfigMapper;
 import com.ops.server.mapper.UserMapper;
+import com.ops.server.mapper.TenantMapper;
+import com.ops.common.model.TenantUserModel;
 import com.ops.server.service.CaptchaService;
 import com.ops.server.service.LoginAttemptService;
 import com.ops.server.config.AdminConfig;
@@ -32,6 +34,9 @@ public class SystemController {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private TenantMapper tenantMapper;
 
     @Autowired
     private OperationLogMapper operationLogMapper;
@@ -120,11 +125,14 @@ public class SystemController {
         tokenData.put("role", user.getRole());
         userTokenCache.put(token, tokenData);
         authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
+        AuthInterceptor.UserAuthContext loginAuth = authInterceptor.lookupUserAuth(token);
+        Long tenantId = loginAuth == null ? null : loginAuth.getTenantId();
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
         data.put("username", user.getUsername());
         data.put("role", user.getRole());
+        data.put("tenantId", tenantId);
 
         // Log operation (non-critical, suppress error if table doesn't exist yet)
         try {
@@ -192,11 +200,14 @@ public class SystemController {
         tokenData.put("role", user.getRole());
         userTokenCache.put(token, tokenData);
         authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
+        AuthInterceptor.UserAuthContext autoAuth = authInterceptor.lookupUserAuth(token);
+        Long tenantId = autoAuth == null ? null : autoAuth.getTenantId();
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
         data.put("username", user.getUsername());
         data.put("role", user.getRole());
+        data.put("tenantId", tenantId);
 
         try {
             OperationLogModel logModel = new OperationLogModel();
@@ -345,7 +356,8 @@ public class SystemController {
      */
     @PostMapping("/users")
     public Result<?> createUser(@RequestBody UserModel user, HttpServletRequest request) {
-        if (!isAdmin(getCurrentUserAuth(request))) {
+        AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
+        if (!isAdmin(auth)) {
             return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
         }
         if (userMapper.findByUsername(user.getUsername()) != null) {
@@ -364,6 +376,16 @@ public class SystemController {
         user.setCreateTime(System.currentTimeMillis());
         user.setUpdateTime(System.currentTimeMillis());
         userMapper.insert(user);
+        if (auth.getTenantId() != null) {
+            TenantUserModel member = new TenantUserModel();
+            member.setTenantId(auth.getTenantId());
+            member.setUserId(user.getId());
+            member.setRole("OPERATOR");
+            member.setStatus(1);
+            member.setCreateTime(user.getCreateTime());
+            member.setUpdateTime(user.getUpdateTime());
+            tenantMapper.insertMember(member);
+        }
         return Result.success();
     }
 

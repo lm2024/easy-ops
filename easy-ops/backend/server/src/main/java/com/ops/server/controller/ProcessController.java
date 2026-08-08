@@ -6,6 +6,7 @@ import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectMapper;
 import com.ops.server.client.AgentClient;
+import com.ops.server.service.TenantResourceAccessService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +38,9 @@ public class ProcessController {
     @Autowired
     private AgentClient agentClient;
 
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
+
     /** 异步执行线程池 */
     private final ExecutorService execPool = Executors.newFixedThreadPool(4);
 
@@ -56,6 +60,9 @@ public class ProcessController {
         NodeModel node = nodeMapper.findById(nodeId);
         if (node == null) {
             return Result.error(1002, "节点不存在");
+        }
+        if (!resourceAccess.canAccessProjectNode(project, node, nodeId)) {
+            return Result.error(403, "项目与节点不属于当前租户或未绑定");
         }
 
         String taskId = UUID.randomUUID().toString().replace("-", "").substring(0, 16);

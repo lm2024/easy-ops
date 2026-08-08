@@ -49,23 +49,27 @@ public class NginxTrafficController {
 
     @GetMapping("/sources/{id}/alarm-rules")
     public Result<?> listAlarmRules(@PathVariable Long id) {
+        nginxTrafficService.assertSourceAccess(id);
         return Result.success(nginxTrafficAlarmService.listBySourceId(id));
     }
 
     @PutMapping("/sources/{id}/alarm-rules")
     public Result<?> saveAlarmRules(@PathVariable Long id,
                                     @RequestBody List<NginxTrafficAlarmRuleModel> rules) {
+        nginxTrafficService.assertSourceAccess(id);
         return Result.success(nginxTrafficAlarmService.saveRules(id, rules));
     }
 
     @GetMapping("/sources/{id}/whitelist")
     public Result<?> listWhitelist(@PathVariable Long id) {
+        nginxTrafficService.assertSourceAccess(id);
         return Result.success(whitelistService.listBySource(id));
     }
 
     @PutMapping("/sources/{id}/whitelist")
     public Result<?> saveWhitelist(@PathVariable Long id,
                                    @RequestBody List<NginxSourceWhitelistModel> items) {
+        nginxTrafficService.assertSourceAccess(id);
         return Result.success(whitelistService.saveAll(id, items));
     }
 

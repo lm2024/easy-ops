@@ -6,6 +6,7 @@ import org.springframework.stereotype.Component;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Collections;
 
 /**
  * 安全上下文工具 (SEC-003/SEC-004)
@@ -36,6 +37,12 @@ public class SecurityContext {
         return (String) request.getAttribute("currentUsername");
     }
 
+    public Long getCurrentTenantId() {
+        Object attr = request.getAttribute("currentTenantId");
+        if (attr == null) return null;
+        try { return Long.valueOf(attr.toString()); } catch (NumberFormatException e) { return null; }
+    }
+
     /**
      * 获取当前用户角色（从请求属性）
      */
@@ -56,14 +63,17 @@ public class SecurityContext {
      */
     public List<Long> getAccessibleProjectIds() {
         String role = getCurrentRole();
-        if (role != null && role.equalsIgnoreCase("admin")) {
-            return userProjectRelationMapper.findAllProjectIds();
+        Long tenantId = getCurrentTenantId();
+        if (role != null && (role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("super_admin"))) {
+            return tenantId == null ? userProjectRelationMapper.findAllProjectIds()
+                    : userProjectRelationMapper.findAllProjectIdsByTenant(tenantId);
         }
         Long userId = getCurrentUserId();
         if (userId == null) {
             return null;
         }
-        return userProjectRelationMapper.findProjectIdsByUserId(userId);
+        return tenantId == null ? userProjectRelationMapper.findProjectIdsByUserId(userId)
+                : userProjectRelationMapper.findProjectIdsByUserIdAndTenant(userId, tenantId);
     }
 
     /**
@@ -74,6 +84,16 @@ public class SecurityContext {
         return role != null && role.equalsIgnoreCase("admin");
     }
 
+    public boolean isPlatformAdmin() {
+        String role = getCurrentRole();
+        return role != null && (role.equalsIgnoreCase("super_admin") || role.equalsIgnoreCase("admin"));
+    }
+
+    public List<Long> getAccessibleProjectIdsForQuery() {
+        List<Long> ids = getAccessibleProjectIds();
+        return ids == null ? Collections.singletonList(-1L) : ids;
+    }
+
     /**
      * 判断当前用户是否有权限访问指定项目 (SEC-004)
      * admin 角色拥有所有项目的权限
@@ -81,13 +101,17 @@ public class SecurityContext {
     public boolean hasProjectPermission(Long projectId) {
         if (projectId == null) return true;
         String role = getCurrentRole();
-        if (role != null && role.equalsIgnoreCase("admin")) {
+        if (role != null && (role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("super_admin"))) {
             return true;
         }
         Long userId = getCurrentUserId();
         if (userId == null) {
             return false;
         }
-        return userProjectRelationMapper.countByUserIdAndProjectId(userId, projectId) > 0;
+        Long tenantId = getCurrentTenantId();
+        if (tenantId == null) {
+            return userProjectRelationMapper.countByUserIdAndProjectId(userId, projectId) > 0;
+        }
+        return userProjectRelationMapper.countByUserIdAndProjectIdAndTenant(userId, projectId, tenantId) > 0;
     }
 }

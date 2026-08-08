@@ -11,6 +11,7 @@ public class NodeModel implements Serializable {
     private static final long serialVersionUID = 1L;
 
     private Long id;
+    private Long tenantId;
     private String name;
     private String ip;
     private Integer port;

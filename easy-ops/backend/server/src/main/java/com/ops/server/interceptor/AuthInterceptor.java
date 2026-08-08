@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.UserMapper;
+import com.ops.server.mapper.TenantMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,7 @@ public class AuthInterceptor implements HandlerInterceptor {
     public static final String ATTR_USER_ID = "currentUserId";
     public static final String ATTR_USER_NAME = "currentUsername";
     public static final String ATTR_USER_ROLE = "currentRole";
+    public static final String ATTR_TENANT_ID = "currentTenantId";
     public static final String ATTR_NODE_ID = "currentNodeId";
     public static final String ATTR_USER_TOKENS = "userAccessibleProjectIds";
 
@@ -33,6 +35,9 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     @Autowired
     private UserMapper userMapper;
+
+    @Autowired
+    private TenantMapper tenantMapper;
 
     // Agent token cache: nodeId -> token
     private final Map<String, String> agentTokenCache = new ConcurrentHashMap<>();
@@ -56,6 +61,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.removeAttribute(ATTR_USER_ID);
         request.removeAttribute(ATTR_USER_NAME);
         request.removeAttribute(ATTR_USER_ROLE);
+        request.removeAttribute(ATTR_TENANT_ID);
         request.removeAttribute(ATTR_NODE_ID);
 
         // Check Agent token (X-Token header)
@@ -116,6 +122,9 @@ public class AuthInterceptor implements HandlerInterceptor {
         request.setAttribute(ATTR_USER_ID, data.userId);
         request.setAttribute(ATTR_USER_NAME, data.username);
         request.setAttribute(ATTR_USER_ROLE, data.role);
+        if (data.tenantId != null) {
+            request.setAttribute(ATTR_TENANT_ID, data.tenantId);
+        }
 
         return true;
     }
@@ -128,7 +137,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (data == null) {
             return null;
         }
-        return new UserAuthContext(data.userId, data.username, data.role);
+        return new UserAuthContext(data.userId, data.username, data.role, data.tenantId);
     }
 
     private TokenData resolveUserTokenData(String token) {
@@ -151,7 +160,7 @@ public class AuthInterceptor implements HandlerInterceptor {
             Long userId = Long.parseLong(userIdStr);
             com.ops.common.model.UserModel user = userMapper.findById(userId);
             if (user != null) {
-                data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole());
+                data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole(), resolveTenantId(user.getId()));
                 data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
                 userTokenCache.put(token, data);
                 return data;
@@ -176,9 +185,25 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     // Cache methods for controllers
     public void cacheUserToken(String token, String userId, String username, String role) {
-        TokenData data = new TokenData(userId, username, role);
+        TokenData data = new TokenData(userId, username, role, resolveTenantId(parseLong(userId)));
         data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
         userTokenCache.put(token, data);
+    }
+
+    public void cacheUserToken(String token, String userId, String username, String role, Long tenantId) {
+        TokenData data = new TokenData(userId, username, role, tenantId);
+        data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
+        userTokenCache.put(token, data);
+    }
+
+    private Long parseLong(String value) {
+        try { return value == null ? null : Long.valueOf(value); } catch (NumberFormatException e) { return null; }
+    }
+
+    private Long resolveTenantId(Long userId) {
+        if (userId == null || tenantMapper == null) return null;
+        com.ops.common.model.TenantUserModel member = tenantMapper.findFirstActiveMember(userId);
+        return member == null ? null : member.getTenantId();
     }
 
     public void removeUserToken(String token) {
@@ -193,12 +218,14 @@ public class AuthInterceptor implements HandlerInterceptor {
         String userId;
         String username;
         String role;
+        Long tenantId;
         long expireTime;
 
-        TokenData(String userId, String username, String role) {
+        TokenData(String userId, String username, String role, Long tenantId) {
             this.userId = userId;
             this.username = username;
             this.role = role;
+            this.tenantId = tenantId;
         }
     }
 
@@ -206,11 +233,17 @@ public class AuthInterceptor implements HandlerInterceptor {
         private final String userId;
         private final String username;
         private final String role;
+        private final Long tenantId;
 
         public UserAuthContext(String userId, String username, String role) {
+            this(userId, username, role, null);
+        }
+
+        public UserAuthContext(String userId, String username, String role, Long tenantId) {
             this.userId = userId;
             this.username = username;
             this.role = role;
+            this.tenantId = tenantId;
         }
 
         public String getUserId() {
@@ -223,6 +256,10 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         public String getRole() {
             return role;
+        }
+
+        public Long getTenantId() {
+            return tenantId;
         }
     }
 }

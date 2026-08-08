@@ -24,6 +24,13 @@ public class NodeService {
         return nodeMapper.findByStatus(status, page, pageSize, keyword, null, null);
     }
     public Long countByStatus(String status, String keyword) { return nodeMapper.countByStatus(status, keyword); }
+    public List<NodeModel> findByStatusInTenant(String status, Integer page, Integer pageSize, String keyword,
+                                                String sortField, String sortOrder, Long tenantId, List<Long> projectIds) {
+        return nodeMapper.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder, tenantId, projectIds);
+    }
+    public Long countByStatusInTenant(String status, String keyword, Long tenantId, List<Long> projectIds) {
+        return nodeMapper.countByStatusInTenant(status, keyword, tenantId, projectIds);
+    }
     public int insert(NodeModel node) { return nodeMapper.insert(node); }
     public int update(NodeModel node) { return nodeMapper.update(node); }
     public int deleteById(Long id) { return nodeMapper.deleteById(id); }

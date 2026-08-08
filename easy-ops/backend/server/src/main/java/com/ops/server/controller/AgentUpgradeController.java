@@ -7,6 +7,7 @@ import com.ops.common.response.Result;
 import com.ops.server.client.AgentClient;
 import com.ops.server.mapper.AgentUpgradeRecordMapper;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.util.SecurityContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,9 @@ public class AgentUpgradeController {
 
     @Autowired
     private AgentClient agentClient;
+
+    @Autowired
+    private SecurityContext securityContext;
 
     /** 正在进行的升级批次 */
     private final ConcurrentHashMap<String, Boolean> activeBatches = new ConcurrentHashMap<>();
@@ -146,7 +150,11 @@ public class AgentUpgradeController {
      */
     @GetMapping("/nodes")
     public Result<?> listNodes() {
-        List<NodeModel> allNodes = nodeMapper.findByStatus(null, 1, 10000, null, null, null);
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<NodeModel> allNodes = tenantId == null
+                ? nodeMapper.findByStatus(null, 1, 10000, null, null, null)
+                : nodeMapper.findByStatusInTenant(null, 1, 10000, null, null, null, tenantId,
+                securityContext.getAccessibleProjectIdsForQuery());
         List<Map<String, Object>> nodeList = new ArrayList<>();
         if (allNodes != null) {
             for (NodeModel node : allNodes) {
@@ -176,6 +184,11 @@ public class AgentUpgradeController {
 
         if (version == null || version.trim().isEmpty()) {
             return Result.paramError("请指定目标版本");
+        }
+        if (nodeIdsRaw != null) {
+            for (Number raw : nodeIdsRaw) {
+                if (!canAccessNode(raw.longValue())) return Result.error(403, "包含无权操作的节点");
+            }
         }
         if (nodeIdsRaw == null || nodeIdsRaw.isEmpty()) {
             return Result.paramError("请选择要升级的节点");
@@ -213,6 +226,12 @@ public class AgentUpgradeController {
         data.put("nodeCount", nodeIds.size());
         data.put("status", "PROCESSING");
         return Result.success(data);
+    }
+
+    private boolean canAccessNode(Long nodeId) {
+        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return true;
+        NodeModel node = nodeMapper.findById(nodeId);
+        return node != null && securityContext.getCurrentTenantId().equals(node.getTenantId());
     }
 
     /**
