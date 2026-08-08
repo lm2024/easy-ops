@@ -394,7 +394,7 @@ public class NodeController {
                         }
                     }
                     // 存储到MonitorSnapshot表，同时返回计算结果用于WS推送
-                    Map<String, Object> computed = saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
+                    Map<Long, Map<String, Object>> computed = saveMonitorSnapshot(Long.parseLong(nodeId), metrics);
                     broadcastMonitorUpdate(Long.parseLong(nodeId), metrics, computed);
                 }
             } catch (Exception e) {
@@ -413,27 +413,28 @@ public class NodeController {
 
     /**
      * 保存监控快照到数据库（为节点上每个项目各生成一条快照）
-     * 返回最后一个项目的 computed，供 WS 广播
+     * 返回 Map<projectId, computed>，按项目维度供 WS 广播，
+     * 解决「同节点多项目时 WS 只带最后一个项目状态、会串到其他项目」的问题。
      */
-    private Map<String, Object> saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
-        Map<String, Object> computed = new java.util.HashMap<>();
+    private Map<Long, Map<String, Object>> saveMonitorSnapshot(Long nodeId, Map<String, Object> metrics) {
+        Map<Long, Map<String, Object>> computedPerProject = new java.util.HashMap<>();
         try {
             List<Long> projectIds = nodeMapper.getProjectIdsByNodeId(nodeId);
             if (projectIds == null || projectIds.isEmpty()) {
-                return computed;
+                return computedPerProject;
             }
 
             for (Long projectId : projectIds) {
                 // jarName 校验下沉到 saveOneSnapshot 内部，避免重复查 DB
                 Map<String, Object> projectComputed = saveOneSnapshot(nodeId, projectId, metrics);
                 if (projectComputed != null && !projectComputed.isEmpty()) {
-                    computed = projectComputed; // 保留最后一个供 WS 广播
+                    computedPerProject.put(projectId, projectComputed);
                 }
             }
         } catch (Exception e) {
             log.warn("监控快照保存失败 节点={}", nodeId, e);
         }
-        return computed;
+        return computedPerProject;
     }
 
     /**
@@ -616,16 +617,17 @@ public class NodeController {
 
     /**
      * 通过WebSocket广播监控实时指标（CPU/内存/磁盘等高频数据）。
-     * 同时推送 saveMonitorSnapshot 算好的状态字段，保证 WS 与 DB 同源一致。
+     * 同时按 projectId 维度推送 saveMonitorSnapshot 算好的状态字段（PID/进程状态/健康/堆），
+     * 前端可按 projectId 精确 patch 到对应行，保证 WS 与 DB 同源一致。
      */
-    private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics, Map<String, Object> computed) {
+    private void broadcastMonitorUpdate(Long nodeId, Map<String, Object> metrics, Map<Long, Map<String, Object>> computed) {
         try {
             Map<String, Object> message = new java.util.HashMap<>();
             message.put("type", "monitor_update");
             message.put("nodeId", nodeId);
             message.put("metrics", metrics);
             message.put("timestamp", System.currentTimeMillis());
-            // 附上 saveMonitorSnapshot 算好的状态字段（与 DB 同源）
+            // 按 projectId 维度推状态字段（与 DB 同源），前端按 projectId 精确匹配行
             if (computed != null && !computed.isEmpty()) {
                 message.put("computed", computed);
             }

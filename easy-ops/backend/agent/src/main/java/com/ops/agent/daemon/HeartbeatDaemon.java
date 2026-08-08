@@ -579,7 +579,13 @@ public class HeartbeatDaemon implements CommandLineRunner {
             r = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
             String line;
             while ((line = r.readLine()) != null) {
-                try { pids.add(Long.parseLong(line.trim())); } catch (NumberFormatException ignored) {}
+                try {
+                    long pid = Long.parseLong(line.trim());
+                    // 跳过僵尸（defunct）进程：已被杀死但未被父进程回收，
+                    // 其 cmdline 已清空，上报它会让监控误显示旧 PID。
+                    if (isZombie(pid)) continue;
+                    pids.add(pid);
+                } catch (NumberFormatException ignored) {}
             }
             p.waitFor();
         } catch (Exception ignored) {
@@ -588,6 +594,27 @@ public class HeartbeatDaemon implements CommandLineRunner {
             if (p != null) p.destroy();
         }
         return pids;
+    }
+
+    /**
+     * 判断进程是否为僵尸（defunct）进程。
+     * /proc/<pid>/stat 第 3 个字段为进程状态，'Z' 表示僵尸。
+     * 注意进程名 (comm) 可能含空格与括号，因此取第一个 ')' 之后的第一个字段。
+     */
+    private boolean isZombie(long pid) {
+        try {
+            java.nio.file.Path stat = java.nio.file.Paths.get("/proc", String.valueOf(pid), "stat");
+            if (!java.nio.file.Files.exists(stat)) return false;
+            String line = new String(java.nio.file.Files.readAllBytes(stat), "UTF-8");
+            int end = line.indexOf(')');
+            if (end > 0) {
+                String state = line.substring(end + 1).trim().split("\\s+")[0];
+                return "Z".equals(state);
+            }
+        } catch (Exception ignored) {
+            // /proc 不可用时不过滤，避免漏报
+        }
+        return false;
     }
 
     /** 读取 /proc/<pid>/cmdline */
