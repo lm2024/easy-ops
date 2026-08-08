@@ -186,6 +186,16 @@ echo "Bearer $TOKEN"
 - **JDK 8 限制**：不用 `Map.of`/`Path.of` 等 Java 9+ API
 - **Docker Agent 缺 `ps` 命令**：`eclipse-temurin:8-jdk` 不自带 `procps`，`ProcessStatusChecker.findPid()` 用 `ps aux | grep` 检测进程 PID 会静默失败。Dockerfile 需加 `RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -rf /var/lib/apt/lists/*`，否则应用监控的 PID 和进程状态全部丢失
 - **心跳进程状态误判**：`NodeController.saveMonitorSnapshot()` 原逻辑先无条件设 `processStatus=RUNNING`（仅因 Agent 在线），再检查 `processes` 列表；若列表为空（未找到应用进程），状态保持 RUNNING 但 PID 为 null。修复：默认应设为 `STOPPED`，仅当 processes 列表中 `alive=true` 时才设为 RUNNING
+- **监控显示僵尸 PID（defunct）**：Agent 以 `exec java` 当 PID 1 时，被 `stop`/`restart` 杀掉的旧应用进程不会被回收，变成 `Z` 状态僵尸，仍出现在 `ps` 输出里。`HeartbeatDaemon.collectProcessMetrics()` 会把僵尸和应用新进程一起上报，监控可能显示**已死但未回收的旧 PID**（重启后 PID "没变" 的假象）。两层根治：① `ProcessStatusChecker.findPid` / `HeartbeatDaemon.listJavaProcesses` 增加 `isZombie(pid)` 过滤（读 `/proc/<pid>/stat` 第 3 字段 `Z` 则跳过）；② Dockerfile 用 `tini` 作 PID 1（`ENTRYPOINT ["/usr/bin/tini","--","/entrypoint.sh"]`），`entrypoint.sh` 用循环拉起 agent，僵尸由 tini 回收，且 agent 重启时应用进程被 tini 接管不会被杀。
+
+### Nginx 流量监控 · 白名单与维度扩展（2026-08-08 新增）
+
+- **存储是预聚合表**：`nginx_minute_stat` 按 `(source_id, bucket_time, client_ip, uri, method)` 唯一聚合，所有统计都是在几列上 `GROUP BY`。**任何新维度 = 改存储列 + 改 Agent 聚合 key + 改 SQL，三步成对**，不是前端随便加。
+- **白名单（查询侧 L3）**：`nginx_source_whitelist(source_id, type[IP|URI|URI_PREFIX|METHOD], match_value, match_mode[EXACT|PREFIX|CONTAINS], enabled)`。过滤在 `NginxMinuteStatMapper.xml` 的 `<sql id="whitelistFilter">` 片段统一收口，**overview/rank(ip,uri,ip-uri,slow,method)/trend/告警评估**全排除。历史+实时立即生效、配置零延迟。service 端 `buildWhitelistParam(sourceIds)` 加载启用白名单并拆成 `ipExact/ipLike/uriExact/uriLike/methodExact` 传给 Mapper。`WhitelistFilter` 负责匹配逻辑（SQL 侧 like 已带通配符）。新增表由 `NginxTrafficBootstrap.onReady()` 幂等 `CREATE TABLE IF NOT EXISTS` 自动建，老库重启即生效，**无需手动 DDL**。
+- **白名单 UI**：日志源配置弹窗新增「白名单」Tab（与基本配置/告警规则并列），增删改随日志源一起保存（`PUT /nginx-traffic/sources/{id}/whitelist`）。
+- **趋势图点击跳转**：实时概览趋势图（ECharts）点击某分钟桶 → 自动设 `customRange` 为该分钟 → 切到「排名分析」tab 重新统计，定位激增来源（`jumpToRankAt`）。
+- **新增维度：请求方法**：表已有 `method` 列，新增 `rank/method` 后端接口 + 前端「请求方法」排名卡片（`sumByMethod`/`countByMethod`）。
+- **维度扩展约束**：状态码（具体 200/404/500）、地区、运营商维度需把对应列加进预聚合唯一键，会显著放大行数（状态码还可能要改 `nginx_minute_stat` 粒度）；地区/运营商依赖 GeoIP 库。这三类列为**后续专项**，不要无脑塞进现有聚合表。
 
 启动后查日志关键字 **`启动路径`** 核对。
 

@@ -54,6 +54,8 @@ public class ProcessStatusChecker {
         // 列出所有 Java 进程，在 Java 端按 jarName 精确匹配 + cwd 验证
         List<Long> javaPids = listJavaPids();
         for (Long pid : javaPids) {
+            // 跳过僵尸（defunct）进程：已死但未回收，cmdline 已清空，不应匹配
+            if (isZombie(pid)) continue;
             String cmdline = readProcCmdline(pid);
             String extractedJar = extractJarName(cmdline);
             if (jarName.equals(extractedJar) && verifyByWorkingDir(pid, deployDir)) {
@@ -77,7 +79,12 @@ public class ProcessStatusChecker {
             reader = new BufferedReader(new InputStreamReader(process.getInputStream()));
             String line;
             while ((line = reader.readLine()) != null) {
-                try { pids.add(Long.parseLong(line.trim())); } catch (NumberFormatException ignored) {}
+                try {
+                    long pid = Long.parseLong(line.trim());
+                    // 跳过僵尸（defunct）进程：已死未回收，上报会显示错误 PID
+                    if (isZombie(pid)) continue;
+                    pids.add(pid);
+                } catch (NumberFormatException ignored) {}
             }
             process.waitFor();
         } catch (Exception ignored) {
@@ -86,6 +93,26 @@ public class ProcessStatusChecker {
             if (process != null) process.destroy();
         }
         return pids;
+    }
+
+    /**
+     * 判断进程是否为僵尸（defunct）。
+     * /proc/<pid>/stat 第 3 个字段为状态，'Z' 表示僵尸。
+     * 进程名 (comm) 可能含空格与括号，故取第一个 ')' 之后的首个字段。
+     */
+    private boolean isZombie(long pid) {
+        try {
+            java.nio.file.Path stat = java.nio.file.Paths.get("/proc", String.valueOf(pid), "stat");
+            if (!java.nio.file.Files.exists(stat)) return false;
+            String line = new String(java.nio.file.Files.readAllBytes(stat), "UTF-8");
+            int end = line.indexOf(')');
+            if (end > 0) {
+                String state = line.substring(end + 1).trim().split("\\s+")[0];
+                return "Z".equals(state);
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
     }
 
     /** 读取 /proc/<pid>/cmdline */
