@@ -8,7 +8,7 @@
         </a-space>
       </template>
       <template #extra>
-        <a-button type="primary" @click="$router.push('/users/add')">
+        <a-button v-if="isAdmin" type="primary" @click="$router.push('/users/add')">
           <plus-outlined /> 新增用户
         </a-button>
       </template>
@@ -27,10 +27,10 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-button type="link" size="small" @click="editUser(record)">
+              <a-button v-if="isAdmin || record.id === authStore.user?.id" type="link" size="small" @click="editUser(record)">
                 <edit-outlined /> 编辑
               </a-button>
-              <a-popconfirm title="确定删除?" ok-text="确定" cancel-text="取消" @confirm="deleteUserAction(record.id)">
+              <a-popconfirm v-if="isAdmin" title="确定删除?" ok-text="确定" cancel-text="取消" @confirm="deleteUserAction(record.id)">
                 <a-button type="link" size="small" danger>
                   <delete-outlined /> 删除
                 </a-button>
@@ -44,10 +44,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import type { UserModel } from '../types'
 import { getUsers, deleteUser } from '../api/auth'
+import { useAuthStore } from '../stores/auth'
 import {
   PlusOutlined,
   EditOutlined,
@@ -56,6 +57,8 @@ import {
 } from '@ant-design/icons-vue'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'ADMIN')
 const users = ref<UserModel[]>([])
 const loading = ref(false)
 
