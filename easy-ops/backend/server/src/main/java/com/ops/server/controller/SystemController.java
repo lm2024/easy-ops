@@ -273,12 +273,44 @@ public class SystemController {
     }
 
     /**
-     * GET /api/users - 用户列表
+     * 从请求中提取当前登录用户身份（复用 AuthInterceptor 的 token 解析）。
+     */
+    private AuthInterceptor.UserAuthContext getCurrentUserAuth(HttpServletRequest request) {
+        String authHeader = request.getHeader("Authorization");
+        if (authHeader == null) return null;
+        String token = authHeader.startsWith("Bearer ") ? authHeader.substring(7) : authHeader;
+        return authInterceptor.lookupUserAuth(token);
+    }
+
+    private boolean isAdmin(AuthInterceptor.UserAuthContext auth) {
+        return auth != null && "admin".equalsIgnoreCase(auth.getRole());
+    }
+
+    /**
+     * GET /api/users - 用户列表（仅管理员可见）
      */
     @GetMapping("/users")
     public Result<?> listUsers(
+            HttpServletRequest request,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
+        AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
+        if (auth == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
+        }
+        // 普通用户只能看到自己这一行（用于修改个人资料），管理员看全量
+        if (!isAdmin(auth)) {
+            UserModel self = null;
+            try {
+                self = userMapper.findById(Long.parseLong(auth.getUserId()));
+            } catch (NumberFormatException ignored) {
+            }
+            if (self != null) self.setPassword(null);
+            Map<String, Object> data = new HashMap<>();
+            data.put("list", self == null ? Collections.emptyList() : Arrays.asList(self));
+            data.put("total", self == null ? 0L : 1L);
+            return Result.success(data);
+        }
         List<UserModel> users = userMapper.findAll(page, pageSize);
         Long total = userMapper.countAll();
         Map<String, Object> data = new HashMap<>();
@@ -291,7 +323,15 @@ public class SystemController {
      * GET /api/users/{id} - 用户详情
      */
     @GetMapping("/users/{id}")
-    public Result<?> getUser(@PathVariable Long id) {
+    public Result<?> getUser(@PathVariable Long id, HttpServletRequest request) {
+        AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
+        if (auth == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
+        }
+        // 普通用户只能查看自己的信息
+        if (!isAdmin(auth) && !String.valueOf(id).equals(auth.getUserId())) {
+            return Result.error(ErrorCode.FORBIDDEN, "只能查看自己的信息");
+        }
         UserModel user = userMapper.findById(id);
         if (user == null) {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
@@ -304,7 +344,10 @@ public class SystemController {
      * POST /api/users - 新增用户
      */
     @PostMapping("/users")
-    public Result<?> createUser(@RequestBody UserModel user) {
+    public Result<?> createUser(@RequestBody UserModel user, HttpServletRequest request) {
+        if (!isAdmin(getCurrentUserAuth(request))) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         if (userMapper.findByUsername(user.getUsername()) != null) {
             return Result.paramError("用户名已存在");
         }
@@ -313,8 +356,9 @@ public class SystemController {
             return Result.paramError(pwdError);
         }
         user.setPassword(hashPassword(user.getPassword()));
+        // 默认角色为 operator；仅管理员可创建用户，且角色不可为空
         if (user.getRole() == null || user.getRole().trim().isEmpty()) {
-            user.setRole("admin");
+            user.setRole("operator");
         }
         user.setStatus(1);
         user.setCreateTime(System.currentTimeMillis());
@@ -327,7 +371,16 @@ public class SystemController {
      * PUT /api/users/{id} - 修改用户
      */
     @PutMapping("/users/{id}")
-    public Result<?> updateUser(@PathVariable Long id, @RequestBody UserModel user) {
+    public Result<?> updateUser(@PathVariable Long id, @RequestBody UserModel user, HttpServletRequest request) {
+        AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
+        if (auth == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
+        }
+        boolean admin = isAdmin(auth);
+        // 权限：仅管理员可改他人；普通用户只能改自己
+        if (!admin && !String.valueOf(id).equals(auth.getUserId())) {
+            return Result.error(ErrorCode.FORBIDDEN, "只能修改自己的信息");
+        }
         UserModel existing = userMapper.findById(id);
         if (existing == null) {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
@@ -336,11 +389,17 @@ public class SystemController {
         if (user.getUsername() == null || user.getUsername().isEmpty()) {
             user.setUsername(existing.getUsername());
         }
-        if (user.getRole() == null || user.getRole().isEmpty()) {
+        // 普通用户禁止修改角色/状态（防自我提权）；管理员可改
+        if (!admin) {
             user.setRole(existing.getRole());
-        }
-        if (user.getStatus() == null) {
             user.setStatus(existing.getStatus());
+        } else {
+            if (user.getRole() == null || user.getRole().isEmpty()) {
+                user.setRole(existing.getRole());
+            }
+            if (user.getStatus() == null) {
+                user.setStatus(existing.getStatus());
+            }
         }
         String newPassword = user.getPassword();
         if (newPassword != null && !newPassword.trim().isEmpty()) {
@@ -361,7 +420,10 @@ public class SystemController {
      * DELETE /api/users/{id} - 删除用户
      */
     @DeleteMapping("/users/{id}")
-    public Result<?> deleteUser(@PathVariable Long id) {
+    public Result<?> deleteUser(@PathVariable Long id, HttpServletRequest request) {
+        if (!isAdmin(getCurrentUserAuth(request))) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         userMapper.deleteById(id);
         return Result.success();
     }
