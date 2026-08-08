@@ -61,21 +61,34 @@ export function saveNginxAlarmRules(sourceId: number, rules: import('../types').
   )
 }
 
+export function listNginxWhitelist(sourceId: number) {
+  return request.get<any, Result<import('../types').NginxSourceWhitelistModel[]>>(
+    `/nginx-traffic/sources/${sourceId}/whitelist`
+  )
+}
+
+export function saveNginxWhitelist(sourceId: number, items: import('../types').NginxSourceWhitelistModel[]) {
+  return request.put<any, Result<import('../types').NginxSourceWhitelistModel[]>>(
+    `/nginx-traffic/sources/${sourceId}/whitelist`,
+    items
+  )
+}
+
 export function getNginxOverview(query?: NginxTimeQuery) {
   return request.get<any, Result<Record<string, unknown>>>('/nginx-traffic/overview', {
     params: buildTimeParams(query)
   })
 }
 
-export function getNginxRankIp(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+export function getNginxRankIp(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery, sort?: string) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/ip', {
-    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), keyword, sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 
-export function getNginxRankUri(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+export function getNginxRankUri(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery, sort?: string) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/uri', {
-    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), keyword, sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 
@@ -83,15 +96,51 @@ export function getNginxRankIpUri(
   query?: NginxTimeQuery,
   clientIp?: string,
   uri?: string,
-  pageQuery?: NginxPageQuery
+  pageQuery?: NginxPageQuery,
+  sort?: string
 ) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/ip-uri', {
-    params: { ...buildTimeParams(query), clientIp, uri, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), clientIp, uri, sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 
 export function getNginxRankSlow(query?: NginxTimeQuery, pageQuery?: NginxPageQuery) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/slow', {
+    params: { ...buildTimeParams(query), page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+  })
+}
+
+export function getNginxRankMethod(query?: NginxTimeQuery, pageQuery?: NginxPageQuery, sort?: string) {
+  return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/method', {
+    params: { ...buildTimeParams(query), sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+  })
+}
+
+export function getNginxRankUa(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+  return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/ua', {
+    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+  })
+}
+
+export function getNginxRankReferer(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+  return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/referer', {
+    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+  })
+}
+
+export interface NginxLatencySamplesResult {
+  list: Record<string, unknown>[]
+  total: number
+  page: number
+  pageSize: number
+  p50: number
+  p95: number
+  p99: number
+  max: number
+}
+
+export function getNginxLatencySamples(query?: NginxTimeQuery, pageQuery?: NginxPageQuery) {
+  return request.get<any, Result<NginxLatencySamplesResult>>('/nginx-traffic/latency/samples', {
     params: { ...buildTimeParams(query), page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }

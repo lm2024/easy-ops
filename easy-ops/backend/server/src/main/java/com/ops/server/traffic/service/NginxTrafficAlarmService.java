@@ -2,10 +2,12 @@ package com.ops.server.traffic.service;
 
 import com.ops.common.enums.NginxTrafficAlarmType;
 import com.ops.common.model.NginxAccessSourceModel;
+import com.ops.common.model.NginxSourceWhitelistModel;
 import com.ops.common.model.NginxTrafficAlarmRuleModel;
 import com.ops.common.model.NotificationRecordModel;
 import com.ops.server.mapper.NginxAccessSourceMapper;
 import com.ops.server.mapper.NginxMinuteStatMapper;
+import com.ops.server.mapper.NginxSourceWhitelistMapper;
 import com.ops.server.mapper.NginxTrafficAlarmRuleMapper;
 import com.ops.server.selfheal.service.NotificationService;
 import org.slf4j.Logger;
@@ -38,6 +40,8 @@ public class NginxTrafficAlarmService {
     private NginxAccessSourceMapper sourceMapper;
     @Autowired
     private NginxMinuteStatMapper minuteStatMapper;
+    @Autowired
+    private NginxSourceWhitelistMapper whitelistMapper;
     @Autowired
     private NotificationService notificationService;
 
@@ -131,10 +135,11 @@ public class NginxTrafficAlarmService {
         long end = System.currentTimeMillis();
         long start = end - windowMinutes * 60L * 1000L;
         String ruleType = rule.getRuleType();
+        Map<String, Object> wl = buildWhitelistParam(source.getId());
 
         if (NginxTrafficAlarmType.IP_FREQ.equals(ruleType)) {
             List<Map<String, Object>> hits = minuteStatMapper.listIpAboveThreshold(
-                    source.getId(), start, end, threshold, TOP_DETAIL_LIMIT);
+                    source.getId(), start, end, threshold, TOP_DETAIL_LIMIT, wl);
             if (hits == null || hits.isEmpty()) {
                 return false;
             }
@@ -149,7 +154,7 @@ public class NginxTrafficAlarmService {
 
         if (NginxTrafficAlarmType.URI_FREQ.equals(ruleType)) {
             List<Map<String, Object>> hits = minuteStatMapper.listUriAboveThreshold(
-                    source.getId(), start, end, threshold, TOP_DETAIL_LIMIT);
+                    source.getId(), start, end, threshold, TOP_DETAIL_LIMIT, wl);
             if (hits == null || hits.isEmpty()) {
                 return false;
             }
@@ -162,7 +167,7 @@ public class NginxTrafficAlarmService {
                     ruleType + "-" + hits.get(0).get("uri"));
         }
 
-        Map<String, Object> sums = normalizeMap(minuteStatMapper.sumStatusAndSlow(source.getId(), start, end));
+        Map<String, Object> sums = normalizeMap(minuteStatMapper.sumStatusAndSlow(source.getId(), start, end, wl));
         if (NginxTrafficAlarmType.STATUS_4XX.equals(ruleType)) {
             long count = longVal(sums, "status4xx");
             if (count < threshold) {
@@ -236,6 +241,32 @@ public class NginxTrafficAlarmService {
             }
             return now;
         }) == now;
+    }
+
+    /**
+     * 构建查询侧白名单 SQL 参数（同 NginxTrafficService.buildWhitelistParam）。
+     * 告警评估与统计共用同一份白名单，保证业务白名单不误报。
+     */
+    private Map<String, Object> buildWhitelistParam(Long sourceId) {
+        Map<String, Object> param = new HashMap<String, Object>();
+        if (sourceId == null) {
+            param.put("hasWhitelist", false);
+            return param;
+        }
+        List<NginxSourceWhitelistModel> ws = whitelistMapper.findEnabledBySourceIds(
+                java.util.Collections.singletonList(sourceId));
+        WhitelistFilter filter = WhitelistFilter.from(ws);
+        if (filter.isEmpty()) {
+            param.put("hasWhitelist", false);
+            return param;
+        }
+        param.put("hasWhitelist", true);
+        param.put("ipExact", filter.ipExact);
+        param.put("ipLike", filter.getIpLike());
+        param.put("uriExact", filter.uriExact);
+        param.put("uriLike", filter.getUriLike());
+        param.put("methodExact", filter.methodExact);
+        return param;
     }
 
     private void createDefaultIfMissing(Long sourceId, String type, long threshold,

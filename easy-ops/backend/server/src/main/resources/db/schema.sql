@@ -661,6 +661,20 @@ CREATE TABLE IF NOT EXISTS nginx_access_source (
 );
 CREATE INDEX IF NOT EXISTS idx_nginx_source_node ON nginx_access_source(node_id);
 
+-- Nginx 流量监控：日志源白名单（查询侧排除，不参与统计/告警）
+CREATE TABLE IF NOT EXISTS nginx_source_whitelist (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    type VARCHAR(16) NOT NULL,
+    match_value VARCHAR(500) NOT NULL,
+    match_mode VARCHAR(16) NOT NULL,
+    enabled TINYINT DEFAULT 1,
+    remark VARCHAR(200),
+    create_time BIGINT,
+    update_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_nginx_wl_source ON nginx_source_whitelist(source_id);
+
 -- Nginx 流量监控：分钟级统计（只存汇总，不存原文）
 CREATE TABLE IF NOT EXISTS nginx_minute_stat (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
@@ -673,15 +687,69 @@ CREATE TABLE IF NOT EXISTS nginx_minute_stat (
     sum_request_time_ms BIGINT DEFAULT 0,
     max_request_time_ms BIGINT DEFAULT 0,
     sum_upstream_time_ms BIGINT DEFAULT 0,
+    sum_upstream_connect_time_ms BIGINT DEFAULT 0,
+    sum_upstream_header_time_ms BIGINT DEFAULT 0,
+    sum_body_bytes BIGINT DEFAULT 0,
     status_2xx INT DEFAULT 0,
     status_4xx INT DEFAULT 0,
     status_5xx INT DEFAULT 0,
+    upstream_5xx INT DEFAULT 0,
+    cache_hit_count INT DEFAULT 0,
+    cache_miss_count INT DEFAULT 0,
+    https_count INT DEFAULT 0,
     slow_count INT DEFAULT 0,
     create_time BIGINT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uk_nginx_minute_dim ON nginx_minute_stat(source_id, bucket_time, client_ip, uri, method);
 CREATE INDEX IF NOT EXISTS idx_nginx_minute_bucket ON nginx_minute_stat(bucket_time);
 CREATE INDEX IF NOT EXISTS idx_nginx_minute_source ON nginx_minute_stat(source_id);
+
+-- Nginx UA 维度统计（独立维度表，Top-N 封顶，防基数爆炸）
+CREATE TABLE IF NOT EXISTS nginx_ua_stat (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    bucket_time BIGINT NOT NULL,
+    user_agent VARCHAR(500) NOT NULL,
+    request_count INT DEFAULT 0,
+    sum_request_time_ms BIGINT DEFAULT 0,
+    max_request_time_ms BIGINT DEFAULT 0,
+    slow_count INT DEFAULT 0,
+    status_5xx INT DEFAULT 0,
+    create_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_nginx_ua ON nginx_ua_stat(source_id, bucket_time);
+
+-- Nginx Referer 维度统计
+CREATE TABLE IF NOT EXISTS nginx_referer_stat (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    bucket_time BIGINT NOT NULL,
+    referer VARCHAR(500) NOT NULL,
+    request_count INT DEFAULT 0,
+    sum_request_time_ms BIGINT DEFAULT 0,
+    max_request_time_ms BIGINT DEFAULT 0,
+    slow_count INT DEFAULT 0,
+    status_5xx INT DEFAULT 0,
+    create_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_nginx_referer ON nginx_referer_stat(source_id, bucket_time);
+
+-- Nginx 原始请求样本（瞬时耗时 / 百分位来源，按 TTL 清理）
+CREATE TABLE IF NOT EXISTS nginx_request_sample (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    source_id BIGINT NOT NULL,
+    ts BIGINT NOT NULL,
+    client_ip VARCHAR(64),
+    uri VARCHAR(500),
+    method VARCHAR(16),
+    request_time_ms BIGINT DEFAULT 0,
+    upstream_time_ms BIGINT DEFAULT 0,
+    status INT DEFAULT 0,
+    user_agent VARCHAR(500),
+    referer VARCHAR(500),
+    create_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_nginx_sample_src_ts ON nginx_request_sample(source_id, ts);
 
 -- Nginx 流量告警规则（按日志源）
 CREATE TABLE IF NOT EXISTS nginx_traffic_alarm_rule (

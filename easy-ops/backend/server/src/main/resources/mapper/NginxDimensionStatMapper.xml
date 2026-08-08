@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NginxDimensionStatMapper">
+
+    <insert id="batchInsertUa">
+        INSERT INTO nginx_ua_stat (
+            source_id, bucket_time, user_agent, request_count,
+            sum_request_time_ms, max_request_time_ms, slow_count, status_5xx, create_time
+        ) VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.sourceId}, #{r.bucketTime}, #{r.userAgent}, #{r.requestCount},
+             #{r.sumRequestTimeMs}, #{r.maxRequestTimeMs}, #{r.slowCount}, #{r.status5xx}, #{r.createTime})
+        </foreach>
+    </insert>
+
+    <insert id="batchInsertReferer">
+        INSERT INTO nginx_referer_stat (
+            source_id, bucket_time, referer, request_count,
+            sum_request_time_ms, max_request_time_ms, slow_count, status_5xx, create_time
+        ) VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.sourceId}, #{r.bucketTime}, #{r.referer}, #{r.requestCount},
+             #{r.sumRequestTimeMs}, #{r.maxRequestTimeMs}, #{r.slowCount}, #{r.status5xx}, #{r.createTime})
+        </foreach>
+    </insert>
+
+    <insert id="batchInsertSample">
+        INSERT INTO nginx_request_sample (
+            source_id, ts, client_ip, uri, method, request_time_ms,
+            upstream_time_ms, status, user_agent, referer, create_time
+        ) VALUES
+        <foreach collection="rows" item="r" separator=",">
+            (#{r.sourceId}, #{r.ts}, #{r.clientIp}, #{r.uri}, #{r.method}, #{r.requestTimeMs},
+             #{r.upstreamTimeMs}, #{r.status}, #{r.userAgent}, #{r.referer}, #{r.createTime})
+        </foreach>
+    </insert>
+
+    <select id="sumByUa" resultType="java.util.HashMap">
+        SELECT user_agent AS "userAgent",
+               SUM(request_count) AS "requestCount",
+               SUM(slow_count) AS "slowCount",
+               SUM(status_5xx) AS "status5xx",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_ua_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="keyword != null and keyword != ''">
+              AND user_agent LIKE '%' || #{keyword} || '%'
+          </if>
+        GROUP BY user_agent
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByUa" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT user_agent FROM nginx_ua_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="keyword != null and keyword != ''">
+                  AND user_agent LIKE '%' || #{keyword} || '%'
+              </if>
+            GROUP BY user_agent
+        ) t
+    </select>
+
+    <select id="sumByReferer" resultType="java.util.HashMap">
+        SELECT referer AS "referer",
+               SUM(request_count) AS "requestCount",
+               SUM(slow_count) AS "slowCount",
+               SUM(status_5xx) AS "status5xx",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_referer_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="keyword != null and keyword != ''">
+              AND referer LIKE '%' || #{keyword} || '%'
+          </if>
+        GROUP BY referer
+        ORDER BY SUM(request_count) DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByReferer" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT referer FROM nginx_referer_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="keyword != null and keyword != ''">
+                  AND referer LIKE '%' || #{keyword} || '%'
+              </if>
+            GROUP BY referer
+        ) t
+    </select>
+
+    <select id="listSamples" resultType="java.util.HashMap">
+        SELECT id AS "id", ts AS "ts", client_ip AS "clientIp", uri AS "uri", method AS "method",
+               request_time_ms AS "requestTimeMs", upstream_time_ms AS "upstreamTimeMs",
+               status AS "status", user_agent AS "userAgent", referer AS "referer"
+        FROM nginx_request_sample
+        WHERE ts &gt;= #{startTime}
+          AND ts &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+        ORDER BY ts DESC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <delete id="deleteSamplesBefore">
+        DELETE FROM nginx_request_sample WHERE ts &lt; #{cutoff}
+    </delete>
+
+</mapper>

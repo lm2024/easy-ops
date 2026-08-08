@@ -21,24 +21,30 @@ public interface NginxMinuteStatMapper {
                                       @Param("endTime") Long endTime,
                                       @Param("keyword") String keyword,
                                       @Param("offset") int offset,
-                                      @Param("pageSize") int pageSize);
+                                      @Param("pageSize") int pageSize,
+                                      @Param("sort") String sort,
+                                      @Param("wl") Map<String, Object> wl);
 
     int countByIp(@Param("sourceIds") List<Long> sourceIds,
                   @Param("startTime") Long startTime,
                   @Param("endTime") Long endTime,
-                  @Param("keyword") String keyword);
+                  @Param("keyword") String keyword,
+                  @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> sumByUri(@Param("sourceIds") List<Long> sourceIds,
                                        @Param("startTime") Long startTime,
                                        @Param("endTime") Long endTime,
                                        @Param("keyword") String keyword,
                                        @Param("offset") int offset,
-                                       @Param("pageSize") int pageSize);
+                                       @Param("pageSize") int pageSize,
+                                       @Param("sort") String sort,
+                                       @Param("wl") Map<String, Object> wl);
 
     int countByUri(@Param("sourceIds") List<Long> sourceIds,
                    @Param("startTime") Long startTime,
                    @Param("endTime") Long endTime,
-                   @Param("keyword") String keyword);
+                   @Param("keyword") String keyword,
+                   @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> sumByIpUri(@Param("sourceIds") List<Long> sourceIds,
                                          @Param("startTime") Long startTime,
@@ -46,45 +52,68 @@ public interface NginxMinuteStatMapper {
                                          @Param("clientIp") String clientIp,
                                          @Param("uri") String uri,
                                          @Param("offset") int offset,
-                                         @Param("pageSize") int pageSize);
+                                         @Param("pageSize") int pageSize,
+                                         @Param("sort") String sort,
+                                         @Param("wl") Map<String, Object> wl);
 
     int countByIpUri(@Param("sourceIds") List<Long> sourceIds,
                      @Param("startTime") Long startTime,
                      @Param("endTime") Long endTime,
                      @Param("clientIp") String clientIp,
-                     @Param("uri") String uri);
+                     @Param("uri") String uri,
+                     @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> sumSlowByUri(@Param("sourceIds") List<Long> sourceIds,
                                            @Param("startTime") Long startTime,
                                            @Param("endTime") Long endTime,
                                            @Param("offset") int offset,
-                                           @Param("pageSize") int pageSize);
+                                           @Param("pageSize") int pageSize,
+                                           @Param("wl") Map<String, Object> wl);
+
+    List<Map<String, Object>> sumByMethod(@Param("sourceIds") List<Long> sourceIds,
+                                          @Param("startTime") Long startTime,
+                                          @Param("endTime") Long endTime,
+                                          @Param("offset") int offset,
+                                          @Param("pageSize") int pageSize,
+                                          @Param("sort") String sort,
+                                          @Param("wl") Map<String, Object> wl);
+
+    int countByMethod(@Param("sourceIds") List<Long> sourceIds,
+                      @Param("startTime") Long startTime,
+                      @Param("endTime") Long endTime,
+                      @Param("wl") Map<String, Object> wl);
 
     int countSlowByUri(@Param("sourceIds") List<Long> sourceIds,
                        @Param("startTime") Long startTime,
-                       @Param("endTime") Long endTime);
+                       @Param("endTime") Long endTime,
+                       @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> trendByMinute(@Param("sourceIds") List<Long> sourceIds,
                                             @Param("startTime") Long startTime,
-                                            @Param("endTime") Long endTime);
+                                            @Param("endTime") Long endTime,
+                                            @Param("wl") Map<String, Object> wl);
 
     Map<String, Object> overview(@Param("sourceIds") List<Long> sourceIds,
                                  @Param("startTime") Long startTime,
-                                 @Param("endTime") Long endTime);
+                                 @Param("endTime") Long endTime,
+                                 @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> listIpAboveThreshold(@Param("sourceId") Long sourceId,
                                                      @Param("startTime") Long startTime,
                                                      @Param("endTime") Long endTime,
                                                      @Param("threshold") long threshold,
-                                                     @Param("limit") int limit);
+                                                     @Param("limit") int limit,
+                                                     @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> listUriAboveThreshold(@Param("sourceId") Long sourceId,
                                                       @Param("startTime") Long startTime,
                                                       @Param("endTime") Long endTime,
                                                       @Param("threshold") long threshold,
-                                                      @Param("limit") int limit);
+                                                      @Param("limit") int limit,
+                                                      @Param("wl") Map<String, Object> wl);
 
     Map<String, Object> sumStatusAndSlow(@Param("sourceId") Long sourceId,
                                          @Param("startTime") Long startTime,
-                                         @Param("endTime") Long endTime);
+                                         @Param("endTime") Long endTime,
+                                         @Param("wl") Map<String, Object> wl);
 }

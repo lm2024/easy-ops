@@ -1,6 +1,7 @@
 package com.ops.server.traffic.controller;
 
 import com.ops.common.model.NginxAccessSourceModel;
+import com.ops.common.model.NginxSourceWhitelistModel;
 import com.ops.common.model.NginxTrafficAlarmRuleModel;
 import com.ops.common.response.Result;
 import com.ops.server.interceptor.AuthInterceptor;
@@ -25,6 +26,8 @@ public class NginxTrafficController {
     private NginxTrafficService nginxTrafficService;
     @Autowired
     private NginxTrafficAlarmService nginxTrafficAlarmService;
+    @Autowired
+    private com.ops.server.traffic.service.NginxSourceWhitelistService whitelistService;
     @Autowired
     private NodeMapper nodeMapper;
 
@@ -55,6 +58,17 @@ public class NginxTrafficController {
         return Result.success(nginxTrafficAlarmService.saveRules(id, rules));
     }
 
+    @GetMapping("/sources/{id}/whitelist")
+    public Result<?> listWhitelist(@PathVariable Long id) {
+        return Result.success(whitelistService.listBySource(id));
+    }
+
+    @PutMapping("/sources/{id}/whitelist")
+    public Result<?> saveWhitelist(@PathVariable Long id,
+                                   @RequestBody List<NginxSourceWhitelistModel> items) {
+        return Result.success(whitelistService.saveAll(id, items));
+    }
+
     /**
      * Agent 拉取本节点启用的日志源
      */
@@ -77,12 +91,10 @@ public class NginxTrafficController {
             return Result.error(401, "节点未认证");
         }
         Long sourceId = toLong(body.get("sourceId"));
-        @SuppressWarnings("unchecked")
-        List<Map<String, Object>> rows = (List<Map<String, Object>>) body.get("rows");
         if (sourceId == null) {
             return Result.error(400, "sourceId 不能为空");
         }
-        nginxTrafficService.ingest(nodeId, sourceId, rows);
+        nginxTrafficService.ingest(nodeId, sourceId, body);
         return Result.success(null);
     }
 
@@ -106,8 +118,9 @@ public class NginxTrafficController {
                             @RequestParam(required = false) Long endTime,
                             @RequestParam(required = false) String keyword,
                             @RequestParam(defaultValue = "1") Integer page,
-                            @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankIp(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+                            @RequestParam(defaultValue = "20") Integer pageSize,
+                            @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankIp(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
     @GetMapping("/rank/uri")
@@ -117,8 +130,9 @@ public class NginxTrafficController {
                              @RequestParam(required = false) Long endTime,
                              @RequestParam(required = false) String keyword,
                              @RequestParam(defaultValue = "1") Integer page,
-                             @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankUri(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+                             @RequestParam(defaultValue = "20") Integer pageSize,
+                             @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankUri(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
     @GetMapping("/rank/ip-uri")
@@ -129,8 +143,9 @@ public class NginxTrafficController {
                                @RequestParam(required = false) String clientIp,
                                @RequestParam(required = false) String uri,
                                @RequestParam(defaultValue = "1") Integer page,
-                               @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankIpUri(sourceIds, windowMinutes, startTime, endTime, clientIp, uri, page, pageSize));
+                               @RequestParam(defaultValue = "20") Integer pageSize,
+                               @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankIpUri(sourceIds, windowMinutes, startTime, endTime, clientIp, uri, page, pageSize, sort));
     }
 
     @GetMapping("/rank/slow")
@@ -141,6 +156,49 @@ public class NginxTrafficController {
                               @RequestParam(defaultValue = "1") Integer page,
                               @RequestParam(defaultValue = "20") Integer pageSize) {
         return Result.success(nginxTrafficService.rankSlow(sourceIds, windowMinutes, startTime, endTime, page, pageSize));
+    }
+
+    @GetMapping("/rank/method")
+    public Result<?> rankMethod(@RequestParam(required = false) List<Long> sourceIds,
+                                @RequestParam(defaultValue = "60") Integer windowMinutes,
+                                @RequestParam(required = false) Long startTime,
+                                @RequestParam(required = false) Long endTime,
+                                @RequestParam(defaultValue = "1") Integer page,
+                                @RequestParam(defaultValue = "20") Integer pageSize,
+                                @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankMethod(sourceIds, windowMinutes, startTime, endTime, page, pageSize, sort));
+    }
+
+    @GetMapping("/rank/ua")
+    public Result<?> rankUa(@RequestParam(required = false) List<Long> sourceIds,
+                            @RequestParam(defaultValue = "60") Integer windowMinutes,
+                            @RequestParam(required = false) Long startTime,
+                            @RequestParam(required = false) Long endTime,
+                            @RequestParam(required = false) String keyword,
+                            @RequestParam(defaultValue = "1") Integer page,
+                            @RequestParam(defaultValue = "20") Integer pageSize) {
+        return Result.success(nginxTrafficService.rankUa(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+    }
+
+    @GetMapping("/rank/referer")
+    public Result<?> rankReferer(@RequestParam(required = false) List<Long> sourceIds,
+                                 @RequestParam(defaultValue = "60") Integer windowMinutes,
+                                 @RequestParam(required = false) Long startTime,
+                                 @RequestParam(required = false) Long endTime,
+                                 @RequestParam(required = false) String keyword,
+                                 @RequestParam(defaultValue = "1") Integer page,
+                                 @RequestParam(defaultValue = "20") Integer pageSize) {
+        return Result.success(nginxTrafficService.rankReferer(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+    }
+
+    @GetMapping("/latency/samples")
+    public Result<?> latencySamples(@RequestParam(required = false) List<Long> sourceIds,
+                                    @RequestParam(defaultValue = "60") Integer windowMinutes,
+                                    @RequestParam(required = false) Long startTime,
+                                    @RequestParam(required = false) Long endTime,
+                                    @RequestParam(defaultValue = "1") Integer page,
+                                    @RequestParam(defaultValue = "50") Integer pageSize) {
+        return Result.success(nginxTrafficService.latencySamples(sourceIds, windowMinutes, startTime, endTime, page, pageSize));
     }
 
     @GetMapping("/trend")

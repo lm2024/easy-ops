@@ -2,15 +2,50 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ops.server.mapper.NginxMinuteStatMapper">
 
+    <!-- 查询侧白名单过滤：IP/URI 精确排除 + LIKE 排除 + METHOD 排除（基于 nginx_source_whitelist） -->
+    <sql id="whitelistFilter">
+        <if test="wl != null and wl.hasWhitelist == true">
+            <if test="wl.ipExact != null and wl.ipExact.size() > 0">
+                AND client_ip NOT IN
+                <foreach collection="wl.ipExact" item="ip" open="(" separator="," close=")">#{ip}</foreach>
+            </if>
+            <if test="wl.ipLike != null and wl.ipLike.size() > 0">
+                <foreach collection="wl.ipLike" item="ip" open=" AND (" separator=" AND " close=")">
+                    client_ip NOT LIKE #{ip}
+                </foreach>
+            </if>
+            <if test="wl.uriExact != null and wl.uriExact.size() > 0">
+                AND uri NOT IN
+                <foreach collection="wl.uriExact" item="u" open="(" separator="," close=")">#{u}</foreach>
+            </if>
+            <if test="wl.uriLike != null and wl.uriLike.size() > 0">
+                <foreach collection="wl.uriLike" item="u" open=" AND (" separator=" AND " close=")">
+                    uri NOT LIKE #{u}
+                </foreach>
+            </if>
+            <if test="wl.methodExact != null and wl.methodExact.size() > 0">
+                AND method NOT IN
+                <foreach collection="wl.methodExact" item="m" open="(" separator="," close=")">#{m}</foreach>
+            </if>
+        </if>
+    </sql>
+
     <update id="incrementStat">
         UPDATE nginx_minute_stat
         SET request_count = request_count + #{requestCount},
             sum_request_time_ms = sum_request_time_ms + #{sumRequestTimeMs},
             max_request_time_ms = CASE WHEN #{maxRequestTimeMs} &gt; max_request_time_ms THEN #{maxRequestTimeMs} ELSE max_request_time_ms END,
             sum_upstream_time_ms = sum_upstream_time_ms + #{sumUpstreamTimeMs},
+            sum_upstream_connect_time_ms = sum_upstream_connect_time_ms + #{sumUpstreamConnectTimeMs},
+            sum_upstream_header_time_ms = sum_upstream_header_time_ms + #{sumUpstreamHeaderTimeMs},
+            sum_body_bytes = sum_body_bytes + #{sumBodyBytes},
             status_2xx = status_2xx + #{status2xx},
             status_4xx = status_4xx + #{status4xx},
             status_5xx = status_5xx + #{status5xx},
+            upstream_5xx = upstream_5xx + #{upstream5xx},
+            cache_hit_count = cache_hit_count + #{cacheHitCount},
+            cache_miss_count = cache_miss_count + #{cacheMissCount},
+            https_count = https_count + #{httpsCount},
             slow_count = slow_count + #{slowCount}
         WHERE source_id = #{sourceId}
           AND bucket_time = #{bucketTime}
@@ -23,11 +58,15 @@
         INSERT INTO nginx_minute_stat (
             source_id, bucket_time, client_ip, uri, method,
             request_count, sum_request_time_ms, max_request_time_ms, sum_upstream_time_ms,
-            status_2xx, status_4xx, status_5xx, slow_count, create_time
+            sum_upstream_connect_time_ms, sum_upstream_header_time_ms, sum_body_bytes,
+            status_2xx, status_4xx, status_5xx, upstream_5xx, cache_hit_count, cache_miss_count, https_count,
+            slow_count, create_time
         ) VALUES (
             #{sourceId}, #{bucketTime}, #{clientIp}, #{uri}, #{method},
             #{requestCount}, #{sumRequestTimeMs}, #{maxRequestTimeMs}, #{sumUpstreamTimeMs},
-            #{status2xx}, #{status4xx}, #{status5xx}, #{slowCount}, #{createTime}
+            #{sumUpstreamConnectTimeMs}, #{sumUpstreamHeaderTimeMs}, #{sumBodyBytes},
+            #{status2xx}, #{status4xx}, #{status5xx}, #{upstream5xx}, #{cacheHitCount}, #{cacheMissCount}, #{httpsCount},
+            #{slowCount}, #{createTime}
         )
     </insert>
 
@@ -40,7 +79,9 @@
                SUM(request_count) AS "requestCount",
                SUM(status_4xx) AS "status4xx",
                SUM(status_5xx) AS "status5xx",
-               SUM(slow_count) AS "slowCount"
+               SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
         FROM nginx_minute_stat
         WHERE bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
@@ -49,8 +90,13 @@
           <if test="keyword != null and keyword != ''">
               AND client_ip LIKE '%' || #{keyword} || '%'
           </if>
+          <include refid="whitelistFilter" />
         GROUP BY client_ip
-        ORDER BY SUM(request_count) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
@@ -65,6 +111,7 @@
               <if test="keyword != null and keyword != ''">
                   AND client_ip LIKE '%' || #{keyword} || '%'
               </if>
+              <include refid="whitelistFilter" />
             GROUP BY client_ip
         ) t
     </select>
@@ -75,6 +122,7 @@
                SUM(status_4xx) AS "status4xx",
                SUM(status_5xx) AS "status5xx",
                SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
                ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
         FROM nginx_minute_stat
         WHERE bucket_time &gt;= #{startTime}
@@ -84,8 +132,13 @@
           <if test="keyword != null and keyword != ''">
               AND uri LIKE '%' || #{keyword} || '%'
           </if>
+          <include refid="whitelistFilter" />
         GROUP BY uri
-        ORDER BY SUM(request_count) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
@@ -100,6 +153,7 @@
               <if test="keyword != null and keyword != ''">
                   AND uri LIKE '%' || #{keyword} || '%'
               </if>
+              <include refid="whitelistFilter" />
             GROUP BY uri
         ) t
     </select>
@@ -110,6 +164,7 @@
                method AS "method",
                SUM(request_count) AS "requestCount",
                SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
                ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
         FROM nginx_minute_stat
         WHERE bucket_time &gt;= #{startTime}
@@ -122,8 +177,13 @@
           <if test="uri != null and uri != ''">
               AND uri LIKE '%' || #{uri} || '%'
           </if>
+          <include refid="whitelistFilter" />
         GROUP BY client_ip, uri, method
-        ORDER BY SUM(request_count) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
@@ -141,6 +201,7 @@
               <if test="uri != null and uri != ''">
                   AND uri LIKE '%' || #{uri} || '%'
               </if>
+              <include refid="whitelistFilter" />
             GROUP BY client_ip, uri, method
         ) t
     </select>
@@ -157,6 +218,7 @@
           AND source_id IN
           <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
           AND slow_count &gt; 0
+          <include refid="whitelistFilter" />
         GROUP BY uri
         ORDER BY SUM(slow_count) DESC, MAX(max_request_time_ms) DESC
         LIMIT #{pageSize} OFFSET #{offset}
@@ -171,7 +233,44 @@
               AND source_id IN
               <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
               AND slow_count &gt; 0
+              <include refid="whitelistFilter" />
             GROUP BY uri
+        ) t
+    </select>
+
+    <select id="sumByMethod" resultType="java.util.HashMap">
+        SELECT method AS "method",
+               SUM(request_count) AS "requestCount",
+               SUM(status_4xx) AS "status4xx",
+               SUM(status_5xx) AS "status5xx",
+               SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_minute_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <include refid="whitelistFilter" />
+        GROUP BY method
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByMethod" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT method
+            FROM nginx_minute_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <include refid="whitelistFilter" />
+            GROUP BY method
         ) t
     </select>
 
@@ -179,12 +278,15 @@
         SELECT bucket_time AS "bucketTime",
                SUM(request_count) AS "requestCount",
                SUM(status_4xx) AS "status4xx",
-               SUM(status_5xx) AS "status5xx"
+               SUM(status_5xx) AS "status5xx",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs"
         FROM nginx_minute_stat
         WHERE bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
           AND source_id IN
           <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <include refid="whitelistFilter" />
         GROUP BY bucket_time
         ORDER BY bucket_time ASC
     </select>
@@ -193,12 +295,23 @@
         SELECT COALESCE(SUM(request_count), 0) AS "totalRequests",
                COALESCE(SUM(status_4xx), 0) AS "status4xx",
                COALESCE(SUM(status_5xx), 0) AS "status5xx",
-               COALESCE(SUM(slow_count), 0) AS "slowCount"
+               COALESCE(SUM(slow_count), 0) AS "slowCount",
+               COALESCE(SUM(sum_request_time_ms), 0) AS "sumRequestTimeMs",
+               COALESCE(MAX(max_request_time_ms), 0) AS "maxRequestTimeMs",
+               COALESCE(SUM(sum_upstream_time_ms), 0) AS "sumUpstreamTimeMs",
+               COALESCE(SUM(sum_upstream_connect_time_ms), 0) AS "sumUpstreamConnectTimeMs",
+               COALESCE(SUM(sum_upstream_header_time_ms), 0) AS "sumUpstreamHeaderTimeMs",
+               COALESCE(SUM(sum_body_bytes), 0) AS "sumBodyBytes",
+               COALESCE(SUM(upstream_5xx), 0) AS "upstream5xx",
+               COALESCE(SUM(cache_hit_count), 0) AS "cacheHit",
+               COALESCE(SUM(cache_miss_count), 0) AS "cacheMiss",
+               COALESCE(SUM(https_count), 0) AS "httpsCount"
         FROM nginx_minute_stat
         WHERE bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
           AND source_id IN
           <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <include refid="whitelistFilter" />
     </select>
 
     <select id="listIpAboveThreshold" resultType="java.util.HashMap">
@@ -207,6 +320,7 @@
         WHERE source_id = #{sourceId}
           AND bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
+          <include refid="whitelistFilter" />
         GROUP BY client_ip
         HAVING SUM(request_count) &gt;= #{threshold}
         ORDER BY SUM(request_count) DESC
@@ -219,6 +333,7 @@
         WHERE source_id = #{sourceId}
           AND bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
+          <include refid="whitelistFilter" />
         GROUP BY uri
         HAVING SUM(request_count) &gt;= #{threshold}
         ORDER BY SUM(request_count) DESC
@@ -234,5 +349,6 @@
         WHERE source_id = #{sourceId}
           AND bucket_time &gt;= #{startTime}
           AND bucket_time &lt; #{endTime}
+          <include refid="whitelistFilter" />
     </select>
 </mapper>

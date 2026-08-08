@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NginxSourceWhitelistMapper">
+
+    <select id="findEnabledBySourceIds" resultType="com.ops.common.model.NginxSourceWhitelistModel">
+        SELECT * FROM nginx_source_whitelist
+        WHERE enabled = 1
+        <if test="sourceIds != null and sourceIds.size() > 0">
+            AND source_id IN
+            <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+        </if>
+        ORDER BY source_id, id ASC
+    </select>
+
+    <select id="findBySourceId" resultType="com.ops.common.model.NginxSourceWhitelistModel">
+        SELECT * FROM nginx_source_whitelist
+        WHERE source_id = #{sourceId}
+        ORDER BY id ASC
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO nginx_source_whitelist (
+            source_id, type, match_value, match_mode, enabled, remark, create_time, update_time
+        ) VALUES (
+            #{sourceId}, #{type}, #{matchValue}, #{matchMode}, #{enabled}, #{remark}, #{createTime}, #{updateTime}
+        )
+    </insert>
+
+    <update id="update">
+        UPDATE nginx_source_whitelist
+        SET type = #{type},
+            match_value = #{matchValue},
+            match_mode = #{matchMode},
+            enabled = #{enabled},
+            remark = #{remark},
+            update_time = #{updateTime}
+        WHERE id = #{id} AND source_id = #{sourceId}
+    </update>
+
+    <delete id="deleteBySourceId">
+        DELETE FROM nginx_source_whitelist WHERE source_id = #{sourceId}
+    </delete>
+
+    <delete id="deleteByIds">
+        DELETE FROM nginx_source_whitelist
+        WHERE source_id = #{sourceId}
+        <if test="ids != null and ids.size() > 0">
+            AND id NOT IN
+            <foreach collection="ids" item="id" open="(" separator="," close=")">#{id}</foreach>
+        </if>
+    </delete>
+</mapper>

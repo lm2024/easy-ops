@@ -22,9 +22,16 @@ public class NginxMinuteStatModel implements Serializable {
     private Long sumRequestTimeMs;
     private Long maxRequestTimeMs;
     private Long sumUpstreamTimeMs;
+    private Long sumUpstreamConnectTimeMs;
+    private Long sumUpstreamHeaderTimeMs;
+    private Long sumBodyBytes;
     private Integer status2xx;
     private Integer status4xx;
     private Integer status5xx;
+    private Integer upstream5xx;
+    private Integer cacheHitCount;
+    private Integer cacheMissCount;
+    private Integer httpsCount;
     private Integer slowCount;
     private Long createTime;
 }

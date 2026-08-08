@@ -45,6 +45,7 @@
         <a-tab-pane key="overview" tab="实时概览" />
         <a-tab-pane key="rank" tab="排名分析" />
         <a-tab-pane key="slow" tab="慢接口" />
+        <a-tab-pane key="latency" tab="耗时分析" />
         <a-tab-pane key="config" tab="日志源配置" />
       </a-tabs>
 
@@ -78,10 +79,35 @@
           <a-col :xs="12" :sm="8" :md="6" :lg="4">
             <a-statistic title="慢请求" :value="overview.slowCount || 0" value-style="color: #722ed1" />
           </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="4">
+            <a-tooltip title="区间内所有请求耗时均值">
+              <a-statistic title="平均耗时" :value="overview.avgRequestTimeMs || 0" suffix="ms" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="4">
+            <a-tooltip title="区间内单请求最慢耗时">
+              <a-statistic title="最大耗时" :value="overview.maxRequestTimeMs || 0" suffix="ms" value-style="color: #cf1322" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="4">
+            <a-tooltip title="缓存命中 / (命中+未命中)">
+              <a-statistic title="缓存命中率" :value="overview.cacheHitRate || 0" :precision="1" suffix="%" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="4">
+            <a-tooltip title="区间内响应体总流量">
+              <a-statistic title="出流量" :value="(overview.sumBodyBytes || 0) / 1048576" :precision="2" suffix="MB" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="4">
+            <a-tooltip title="后端真实返回 5xx（区别于客户端看到的 5xx）">
+              <a-statistic title="后端5xx" :value="overview.upstream5xx || 0" value-style="color: #ff4d4f" />
+            </a-tooltip>
+          </a-col>
         </a-row>
         <a-row :gutter="16">
           <a-col :span="16">
-            <a-card size="small" :title="trendGranularity === 'day' ? '请求趋势（按天）' : '请求趋势（按分钟）'">
+            <a-card size="small" :title="trendGranularity === 'day' ? '请求趋势 / 耗时（按天）' : '请求趋势 / 耗时（按分钟）'">
               <div v-if="trend.length === 0" class="empty-hint">该时间区间暂无数据</div>
               <div ref="trendChartRef" class="trend-chart" :style="{ visibility: trend.length ? 'visible' : 'hidden', height: trend.length ? '320px' : '0' }" />
             </a-card>
@@ -107,11 +133,21 @@
 
       <!-- 排名分析 -->
       <div v-if="activeTab === 'rank'" class="tab-body">
-        <div class="overview-hint">排序规则：IP / 接口 / 交叉表按「请求数」降序；默认每页 20 条，最多查询 100 条/页</div>
+        <div class="overview-hint">
+          排序规则：默认按「请求数」降序；可切换为按平均耗时 / 最慢单次排序；默认每页 20 条，最多查询 100 条/页
+        </div>
+        <a-space style="margin-bottom: 12px">
+          <span class="card-subtitle">排序维度：</span>
+          <a-radio-group v-model:value="rankSort" @change="onRankSortChange">
+            <a-radio-button value="">请求数</a-radio-button>
+            <a-radio-button value="avg">平均耗时</a-radio-button>
+            <a-radio-button value="max">最慢单次</a-radio-button>
+          </a-radio-group>
+        </a-space>
         <a-row :gutter="16">
           <a-col :span="12">
             <a-card size="small">
-              <template #title>Top IP <span class="card-subtitle">· 按请求数 ↓</span></template>
+              <template #title>Top IP <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
               <template #extra>
                 <a-input-search v-model:value="ipKeyword" placeholder="筛选 IP" style="width: 160px" @search="onRankIpSearch" />
               </template>
@@ -126,7 +162,7 @@
           </a-col>
           <a-col :span="12">
             <a-card size="small">
-              <template #title>Top 接口 <span class="card-subtitle">· 按请求数 ↓</span></template>
+              <template #title>Top 接口 <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
               <template #extra>
                 <a-input-search v-model:value="uriKeyword" placeholder="筛选接口" style="width: 160px" @search="onRankUriSearch" />
               </template>
@@ -141,7 +177,7 @@
           </a-col>
         </a-row>
         <a-card size="small" style="margin-top: 16px">
-          <template #title>IP + 接口交叉排名 <span class="card-subtitle">· 按请求数 ↓</span></template>
+          <template #title>IP + 接口交叉排名 <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
           <a-space style="margin-bottom: 12px">
             <a-input v-model:value="crossIp" placeholder="IP 关键词" style="width: 180px" />
             <a-input v-model:value="crossUri" placeholder="接口关键词" style="width: 220px" />
@@ -153,6 +189,50 @@
             :pagination="rankIpUriPagination"
             size="small"
             :row-key="crossRowKey"
+          />
+        </a-card>
+        <a-row :gutter="16" style="margin-top: 16px">
+          <a-col :span="12">
+            <a-card size="small">
+              <template #title>请求方法 <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
+              <a-table
+                :columns="methodColumns"
+                :data-source="rankMethod"
+                :pagination="rankMethodPagination"
+                size="small"
+                row-key="method"
+              />
+            </a-card>
+          </a-col>
+          <a-col :span="12">
+            <a-card size="small">
+              <template #title>客户端 UA <span class="card-subtitle">· 按请求数 ↓</span></template>
+              <template #extra>
+                <a-input-search v-model:value="uaKeyword" placeholder="筛选 UA" style="width: 180px" @search="onRankUaSearch" />
+              </template>
+              <a-table
+                :columns="uaColumns"
+                :data-source="rankUa"
+                :pagination="rankUaPagination"
+                size="small"
+                row-key="userAgent"
+                :scroll="{ x: 420 }"
+              />
+            </a-card>
+          </a-col>
+        </a-row>
+        <a-card size="small" style="margin-top: 16px">
+          <template #title>来源 Referer <span class="card-subtitle">· 按请求数 ↓</span></template>
+          <template #extra>
+            <a-input-search v-model:value="refererKeyword" placeholder="筛选 Referer" style="width: 200px" @search="onRankRefererSearch" />
+          </template>
+          <a-table
+            :columns="refererColumns"
+            :data-source="rankReferer"
+            :pagination="rankRefererPagination"
+            size="small"
+            row-key="referer"
+            :scroll="{ x: 460 }"
           />
         </a-card>
       </div>
@@ -170,6 +250,42 @@
           size="middle"
           row-key="uri"
         />
+      </div>
+
+      <!-- 耗时分析 -->
+      <div v-if="activeTab === 'latency'" class="tab-body">
+        <div class="overview-hint">
+          基于原始请求样本计算（非分钟聚合），可反映真实瞬时耗时与百分位分布；样本为慢请求 / 错误 / 按比例抽样，按 TTL 保留。
+        </div>
+        <a-row :gutter="[16, 16]" style="margin-bottom: 16px">
+          <a-col :xs="12" :sm="8" :md="6" :lg="6">
+            <a-statistic title="P50 耗时" :value="latency.p50 || 0" suffix="ms" />
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="6">
+            <a-tooltip title="95% 请求快于此值">
+              <a-statistic title="P95 耗时" :value="latency.p95 || 0" suffix="ms" value-style="color: #fa8c16" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="6">
+            <a-tooltip title="99% 请求快于此值">
+              <a-statistic title="P99 耗时" :value="latency.p99 || 0" suffix="ms" value-style="color: #cf1322" />
+            </a-tooltip>
+          </a-col>
+          <a-col :xs="12" :sm="8" :md="6" :lg="6">
+            <a-tooltip title="区间内最慢单次请求耗时（瞬时峰值）">
+              <a-statistic title="最大耗时" :value="latency.max || 0" suffix="ms" value-style="color: #cf1322" />
+            </a-tooltip>
+          </a-col>
+        </a-row>
+        <a-card size="small" title="原始请求样本（最新在前，含瞬时耗时）">
+          <a-table
+            :columns="sampleColumns"
+            :data-source="latencySamples"
+            :pagination="latencyPagination"
+            size="small"
+            row-key="id"
+          />
+        </a-card>
       </div>
 
       <!-- 日志源配置 -->
@@ -208,6 +324,7 @@
     >
       <a-tabs v-model:activeKey="sourceModalTab">
         <a-tab-pane key="basic" tab="基本配置" />
+        <a-tab-pane key="whitelist" tab="白名单" />
         <a-tab-pane key="alarm" tab="告警规则" />
       </a-tabs>
       <div v-show="sourceModalTab === 'basic'">
@@ -229,6 +346,63 @@
           <a-switch :checked="editingSource.enabled === 1" @change="(v: boolean) => editingSource.enabled = v ? 1 : 0" />
         </a-form-item>
       </a-form>
+      </div>
+      <div v-show="sourceModalTab === 'whitelist'" class="whitelist-panel">
+        <a-alert
+          v-if="!editingSource.id"
+          type="warning"
+          show-icon
+          style="margin-bottom: 12px"
+          message="请先保存基本配置，再配置白名单"
+        />
+        <template v-else>
+          <a-alert
+            type="info"
+            show-icon
+            style="margin-bottom: 12px"
+            message="白名单内的 IP / 接口 / 请求方法将不参与任何统计与告警（含实时概览、排名、慢接口、趋势）。支持精确 / 前缀 / 包含匹配。"
+          />
+          <a-button type="primary" size="small" style="margin-bottom: 12px" @click="addWhitelistRow">
+            <plus-outlined /> 新增白名单
+          </a-button>
+          <a-table
+            :columns="whitelistColumns"
+            :data-source="whitelistItems"
+            :pagination="false"
+            size="small"
+            row-key="__key"
+          >
+            <template #bodyCell="{ column, record }">
+              <template v-if="column.key === 'type'">
+                <a-select v-model:value="record.type" style="width: 130px">
+                  <a-select-option value="IP">IP</a-select-option>
+                  <a-select-option value="URI">接口(精确)</a-select-option>
+                  <a-select-option value="URI_PREFIX">接口前缀</a-select-option>
+                  <a-select-option value="METHOD">请求方法</a-select-option>
+                </a-select>
+              </template>
+              <template v-else-if="column.key === 'matchValue'">
+                <a-input v-model:value="record.matchValue" placeholder="值" />
+              </template>
+              <template v-else-if="column.key === 'matchMode'">
+                <a-select v-model:value="record.matchMode" style="width: 110px">
+                  <a-select-option value="EXACT">精确</a-select-option>
+                  <a-select-option value="PREFIX">前缀</a-select-option>
+                  <a-select-option value="CONTAINS">包含</a-select-option>
+                </a-select>
+              </template>
+              <template v-else-if="column.key === 'enabled'">
+                <a-switch :checked="record.enabled === 1" @change="(v: boolean) => record.enabled = v ? 1 : 0" />
+              </template>
+              <template v-else-if="column.key === 'remark'">
+                <a-input v-model:value="record.remark" placeholder="备注" />
+              </template>
+              <template v-else-if="column.key === 'action'">
+                <a-button type="link" danger size="small" @click="removeWhitelistRow(record)">删除</a-button>
+              </template>
+            </template>
+          </a-table>
+        </template>
       </div>
       <div v-show="sourceModalTab === 'alarm'" class="alarm-rules-panel">
         <a-alert
@@ -297,15 +471,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } 
 import { message } from 'ant-design-vue'
 import * as echarts from 'echarts'
 import { LineChartOutlined, ReloadOutlined, PlusOutlined } from '@ant-design/icons-vue'
-import type { NginxAccessSourceModel, NginxTrafficAlarmRuleModel, NodeModel } from '../types'
+import type { NginxAccessSourceModel, NginxTrafficAlarmRuleModel, NginxSourceWhitelistModel, NodeModel } from '../types'
 import { getNodes } from '../api/node'
 import dayjs, { type Dayjs } from 'dayjs'
 import type { NginxTimeQuery } from '../api/nginxTraffic'
 import {
   listNginxSources, saveNginxSource, deleteNginxSource,
   listNginxAlarmRules, saveNginxAlarmRules,
+  listNginxWhitelist, saveNginxWhitelist,
   getNginxOverview, getNginxTrend,
-  getNginxRankIp, getNginxRankUri, getNginxRankIpUri, getNginxRankSlow
+  getNginxRankIp, getNginxRankUri, getNginxRankIpUri, getNginxRankSlow, getNginxRankMethod,
+  getNginxRankUa, getNginxRankReferer, getNginxLatencySamples
 } from '../api/nginxTraffic'
 
 type RangePreset = 'last10m' | 'last30m' | 'last1h' | 'last2h' | 'last5h' | 'last8h' | 'today' | 'yesterday' | 'custom'
@@ -329,6 +505,7 @@ const rankIp = ref<Record<string, unknown>[]>([])
 const rankUri = ref<Record<string, unknown>[]>([])
 const rankIpUri = ref<Record<string, unknown>[]>([])
 const rankSlow = ref<Record<string, unknown>[]>([])
+const rankMethod = ref<Record<string, unknown>[]>([])
 const overviewTopUri = ref<Record<string, unknown>[]>([])
 const trendChartRef = ref<HTMLDivElement>()
 let trendChart: echarts.ECharts | null = null
@@ -337,11 +514,28 @@ const rankIpPage = ref(1)
 const rankUriPage = ref(1)
 const rankIpUriPage = ref(1)
 const rankSlowPage = ref(1)
+const rankMethodPage = ref(1)
 const rankPageSize = ref(20)
 const rankIpTotal = ref(0)
 const rankUriTotal = ref(0)
 const rankIpUriTotal = ref(0)
 const rankSlowTotal = ref(0)
+const rankMethodTotal = ref(0)
+
+const rankSort = ref('')
+const sortLabel = computed(() => (rankSort.value === 'avg' ? '平均耗时' : rankSort.value === 'max' ? '最慢单次' : '请求数'))
+const uaKeyword = ref('')
+const refererKeyword = ref('')
+const rankUa = ref<Record<string, unknown>[]>([])
+const rankReferer = ref<Record<string, unknown>[]>([])
+const rankUaPage = ref(1)
+const rankRefererPage = ref(1)
+const rankUaTotal = ref(0)
+const rankRefererTotal = ref(0)
+const latency = reactive<Record<string, number>>({ p50: 0, p95: 0, p99: 0, max: 0 })
+const latencySamples = ref<Record<string, unknown>[]>([])
+const latencyPage = ref(1)
+const latencyTotal = ref(0)
 
 const ipKeyword = ref('')
 const uriKeyword = ref('')
@@ -352,6 +546,8 @@ const sourceModalVisible = ref(false)
 const sourceModalTab = ref('basic')
 const pendingSourceId = ref<number>()
 const alarmRules = ref<NginxTrafficAlarmRuleModel[]>([])
+const whitelistItems = ref<NginxSourceWhitelistModel[]>([])
+let whitelistKeySeq = 0
 const editingSource = reactive<NginxAccessSourceModel>({
   nodeId: 0,
   name: '',
@@ -456,6 +652,7 @@ function resetRankPages() {
   rankUriPage.value = 1
   rankIpUriPage.value = 1
   rankSlowPage.value = 1
+  rankMethodPage.value = 1
 }
 
 function rankNo(page: number, index: number) {
@@ -525,10 +722,13 @@ function renderTrendChart() {
   const labels = trend.value.map(row => fmtTrendLabel(row.bucketTime as number))
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
-    legend: { data: ['请求数', '4xx', '5xx'], bottom: 0 },
-    grid: { left: 48, right: 24, top: 24, bottom: 48 },
+    legend: { data: ['请求数', '4xx', '5xx', '平均耗时', '最大耗时'], bottom: 0 },
+    grid: { left: 48, right: 56, top: 24, bottom: 48 },
     xAxis: { type: 'category', data: labels, boundaryGap: false },
-    yAxis: { type: 'value', minInterval: 1 },
+    yAxis: [
+      { type: 'value', minInterval: 1, name: '请求数' },
+      { type: 'value', minInterval: 1, name: '耗时(ms)', position: 'right', splitLine: { show: false } }
+    ],
     series: [
       {
         name: '请求数',
@@ -550,10 +750,43 @@ function renderTrendChart() {
         smooth: true,
         data: trend.value.map(row => Number(row.status5xx || 0)),
         itemStyle: { color: '#ff4d4f' }
+      },
+      {
+        name: '平均耗时',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: trend.value.map(row => Number(row.avgRequestTimeMs || 0)),
+        itemStyle: { color: '#1677ff' }
+      },
+      {
+        name: '最大耗时',
+        type: 'line',
+        yAxisIndex: 1,
+        smooth: true,
+        data: trend.value.map(row => Number(row.maxRequestTimeMs || 0)),
+        itemStyle: { color: '#cf1322' }
       }
     ]
   }, true)
+  trendChart.off('click')
+  trendChart.on('click', (params: any) => {
+    jumpToRankAt(params?.dataIndex)
+  })
   trendChart.resize()
+}
+
+/** 点击趋势图某分钟桶 → 自动将该时间点区间带入「排名分析」定位激增来源 */
+function jumpToRankAt(dataIndex?: number) {
+  if (dataIndex == null || !trend.value[dataIndex]) return
+  const bucket = Number(trend.value[dataIndex].bucketTime)
+  if (!bucket) return
+  customRange.value = [dayjs(bucket), dayjs(bucket + 60 * 1000 - 1)]
+  rangePreset.value = 'custom'
+  resetRankPages()
+  activeTab.value = 'rank'
+  message.info('已定位到该分钟，正在加载排名分析')
+  refreshAll()
 }
 
 watch([trend, activeTab, trendGranularity, rangePreset], async () => {
@@ -570,6 +803,8 @@ const ipColumns = computed(() => [
   { title: '#', key: 'rank', width: 48, customRender: ({ index }: { index: number }) => rankNo(rankIpPage.value, index) },
   { title: 'IP', dataIndex: 'clientIp', key: 'clientIp' },
   { title: '请求数', dataIndex: 'requestCount', key: 'requestCount' },
+  { title: '平均耗时(ms)', dataIndex: 'avgRequestTimeMs', key: 'avgRequestTimeMs' },
+  { title: '最慢(ms)', dataIndex: 'maxRequestTimeMs', key: 'maxRequestTimeMs' },
   { title: '慢请求', dataIndex: 'slowCount', key: 'slowCount' },
   { title: '5xx', dataIndex: 'status5xx', key: 'status5xx' }
 ])
@@ -596,6 +831,15 @@ const slowColumns = computed(() => [
   { title: '最大耗时(ms)', dataIndex: 'maxRequestTimeMs', key: 'maxRequestTimeMs' },
   { title: '平均耗时(ms)', dataIndex: 'avgRequestTimeMs', key: 'avgRequestTimeMs' }
 ])
+const methodColumns = computed(() => [
+  { title: '#', key: 'rank', width: 48, customRender: ({ index }: { index: number }) => rankNo(rankMethodPage.value, index) },
+  { title: '方法', dataIndex: 'method', key: 'method', width: 100 },
+  { title: '请求数', dataIndex: 'requestCount', key: 'requestCount' },
+  { title: '平均耗时(ms)', dataIndex: 'avgRequestTimeMs', key: 'avgRequestTimeMs' },
+  { title: '慢请求', dataIndex: 'slowCount', key: 'slowCount' },
+  { title: '4xx', dataIndex: 'status4xx', key: 'status4xx' },
+  { title: '5xx', dataIndex: 'status5xx', key: 'status5xx' }
+])
 const ALARM_RULE_LABELS: Record<string, string> = {
   IP_FREQ: '单IP访问过频',
   URI_FREQ: '单接口访问过频',
@@ -612,6 +856,15 @@ const alarmRuleColumns = [
   { title: '级别', key: 'level', width: 120 },
   { title: '冷却(分)', key: 'cooldownMinutes', width: 100 },
   { title: '需确认', key: 'requireAck', width: 80 }
+]
+
+const whitelistColumns = [
+  { title: '维度', key: 'type', width: 140 },
+  { title: '值', key: 'matchValue' },
+  { title: '匹配', key: 'matchMode', width: 120 },
+  { title: '启用', key: 'enabled', width: 70 },
+  { title: '备注', key: 'remark' },
+  { title: '操作', key: 'action', width: 70 }
 ]
 
 const sourceColumns = [
@@ -678,7 +931,7 @@ async function loadRankIp() {
   const res = await getNginxRankIp(timeQuery.value, ipKeyword.value || undefined, {
     page: rankIpPage.value,
     pageSize: rankPageSize.value
-  })
+  }, rankSort.value || undefined)
   rankIp.value = res.data?.list || []
   rankIpTotal.value = res.data?.total || 0
 }
@@ -687,7 +940,7 @@ async function loadRankUri() {
   const res = await getNginxRankUri(timeQuery.value, uriKeyword.value || undefined, {
     page: rankUriPage.value,
     pageSize: rankPageSize.value
-  })
+  }, rankSort.value || undefined)
   rankUri.value = res.data?.list || []
   rankUriTotal.value = res.data?.total || 0
 }
@@ -697,7 +950,8 @@ async function loadRankIpUri() {
     timeQuery.value,
     crossIp.value || undefined,
     crossUri.value || undefined,
-    { page: rankIpUriPage.value, pageSize: rankPageSize.value }
+    { page: rankIpUriPage.value, pageSize: rankPageSize.value },
+    rankSort.value || undefined
   )
   rankIpUri.value = res.data?.list || []
   rankIpUriTotal.value = res.data?.total || 0
@@ -712,16 +966,116 @@ async function loadRankSlow() {
   rankSlowTotal.value = res.data?.total || 0
 }
 
+async function loadRankMethod() {
+  const res = await getNginxRankMethod(timeQuery.value, {
+    page: rankMethodPage.value,
+    pageSize: rankPageSize.value
+  }, rankSort.value || undefined)
+  rankMethod.value = res.data?.list || []
+  rankMethodTotal.value = res.data?.total || 0
+}
+
+async function loadRankUa() {
+  const res = await getNginxRankUa(timeQuery.value, uaKeyword.value || undefined, {
+    page: rankUaPage.value,
+    pageSize: rankPageSize.value
+  })
+  rankUa.value = res.data?.list || []
+  rankUaTotal.value = res.data?.total || 0
+}
+
+async function loadRankReferer() {
+  const res = await getNginxRankReferer(timeQuery.value, refererKeyword.value || undefined, {
+    page: rankRefererPage.value,
+    pageSize: rankPageSize.value
+  })
+  rankReferer.value = res.data?.list || []
+  rankRefererTotal.value = res.data?.total || 0
+}
+
+async function loadLatency() {
+  const res = await getNginxLatencySamples(timeQuery.value, {
+    page: latencyPage.value,
+    pageSize: 50
+  })
+  latency.p50 = res.data?.p50 || 0
+  latency.p95 = res.data?.p95 || 0
+  latency.p99 = res.data?.p99 || 0
+  latency.max = res.data?.max || 0
+  latencySamples.value = res.data?.list || []
+  latencyTotal.value = res.data?.total || 0
+}
+
+function onRankUaSearch() {
+  rankUaPage.value = 1
+  loadRankUa()
+}
+
+function onRankRefererSearch() {
+  rankRefererPage.value = 1
+  loadRankReferer()
+}
+
+function onRankSortChange() {
+  resetRankPages()
+  Promise.all([loadRankIp(), loadRankUri(), loadRankIpUri(), loadRankMethod()])
+}
+
 const rankIpPagination = buildRankPagination(rankIpPage, rankIpTotal, loadRankIp)
 const rankUriPagination = buildRankPagination(rankUriPage, rankUriTotal, loadRankUri)
 const rankIpUriPagination = buildRankPagination(rankIpUriPage, rankIpUriTotal, loadRankIpUri)
 const rankSlowPagination = buildRankPagination(rankSlowPage, rankSlowTotal, loadRankSlow)
+const rankMethodPagination = buildRankPagination(rankMethodPage, rankMethodTotal, loadRankMethod)
+const rankUaPagination = buildRankPagination(rankUaPage, rankUaTotal, loadRankUa)
+const rankRefererPagination = buildRankPagination(rankRefererPage, rankRefererTotal, loadRankReferer)
+const latencyPagination = computed(() => ({
+  current: latencyPage.value,
+  pageSize: 50,
+  total: latencyTotal.value,
+  showSizeChanger: false,
+  showTotal: (t: number) => `共 ${t} 条样本`,
+  onChange: (p: number) => {
+    latencyPage.value = p
+    loadLatency()
+  }
+}))
+
+const uaColumns = computed(() => [
+  { title: '#', key: 'rank', width: 48, customRender: ({ index }: { index: number }) => rankNo(rankUaPage.value, index) },
+  { title: 'User-Agent', dataIndex: 'userAgent', key: 'userAgent', ellipsis: true },
+  { title: '请求数', dataIndex: 'requestCount', key: 'requestCount', width: 90 },
+  { title: '平均耗时(ms)', dataIndex: 'avgRequestTimeMs', key: 'avgRequestTimeMs', width: 110 },
+  { title: '最慢(ms)', dataIndex: 'maxRequestTimeMs', key: 'maxRequestTimeMs', width: 90 },
+  { title: '慢请求', dataIndex: 'slowCount', key: 'slowCount', width: 80 },
+  { title: '5xx', dataIndex: 'status5xx', key: 'status5xx', width: 64 }
+])
+const refererColumns = computed(() => [
+  { title: '#', key: 'rank', width: 48, customRender: ({ index }: { index: number }) => rankNo(rankRefererPage.value, index) },
+  { title: 'Referer', dataIndex: 'referer', key: 'referer', ellipsis: true },
+  { title: '请求数', dataIndex: 'requestCount', key: 'requestCount', width: 90 },
+  { title: '平均耗时(ms)', dataIndex: 'avgRequestTimeMs', key: 'avgRequestTimeMs', width: 110 },
+  { title: '最慢(ms)', dataIndex: 'maxRequestTimeMs', key: 'maxRequestTimeMs', width: 90 },
+  { title: '慢请求', dataIndex: 'slowCount', key: 'slowCount', width: 80 },
+  { title: '5xx', dataIndex: 'status5xx', key: 'status5xx', width: 64 }
+])
+const sampleColumns = computed(() => [
+  { title: '时间', dataIndex: 'ts', key: 'ts', width: 150, customRender: ({ text }: { text: number }) => fmtTime(text) },
+  { title: 'IP', dataIndex: 'clientIp', key: 'clientIp', width: 120 },
+  { title: '方法', dataIndex: 'method', key: 'method', width: 70 },
+  { title: '接口', dataIndex: 'uri', key: 'uri', ellipsis: true },
+  { title: '耗时(ms)', dataIndex: 'requestTimeMs', key: 'requestTimeMs', width: 90, sorter: (a: any, b: any) => Number(a.requestTimeMs) - Number(b.requestTimeMs) },
+  { title: '后端(ms)', dataIndex: 'upstreamTimeMs', key: 'upstreamTimeMs', width: 90 },
+  { title: '状态码', dataIndex: 'status', key: 'status', width: 80 }
+])
 
 async function refreshAll() {
   loading.value = true
   try {
     await loadSources()
-    await Promise.all([loadOverview(), loadRankIp(), loadRankUri(), loadRankIpUri(), loadRankSlow()])
+    await Promise.all([
+      loadOverview(), loadRankIp(), loadRankUri(), loadRankIpUri(),
+      loadRankSlow(), loadRankMethod(), loadRankUa(), loadRankReferer(), loadLatency()
+    ])
   } catch (e) {
     message.error('加载失败')
   } finally {
@@ -735,6 +1089,7 @@ function openSourceModal(record?: NginxAccessSourceModel) {
     Object.assign(editingSource, record)
     pendingSourceId.value = record.id
     loadAlarmRules(record.id!)
+    loadWhitelist(record.id!)
   } else {
     Object.assign(editingSource, {
       id: undefined,
@@ -748,6 +1103,7 @@ function openSourceModal(record?: NginxAccessSourceModel) {
     })
     pendingSourceId.value = undefined
     alarmRules.value = []
+    whitelistItems.value = []
   }
   sourceModalVisible.value = true
 }
@@ -755,6 +1111,27 @@ function openSourceModal(record?: NginxAccessSourceModel) {
 async function loadAlarmRules(sourceId: number) {
   const res = await listNginxAlarmRules(sourceId)
   alarmRules.value = res.data || []
+}
+
+async function loadWhitelist(sourceId: number) {
+  const res = await listNginxWhitelist(sourceId)
+  whitelistItems.value = (res.data || []).map(w => ({ ...w, __key: ++whitelistKeySeq }))
+}
+
+function addWhitelistRow() {
+  whitelistItems.value.push({
+    __key: ++whitelistKeySeq,
+    sourceId: editingSource.id,
+    type: 'IP',
+    matchValue: '',
+    matchMode: 'EXACT',
+    enabled: 1,
+    remark: ''
+  })
+}
+
+function removeWhitelistRow(record: NginxSourceWhitelistModel) {
+  whitelistItems.value = whitelistItems.value.filter(r => r.__key !== record.__key)
 }
 
 async function handleSaveSource() {
@@ -772,6 +1149,14 @@ async function handleSaveSource() {
     }
     if (sourceModalTab.value === 'alarm' || alarmRules.value.some(r => r.enabled === 1)) {
       await saveNginxAlarmRules(sourceId, alarmRules.value)
+    }
+    if (sourceModalTab.value === 'whitelist' || whitelistItems.value.length > 0) {
+      const items = whitelistItems.value.map(({ __key, ...rest }) => ({
+        ...rest,
+        sourceId,
+        enabled: rest.enabled ?? 1
+      }))
+      await saveNginxWhitelist(sourceId, items)
     }
   }
   message.success('保存成功')
