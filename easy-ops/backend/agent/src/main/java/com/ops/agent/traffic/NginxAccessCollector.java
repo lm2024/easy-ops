@@ -193,21 +193,39 @@ public class NginxAccessCollector {
         runtime.lastOffset = offsetTracker.get(logPath).offset;
     }
 
-    private void report(Long sourceId, List<Map<String, Object>> rows) {
-        if (agentToken == null || agentToken.trim().isEmpty() || rows == null || rows.isEmpty()) {
+    @SuppressWarnings("unchecked")
+    private void report(Long sourceId, List<Map<String, Object>> wrapped) {
+        if (agentToken == null || agentToken.trim().isEmpty() || wrapped == null || wrapped.isEmpty()) {
             return;
         }
         try {
+            // drainCurrent 返回单元素包裹：{rows, uaRows, refererRows, samples}
+            Map<String, Object> bundle = wrapped.get(0);
+            List<Map<String, Object>> rows = (List<Map<String, Object>>) bundle.get("rows");
+            List<Map<String, Object>> uaRows = (List<Map<String, Object>>) bundle.get("uaRows");
+            List<Map<String, Object>> refererRows = (List<Map<String, Object>>) bundle.get("refererRows");
+            List<Map<String, Object>> samples = (List<Map<String, Object>>) bundle.get("samples");
+            if ((rows == null || rows.isEmpty())
+                    && (uaRows == null || uaRows.isEmpty())
+                    && (refererRows == null || refererRows.isEmpty())
+                    && (samples == null || samples.isEmpty())) {
+                return;
+            }
             Map<String, Object> payload = new HashMap<String, Object>();
             payload.put("sourceId", sourceId);
-            payload.put("rows", rows);
+            payload.put("rows", rows == null ? java.util.Collections.emptyList() : rows);
+            payload.put("uaRows", uaRows == null ? java.util.Collections.emptyList() : uaRows);
+            payload.put("refererRows", refererRows == null ? java.util.Collections.emptyList() : refererRows);
+            payload.put("samples", samples == null ? java.util.Collections.emptyList() : samples);
             payload.put("reportTime", System.currentTimeMillis());
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
             headers.set("X-Token", agentToken);
             HttpEntity<String> entity = new HttpEntity<String>(MAPPER.writeValueAsString(payload), headers);
             restTemplate.postForEntity(serverUrl + "/nginx-traffic/ingest", entity, String.class);
-            log.info("Nginx 统计已上报 sourceId={} 行数={}", sourceId, rows.size());
+            int total = (rows == null ? 0 : rows.size()) + (uaRows == null ? 0 : uaRows.size())
+                    + (refererRows == null ? 0 : refererRows.size()) + (samples == null ? 0 : samples.size());
+            log.info("Nginx 统计已上报 sourceId={} 行数={}", sourceId, total);
         } catch (Exception e) {
             log.warn("上报 Nginx 统计失败 sourceId={}", sourceId, e);
         }
