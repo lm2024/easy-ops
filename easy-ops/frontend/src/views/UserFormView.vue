@@ -23,6 +23,12 @@
           </a-form-item>
         </a-col>
       </a-row>
+      <a-form-item v-if="isAdmin" label="角色" name="role">
+        <a-select v-model:value="formState.role" placeholder="请选择角色">
+          <a-select-option value="ADMIN">管理员</a-select-option>
+          <a-select-option value="OPERATOR">普通用户</a-select-option>
+        </a-select>
+      </a-form-item>
       <a-form-item>
         <a-space>
           <a-button type="primary" html-type="submit" :loading="loading">
@@ -40,6 +46,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { UserModel } from '../types'
 import { createUser, updateUser, getUserById } from '../api/auth'
+import { useAuthStore } from '../stores/auth'
 import type { FormInstance } from 'ant-design-vue'
 import type { Rule } from 'ant-design-vue/es/form'
 import { SaveOutlined, TeamOutlined } from '@ant-design/icons-vue'
@@ -48,13 +55,16 @@ const PASSWORD_PATTERN = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=[\
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
+const isAdmin = computed(() => authStore.user?.role === 'ADMIN')
 const loading = ref(false)
 const formRef = ref<FormInstance>()
 const isEdit = computed(() => !!route.params.id)
 
 const formState = ref<Partial<UserModel>>({
   username: '',
-  password: ''
+  password: '',
+  role: 'OPERATOR'
 })
 
 const passwordRule: Rule = {
@@ -75,7 +85,11 @@ async function handleSubmit() {
   try {
     loading.value = true
     const id = route.params.id as string
-    const payload = { ...formState.value, role: 'ADMIN' as const } as UserModel
+    const payload = { ...formState.value } as UserModel
+    // 普通用户（改自己资料）不传角色，由后端保留原值，防自我提权
+    if (!isAdmin.value) {
+      delete (payload as Partial<UserModel>).role
+    }
     if (id) {
       await updateUser(Number(id), payload)
     } else {
