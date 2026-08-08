@@ -17,6 +17,12 @@ public interface NodeMapper {
                                   @Param("pageSize") Integer pageSize, @Param("keyword") String keyword,
                                   @Param("sortField") String sortField, @Param("sortOrder") String sortOrder);
     Long countByStatus(@Param("status") String status, @Param("keyword") String keyword);
+    List<NodeModel> findByStatusInTenant(@Param("status") String status, @Param("page") Integer page,
+                                         @Param("pageSize") Integer pageSize, @Param("keyword") String keyword,
+                                         @Param("sortField") String sortField, @Param("sortOrder") String sortOrder,
+                                         @Param("tenantId") Long tenantId, @Param("projectIds") List<Long> projectIds);
+    Long countByStatusInTenant(@Param("status") String status, @Param("keyword") String keyword,
+                               @Param("tenantId") Long tenantId, @Param("projectIds") List<Long> projectIds);
     int insert(NodeModel node);
     int update(NodeModel node);
     int deleteById(@Param("id") Long id);

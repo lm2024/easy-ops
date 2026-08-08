@@ -72,7 +72,7 @@ public class NotificationService {
 
         // 所有广播通知都通过 WebSocket 推送（不仅限于 requireAck=1）
         if (record.getBroadcast() != null && record.getBroadcast() == 1) {
-            notificationHandler.broadcastNewNotification(record);
+            notificationHandler.broadcastAlert(record);
         }
         return record;
     }

@@ -8,6 +8,7 @@ import com.ops.server.mapper.NginxDimensionStatMapper;
 import com.ops.server.mapper.NginxMinuteStatMapper;
 import com.ops.server.mapper.NginxSourceWhitelistMapper;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.util.SecurityContext;
 import com.ops.server.traffic.service.NginxTrafficAlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -43,19 +44,26 @@ public class NginxTrafficService {
     private NodeMapper nodeMapper;
     @Autowired
     private NginxTrafficAlarmService nginxTrafficAlarmService;
+    @Autowired
+    private SecurityContext securityContext;
 
     @Value("${easyops.nginx-traffic.minute-retain-days:7}")
     private int minuteRetainDays;
 
     public List<NginxAccessSourceModel> listSources() {
-        return sourceMapper.findAll();
+        return filterAuthorizedSources(sourceMapper.findAll());
     }
 
     public NginxAccessSourceModel getSource(Long id) {
-        return sourceMapper.findById(id);
+        NginxAccessSourceModel source = sourceMapper.findById(id);
+        assertSourceAccess(source);
+        return source;
     }
 
     public NginxAccessSourceModel saveSource(NginxAccessSourceModel model) {
+        if (model.getId() != null) assertSourceAccess(sourceMapper.findById(model.getId()));
+        if (model.getNodeId() == null) throw new IllegalArgumentException("日志源必须绑定节点");
+        assertNodeAccess(model.getNodeId());
         long now = System.currentTimeMillis();
         if (model.getLogFormat() == null || model.getLogFormat().isEmpty()) {
             model.setLogFormat("main");
@@ -82,6 +90,7 @@ public class NginxTrafficService {
     }
 
     public void deleteSource(Long id) {
+        assertSourceAccess(sourceMapper.findById(id));
         if (id != null) {
             nginxTrafficAlarmService.deleteBySourceId(id);
             whitelistService.deleteBySource(id);
@@ -411,15 +420,52 @@ public class NginxTrafficService {
 
     private List<Long> resolveSourceIds(List<Long> sourceIds) {
         if (sourceIds != null && !sourceIds.isEmpty()) {
-            return sourceIds;
+            List<Long> authorized = new ArrayList<Long>();
+            for (Long sourceId : sourceIds) {
+                NginxAccessSourceModel source = sourceMapper.findById(sourceId);
+                if (source != null && isSourceAuthorized(source)) authorized.add(sourceId);
+            }
+            return authorized.isEmpty() ? Collections.singletonList(-1L) : authorized;
         }
         List<Long> all = new ArrayList<Long>();
-        for (NginxAccessSourceModel source : sourceMapper.findAll()) {
+        for (NginxAccessSourceModel source : filterAuthorizedSources(sourceMapper.findAll())) {
             if (source.getId() != null) {
                 all.add(source.getId());
             }
         }
         return all.isEmpty() ? Collections.singletonList(-1L) : all;
+    }
+
+    public void assertSourceAccess(Long sourceId) {
+        assertSourceAccess(sourceMapper.findById(sourceId));
+    }
+
+    private void assertSourceAccess(NginxAccessSourceModel source) {
+        if (source == null) throw new IllegalArgumentException("日志源不存在");
+        if (!isSourceAuthorized(source)) throw new IllegalArgumentException("无权访问该日志源");
+    }
+
+    private void assertNodeAccess(Long nodeId) {
+        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return;
+        com.ops.common.model.NodeModel node = nodeMapper.findById(nodeId);
+        if (node == null || !securityContext.getCurrentTenantId().equals(node.getTenantId())) {
+            throw new IllegalArgumentException("无权访问该节点");
+        }
+    }
+
+    private boolean isSourceAuthorized(NginxAccessSourceModel source) {
+        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return true;
+        com.ops.common.model.NodeModel node = nodeMapper.findById(source.getNodeId());
+        return node != null && securityContext.getCurrentTenantId().equals(node.getTenantId());
+    }
+
+    private List<NginxAccessSourceModel> filterAuthorizedSources(List<NginxAccessSourceModel> sources) {
+        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return sources;
+        List<NginxAccessSourceModel> result = new ArrayList<NginxAccessSourceModel>();
+        if (sources != null) for (NginxAccessSourceModel source : sources) {
+            if (isSourceAuthorized(source)) result.add(source);
+        }
+        return result;
     }
 
     /**

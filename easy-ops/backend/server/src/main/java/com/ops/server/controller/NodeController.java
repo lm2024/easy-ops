@@ -83,8 +83,13 @@ public class NodeController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String sortField,
             @RequestParam(required = false) String sortOrder) {
-        List<NodeModel> nodes = nodeService.findByStatus(status, page, pageSize, keyword, sortField, sortOrder);
-        Long total = nodeService.countByStatus(status, keyword);
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<Long> projectIds = securityContext.getAccessibleProjectIdsForQuery();
+        List<NodeModel> nodes = tenantId == null
+                ? nodeService.findByStatus(status, page, pageSize, keyword, sortField, sortOrder)
+                : nodeService.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder, tenantId, projectIds);
+        Long total = tenantId == null ? nodeService.countByStatus(status, keyword)
+                : nodeService.countByStatusInTenant(status, keyword, tenantId, projectIds);
         Map<String, Object> data = new HashMap<>();
         data.put("list", nodes);
         data.put("total", total);
@@ -97,7 +102,11 @@ public class NodeController {
     @GetMapping("/export")
     public void exportNodes(HttpServletResponse response) {
         try {
-            List<NodeModel> nodes = nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null, null, null);
+            Long tenantId = securityContext.getCurrentTenantId();
+            List<Long> projectIds = securityContext.getAccessibleProjectIdsForQuery();
+            List<NodeModel> nodes = tenantId == null
+                    ? nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null, null, null)
+                    : nodeService.findByStatusInTenant(null, 1, Integer.MAX_VALUE, null, null, null, tenantId, projectIds);
             response.setContentType("text/csv;charset=UTF-8");
             response.setHeader("Content-Disposition", "attachment;filename=nodes.csv");
             response.getWriter().write("名称,IP,端口,Token,状态,系统信息,创建时间\n");
@@ -226,6 +235,11 @@ public class NodeController {
     @GetMapping("/{id}")
     public Result<?> getNode(@PathVariable Long id) {
         NodeModel node = nodeService.findById(id);
+        if (node != null && node.getTenantId() != null && securityContext.getCurrentTenantId() != null
+                && !securityContext.isPlatformAdmin()
+                && !securityContext.getCurrentTenantId().equals(node.getTenantId())) {
+            return Result.error(403, "无权访问该节点");
+        }
         // SEC-004: 节点操作权限校验n        if (!securityContext.getCurrentNodeId() && !securityContext.hasProjectPermission(null)) {n            // non-agent users are filtered by project, which is handled by project bindingn        }
         return node != null ? Result.success(node) : Result.error(1002, "节点不存在");
     }
@@ -235,6 +249,9 @@ public class NodeController {
      */
     @PostMapping
     public Result<?> addNode(@RequestBody NodeModel node, HttpServletRequest httpRequest) {
+        if (securityContext.getCurrentTenantId() != null) {
+            node.setTenantId(securityContext.getCurrentTenantId());
+        }
         if (nodeService.findByName(node.getName()) != null) {
             return Result.paramError("节点名称已存在");
         }
@@ -258,6 +275,9 @@ public class NodeController {
             return Result.error(1002, "节点不存在");
         }
         node.setId(id);
+        if (securityContext.getCurrentTenantId() != null) {
+            node.setTenantId(existing.getTenantId());
+        }
         node.setCreateTime(existing.getCreateTime());
         node.setUpdateTime(System.currentTimeMillis());
         nodeService.update(node);
@@ -633,7 +653,7 @@ public class NodeController {
             }
 
             String json = com.alibaba.fastjson2.JSON.toJSONString(message);
-            monitorHandler.broadcast("monitor", json);
+            monitorHandler.broadcast("monitor", json, securityContext.getCurrentTenantId());
         } catch (Exception e) {
             log.warn("监控广播失败 节点={}", nodeId, e);
         }

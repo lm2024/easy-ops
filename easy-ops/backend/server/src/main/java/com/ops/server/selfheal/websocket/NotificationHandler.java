@@ -6,6 +6,9 @@ import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.ops.server.mapper.ProjectMapper;
+import com.ops.common.model.ProjectModel;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
@@ -25,6 +28,9 @@ public class NotificationHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(NotificationHandler.class);
 
     private final Map<String, WebSocketSession> userSessions = new ConcurrentHashMap<>();
+
+    @Autowired
+    private ProjectMapper projectMapper;
 
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
@@ -59,10 +65,22 @@ public class NotificationHandler extends TextWebSocketHandler {
         payload.put("action", "NEW_NOTIFICATION");
         payload.put("notification", toWsNotification(notification));
         String message = JSON.toJSONString(payload);
+        Long tenantId = null;
+        if (notification.getProjectId() != null && projectMapper != null) {
+            ProjectModel project = projectMapper.findById(notification.getProjectId());
+            tenantId = project == null ? null : project.getTenantId();
+        }
 
         for (Map.Entry<String, WebSocketSession> entry : userSessions.entrySet()) {
             WebSocketSession session = entry.getValue();
             if (session != null && session.isOpen()) {
+                Object sessionTenant = session.getAttributes().get("tenantId");
+                Object role = session.getAttributes().get("role");
+                boolean platform = role != null && ("admin".equalsIgnoreCase(String.valueOf(role))
+                        || "super_admin".equalsIgnoreCase(String.valueOf(role)));
+                if (tenantId == null && !platform) continue;
+                if (tenantId != null && (sessionTenant == null
+                        || !tenantId.toString().equals(String.valueOf(sessionTenant)))) continue;
                 try {
                     session.sendMessage(new TextMessage(message));
                 } catch (IOException e) {

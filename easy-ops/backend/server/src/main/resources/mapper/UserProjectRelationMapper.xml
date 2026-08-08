@@ -6,12 +6,28 @@
         SELECT project_id FROM user_project_relation WHERE user_id = #{userId}
     </select>
 
+    <select id="findProjectIdsByUserIdAndTenant" resultType="long">
+        SELECT r.project_id FROM user_project_relation r
+        JOIN project_info p ON p.id = r.project_id
+        WHERE r.user_id = #{userId} AND p.tenant_id = #{tenantId}
+    </select>
+
     <select id="countByUserIdAndProjectId" resultType="long">
         SELECT COUNT(*) FROM user_project_relation WHERE user_id = #{userId} AND project_id = #{projectId}
     </select>
 
+    <select id="countByUserIdAndProjectIdAndTenant" resultType="long">
+        SELECT COUNT(*) FROM user_project_relation r
+        JOIN project_info p ON p.id = r.project_id
+        WHERE r.user_id = #{userId} AND r.project_id = #{projectId} AND p.tenant_id = #{tenantId}
+    </select>
+
     <select id="findAllProjectIds" resultType="long">
         SELECT id FROM project_info
+    </select>
+
+    <select id="findAllProjectIdsByTenant" resultType="long">
+        SELECT id FROM project_info WHERE tenant_id = #{tenantId}
     </select>
 
     <insert id="insert">

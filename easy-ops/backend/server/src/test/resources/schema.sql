@@ -1,3 +1,12 @@
+CREATE TABLE IF NOT EXISTS tenant (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(64) UNIQUE NOT NULL,
+    name VARCHAR(200) NOT NULL,
+    status INT DEFAULT 1,
+    create_time BIGINT,
+    update_time BIGINT
+);
+
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100),
@@ -8,8 +17,20 @@ CREATE TABLE IF NOT EXISTS sys_user (
     update_time BIGINT
 );
 
+CREATE TABLE IF NOT EXISTS tenant_user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    role VARCHAR(50) DEFAULT 'OPERATOR',
+    status INT DEFAULT 1,
+    create_time BIGINT,
+    update_time BIGINT,
+    UNIQUE (tenant_id, user_id)
+);
+
 CREATE TABLE IF NOT EXISTS node_info (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 0,
     name VARCHAR(100),
     ip VARCHAR(50),
     port INT,
@@ -30,6 +51,7 @@ CREATE TABLE IF NOT EXISTS node_info (
 
 CREATE TABLE IF NOT EXISTS project_info (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    tenant_id BIGINT DEFAULT 0,
     name VARCHAR(100),
     node_ids VARCHAR(500),
     start_script VARCHAR(500),
