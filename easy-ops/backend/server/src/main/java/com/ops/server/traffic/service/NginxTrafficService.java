@@ -2,8 +2,11 @@ package com.ops.server.traffic.service;
 
 import com.ops.common.model.NginxAccessSourceModel;
 import com.ops.common.model.NginxMinuteStatModel;
+import com.ops.common.model.NginxSourceWhitelistModel;
 import com.ops.server.mapper.NginxAccessSourceMapper;
+import com.ops.server.mapper.NginxDimensionStatMapper;
 import com.ops.server.mapper.NginxMinuteStatMapper;
+import com.ops.server.mapper.NginxSourceWhitelistMapper;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.traffic.service.NginxTrafficAlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +33,12 @@ public class NginxTrafficService {
     private NginxAccessSourceMapper sourceMapper;
     @Autowired
     private NginxMinuteStatMapper minuteStatMapper;
+    @Autowired
+    private NginxDimensionStatMapper dimensionMapper;
+    @Autowired
+    private NginxSourceWhitelistMapper whitelistMapper;
+    @Autowired
+    private NginxSourceWhitelistService whitelistService;
     @Autowired
     private NodeMapper nodeMapper;
     @Autowired
@@ -75,6 +84,7 @@ public class NginxTrafficService {
     public void deleteSource(Long id) {
         if (id != null) {
             nginxTrafficAlarmService.deleteBySourceId(id);
+            whitelistService.deleteBySource(id);
         }
         sourceMapper.deleteById(id);
     }
@@ -97,24 +107,63 @@ public class NginxTrafficService {
 
     @Transactional
     @SuppressWarnings("unchecked")
-    public void ingest(Long nodeId, Long sourceId, List<Map<String, Object>> rows) {
+    public void ingest(Long nodeId, Long sourceId, Map<String, Object> payload) {
         NginxAccessSourceModel source = sourceMapper.findById(sourceId);
         if (source == null || !nodeId.equals(source.getNodeId())) {
             throw new IllegalArgumentException("日志源不存在或不属于当前节点");
         }
-        if (rows == null || rows.isEmpty()) {
-            sourceMapper.updateReportStatus(sourceId, System.currentTimeMillis(), null);
+        long now = System.currentTimeMillis();
+        List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.get("rows");
+        List<Map<String, Object>> uaRows = (List<Map<String, Object>>) payload.get("uaRows");
+        List<Map<String, Object>> refererRows = (List<Map<String, Object>>) payload.get("refererRows");
+        List<Map<String, Object>> samples = (List<Map<String, Object>>) payload.get("samples");
+        if ((rows == null || rows.isEmpty())
+                && (uaRows == null || uaRows.isEmpty())
+                && (refererRows == null || refererRows.isEmpty())
+                && (samples == null || samples.isEmpty())) {
+            sourceMapper.updateReportStatus(sourceId, now, null);
             return;
         }
-        long now = System.currentTimeMillis();
-        for (Map<String, Object> row : rows) {
-            NginxMinuteStatModel stat = toStatModel(sourceId, row, now);
-            if (stat == null) {
-                continue;
+        if (rows != null) {
+            for (Map<String, Object> row : rows) {
+                NginxMinuteStatModel stat = toStatModel(sourceId, row, now);
+                if (stat == null) {
+                    continue;
+                }
+                if (minuteStatMapper.incrementStat(stat) == 0) {
+                    minuteStatMapper.insertStat(stat);
+                }
             }
-            if (minuteStatMapper.incrementStat(stat) == 0) {
-                minuteStatMapper.insertStat(stat);
+        }
+        if (uaRows != null && !uaRows.isEmpty()) {
+            List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(uaRows.size());
+            for (Map<String, Object> r : uaRows) {
+                Map<String, Object> m = new HashMap<String, Object>(r);
+                m.put("sourceId", sourceId);
+                m.put("createTime", now);
+                batch.add(m);
             }
+            dimensionMapper.batchInsertUa(batch);
+        }
+        if (refererRows != null && !refererRows.isEmpty()) {
+            List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(refererRows.size());
+            for (Map<String, Object> r : refererRows) {
+                Map<String, Object> m = new HashMap<String, Object>(r);
+                m.put("sourceId", sourceId);
+                m.put("createTime", now);
+                batch.add(m);
+            }
+            dimensionMapper.batchInsertReferer(batch);
+        }
+        if (samples != null && !samples.isEmpty()) {
+            List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(samples.size());
+            for (Map<String, Object> s : samples) {
+                Map<String, Object> m = new HashMap<String, Object>(s);
+                m.put("sourceId", sourceId);
+                m.put("createTime", now);
+                batch.add(m);
+            }
+            dimensionMapper.batchInsertSample(batch);
         }
         sourceMapper.updateReportStatus(sourceId, now, null);
     }
@@ -123,60 +172,85 @@ public class NginxTrafficService {
                                         Long startTime, Long endTime) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
-        Map<String, Object> data = normalizeMap(minuteStatMapper.overview(ids, range.start, range.end));
+        Map<String, Object> wl = buildWhitelistParam(ids);
+        Map<String, Object> data = normalizeMap(minuteStatMapper.overview(ids, range.start, range.end, wl));
         data.put("startTime", range.start);
         data.put("endTime", range.end);
         data.put("retainDays", minuteRetainDays);
         long total = longVal(data, "totalRequests");
         data.put("totalRequests", total);
-        long windowMs = range.end - range.start;
-        double avgRps = windowMs <= 0 ? 0 : total * 1000D / windowMs;
+        long windowMsComputed = range.end - range.start;
+        long sumRt = longVal(data, "sumRequestTimeMs");
+        long maxRt = longVal(data, "maxRequestTimeMs");
+        data.put("avgRequestTimeMs", total <= 0 ? 0 : Math.round(sumRt * 100D / total) / 100D);
+        data.put("maxRequestTimeMs", maxRt);
+        long sumUp = longVal(data, "sumUpstreamTimeMs");
+        data.put("avgUpstreamTimeMs", total <= 0 ? 0 : Math.round(sumUp * 100D / total) / 100D);
+        data.put("sumUpstreamConnectTimeMs", longVal(data, "sumUpstreamConnectTimeMs"));
+        data.put("sumUpstreamHeaderTimeMs", longVal(data, "sumUpstreamHeaderTimeMs"));
+        data.put("upstream5xx", longVal(data, "upstream5xx"));
+        long cacheHit = longVal(data, "cacheHit");
+        long cacheMiss = longVal(data, "cacheMiss");
+        long cacheTotal = cacheHit + cacheMiss;
+        data.put("cacheHit", cacheHit);
+        data.put("cacheMiss", cacheMiss);
+        data.put("cacheHitRate",
+                cacheTotal <= 0 ? 0 : Math.round(cacheHit * 10000D / cacheTotal) / 100D);
+        long sumBody = longVal(data, "sumBodyBytes");
+        data.put("sumBodyBytes", sumBody);
+        data.put("bandwidthMbps",
+                windowMsComputed <= 0 ? 0 : Math.round(sumBody * 8D / (windowMsComputed / 1000D) / 1000000D * 100D) / 100D);
+        data.put("httpsCount", longVal(data, "httpsCount"));
+        double avgRps = windowMsComputed <= 0 ? 0 : total * 1000D / windowMsComputed;
         data.put("avgRps", Math.round(avgRps * 100D) / 100D);
         data.put("qps", Math.round(avgRps * 100D) / 100D);
-        data.put("peakRps", computePeakRps(ids, range));
+        data.put("peakRps", computePeakRps(ids, range, wl));
         return data;
     }
 
     public Map<String, Object> rankIp(List<Long> sourceIds, Integer windowMinutes,
                                       Long startTime, Long endTime, String keyword,
-                                      Integer page, Integer pageSize) {
+                                      Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countByIp(ids, range.start, range.end, keyword);
+        int total = minuteStatMapper.countByIp(ids, range.start, range.end, keyword, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumByIp(ids, range.start, range.end, keyword, offset, ps));
+                minuteStatMapper.sumByIp(ids, range.start, range.end, keyword, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
     public Map<String, Object> rankUri(List<Long> sourceIds, Integer windowMinutes,
                                        Long startTime, Long endTime, String keyword,
-                                       Integer page, Integer pageSize) {
+                                       Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countByUri(ids, range.start, range.end, keyword);
+        int total = minuteStatMapper.countByUri(ids, range.start, range.end, keyword, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumByUri(ids, range.start, range.end, keyword, offset, ps));
+                minuteStatMapper.sumByUri(ids, range.start, range.end, keyword, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
     public Map<String, Object> rankIpUri(List<Long> sourceIds, Integer windowMinutes,
                                            Long startTime, Long endTime,
                                            String clientIp, String uri,
-                                           Integer page, Integer pageSize) {
+                                           Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countByIpUri(ids, range.start, range.end, clientIp, uri);
+        int total = minuteStatMapper.countByIpUri(ids, range.start, range.end, clientIp, uri, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumByIpUri(ids, range.start, range.end, clientIp, uri, offset, ps));
+                minuteStatMapper.sumByIpUri(ids, range.start, range.end, clientIp, uri, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
@@ -185,20 +259,130 @@ public class NginxTrafficService {
                                         Integer page, Integer pageSize) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countSlowByUri(ids, range.start, range.end);
+        int total = minuteStatMapper.countSlowByUri(ids, range.start, range.end, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumSlowByUri(ids, range.start, range.end, offset, ps));
+                minuteStatMapper.sumSlowByUri(ids, range.start, range.end, offset, ps, wl));
         return buildRankPage(list, total, p, ps, "slowCount", "desc");
+    }
+
+    public Map<String, Object> rankMethod(List<Long> sourceIds, Integer windowMinutes,
+                                          Long startTime, Long endTime,
+                                          Integer page, Integer pageSize, String sort) {
+        TimeRange range = resolveRange(windowMinutes, startTime, endTime);
+        List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
+        int p = normalizePage(page);
+        int ps = normalizePageSize(pageSize);
+        int offset = (p - 1) * ps;
+        int total = minuteStatMapper.countByMethod(ids, range.start, range.end, wl);
+        List<Map<String, Object>> list = normalizeRows(
+                minuteStatMapper.sumByMethod(ids, range.start, range.end, offset, ps, sort, wl));
+        return buildRankPage(list, total, p, ps, "requestCount", "desc");
+    }
+
+    public Map<String, Object> rankUa(List<Long> sourceIds, Integer windowMinutes,
+                                      Long startTime, Long endTime, String keyword,
+                                      Integer page, Integer pageSize) {
+        TimeRange range = resolveRange(windowMinutes, startTime, endTime);
+        List<Long> ids = resolveSourceIds(sourceIds);
+        int p = normalizePage(page);
+        int ps = normalizePageSize(pageSize);
+        int offset = (p - 1) * ps;
+        int total = dimensionMapper.countByUa(ids, range.start, range.end, keyword);
+        List<Map<String, Object>> list = normalizeRows(
+                dimensionMapper.sumByUa(ids, range.start, range.end, keyword, offset, ps));
+        return buildRankPage(list, total, p, ps, "requestCount", "desc");
+    }
+
+    public Map<String, Object> rankReferer(List<Long> sourceIds, Integer windowMinutes,
+                                           Long startTime, Long endTime, String keyword,
+                                           Integer page, Integer pageSize) {
+        TimeRange range = resolveRange(windowMinutes, startTime, endTime);
+        List<Long> ids = resolveSourceIds(sourceIds);
+        int p = normalizePage(page);
+        int ps = normalizePageSize(pageSize);
+        int offset = (p - 1) * ps;
+        int total = dimensionMapper.countByReferer(ids, range.start, range.end, keyword);
+        List<Map<String, Object>> list = normalizeRows(
+                dimensionMapper.sumByReferer(ids, range.start, range.end, keyword, offset, ps));
+        return buildRankPage(list, total, p, ps, "requestCount", "desc");
+    }
+
+    /**
+     * 原始样本：瞬时耗时 + 百分位(p50/p95/p99)。
+     */
+    public Map<String, Object> latencySamples(List<Long> sourceIds, Integer windowMinutes,
+                                              Long startTime, Long endTime,
+                                              Integer page, Integer pageSize) {
+        TimeRange range = resolveRange(windowMinutes, startTime, endTime);
+        List<Long> ids = resolveSourceIds(sourceIds);
+        int p = normalizePage(page);
+        int ps = normalizePageSize(pageSize);
+        int offset = (p - 1) * ps;
+        List<Map<String, Object>> list = normalizeRows(
+                dimensionMapper.listSamples(ids, range.start, range.end, offset, ps));
+        // 计算百分位需要全量样本（不限页），再返回当前页明细
+        List<Map<String, Object>> all = normalizeRows(
+                dimensionMapper.listSamples(ids, range.start, range.end, 0, 100000));
+        double[] pct = computePercentiles(all);
+        Map<String, Object> result = new HashMap<String, Object>();
+        result.put("list", list);
+        result.put("total", all.size());
+        result.put("p50", pct[0]);
+        result.put("p95", pct[1]);
+        result.put("p99", pct[2]);
+        result.put("max", pct[3]);
+        result.put("page", p);
+        result.put("pageSize", ps);
+        return result;
+    }
+
+    private double[] computePercentiles(List<Map<String, Object>> samples) {
+        List<Long> vals = new ArrayList<Long>();
+        double max = 0;
+        for (Map<String, Object> s : samples) {
+            long rt = longVal(s, "requestTimeMs");
+            vals.add(rt);
+            if (rt > max) {
+                max = rt;
+            }
+        }
+        double[] r = new double[]{0, 0, 0, max};
+        if (vals.isEmpty()) {
+            return r;
+        }
+        Collections.sort(vals);
+        int n = vals.size();
+        r[0] = percentile(vals, 50);
+        r[1] = percentile(vals, 95);
+        r[2] = percentile(vals, 99);
+        return r;
+    }
+
+    private double percentile(List<Long> sorted, int p) {
+        if (sorted.isEmpty()) {
+            return 0;
+        }
+        double idx = (p / 100D) * (sorted.size() - 1);
+        int lo = (int) Math.floor(idx);
+        int hi = (int) Math.ceil(idx);
+        if (lo == hi) {
+            return sorted.get(lo);
+        }
+        double w = idx - lo;
+        return sorted.get(lo) * (1 - w) + sorted.get(hi) * w;
     }
 
     public Map<String, Object> trend(List<Long> sourceIds, Integer windowMinutes,
                                      Long startTime, Long endTime) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
+        Map<String, Object> wl = buildWhitelistParam(resolveSourceIds(sourceIds));
         List<Map<String, Object>> rows = normalizeRows(
-                minuteStatMapper.trendByMinute(resolveSourceIds(sourceIds), range.start, range.end));
+                minuteStatMapper.trendByMinute(resolveSourceIds(sourceIds), range.start, range.end, wl));
         boolean byDay = range.end - range.start > 48L * 3600 * 1000;
         if (byDay) {
             rows = aggregateTrendByDay(rows);
@@ -213,7 +397,9 @@ public class NginxTrafficService {
 
     public Map<String, Object> todayOverview(List<Long> sourceIds) {
         TimeRange range = buildRange(null, true);
-        Map<String, Object> data = normalizeMap(minuteStatMapper.overview(resolveSourceIds(sourceIds), range.start, range.end));
+        List<Long> ids = resolveSourceIds(sourceIds);
+        Map<String, Object> wl = buildWhitelistParam(ids);
+        Map<String, Object> data = normalizeMap(minuteStatMapper.overview(ids, range.start, range.end, wl));
         data.put("totalRequests", longVal(data, "totalRequests"));
         return data;
     }
@@ -234,6 +420,32 @@ public class NginxTrafficService {
             }
         }
         return all.isEmpty() ? Collections.singletonList(-1L) : all;
+    }
+
+    /**
+     * 构建查询侧白名单 SQL 参数：把启用的白名单按维度拆成 exact / like 两类。
+     * like 列表已带好通配符（前缀用 v%，包含用 %v%），供 MyBatis 直接拼 NOT LIKE。
+     * 空白名单返回空 map，Mapper 端据此跳过过滤条件。
+     */
+    private Map<String, Object> buildWhitelistParam(List<Long> sourceIds) {
+        Map<String, Object> param = new HashMap<String, Object>();
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            param.put("hasWhitelist", false);
+            return param;
+        }
+        List<NginxSourceWhitelistModel> ws = whitelistMapper.findEnabledBySourceIds(sourceIds);
+        WhitelistFilter filter = WhitelistFilter.from(ws);
+        if (filter.isEmpty()) {
+            param.put("hasWhitelist", false);
+            return param;
+        }
+        param.put("hasWhitelist", true);
+        param.put("ipExact", filter.ipExact);
+        param.put("ipLike", filter.getIpLike());
+        param.put("uriExact", filter.uriExact);
+        param.put("uriLike", filter.getUriLike());
+        param.put("methodExact", filter.methodExact);
+        return param;
     }
 
     private int normalizePage(Integer page) {
@@ -260,8 +472,8 @@ public class NginxTrafficService {
     }
 
     /** 区间内分钟桶峰值 RPS（请求/秒） */
-    private double computePeakRps(List<Long> sourceIds, TimeRange range) {
-        List<Map<String, Object>> rows = minuteStatMapper.trendByMinute(sourceIds, range.start, range.end);
+    private double computePeakRps(List<Long> sourceIds, TimeRange range, Map<String, Object> wl) {
+        List<Map<String, Object>> rows = minuteStatMapper.trendByMinute(sourceIds, range.start, range.end, wl);
         double peak = 0D;
         if (rows == null) {
             return 0D;
@@ -365,9 +577,16 @@ public class NginxTrafficService {
         stat.setSumRequestTimeMs(toLong(row.get("sumRequestTimeMs")));
         stat.setMaxRequestTimeMs(toLong(row.get("maxRequestTimeMs")));
         stat.setSumUpstreamTimeMs(toLong(row.get("sumUpstreamTimeMs")));
+        stat.setSumUpstreamConnectTimeMs(toLong(row.get("sumUpstreamConnectTimeMs")));
+        stat.setSumUpstreamHeaderTimeMs(toLong(row.get("sumUpstreamHeaderTimeMs")));
+        stat.setSumBodyBytes(toLong(row.get("sumBodyBytes")));
         stat.setStatus2xx(toInt(row.get("status2xx")));
         stat.setStatus4xx(toInt(row.get("status4xx")));
         stat.setStatus5xx(toInt(row.get("status5xx")));
+        stat.setUpstream5xx(toInt(row.get("upstream5xx")));
+        stat.setCacheHitCount(toInt(row.get("cacheHit")));
+        stat.setCacheMissCount(toInt(row.get("cacheMiss")));
+        stat.setHttpsCount(toInt(row.get("httpsCount")));
         stat.setSlowCount(toInt(row.get("slowCount")));
         stat.setCreateTime(now);
         return stat;

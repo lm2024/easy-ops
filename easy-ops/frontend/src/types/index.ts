@@ -309,6 +309,22 @@ export interface NginxTrafficAlarmRuleModel {
   updateTime?: number
 }
 
+/** Nginx 日志源白名单（查询侧排除，不参与统计/告警） */
+export interface NginxSourceWhitelistModel {
+  id?: number
+  sourceId?: number
+  /** 维度：IP / URI / URI_PREFIX / METHOD */
+  type: string
+  /** 匹配值（METHOD 为 GET/POST...） */
+  matchValue: string
+  /** 匹配方式：EXACT / PREFIX / CONTAINS */
+  matchMode?: string
+  enabled?: number
+  remark?: string
+  createTime?: number
+  updateTime?: number
+}
+
 /** 日志文件信息 */
 export interface LogFileInfo {
   name: string

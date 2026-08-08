@@ -133,29 +133,25 @@
             {{ record.collectTime ? fmtTime(record.collectTime) : '-' }}
           </template>
           <template v-if="column.key === 'action'">
-            <a-dropdown :trigger="['click']">
-              <a-button type="text" size="small" style="padding: 0 8px">
-                <MoreOutlined style="font-size: 18px" />
-              </a-button>
-              <template #overlay>
-                <a-menu @click="(info: any) => handleMenuAction(info.key, record)">
-                  <a-menu-item key="start">
-                    <PlayCircleOutlined style="color: #52c41a; margin-right: 6px" />启动
-                  </a-menu-item>
-                  <a-menu-item key="stop">
-                    <PauseCircleOutlined style="color: #ff4d4f; margin-right: 6px" />停止
-                  </a-menu-item>
-                  <a-menu-item key="restart">
-                    <ReloadOutlined style="color: #faad14; margin-right: 6px" />重启
-                  </a-menu-item>
-                  <a-menu-divider />
-                  <a-menu-item key="probe">
-                    <DashboardOutlined style="margin-right: 6px" />探针
-                  </a-menu-item>
-                  <a-menu-item key="detail">详情</a-menu-item>
-                </a-menu>
+            <a-space size="small" wrap>
+              <template v-if="record.processStatus !== 'N/A'">
+                <a-button type="link" size="small" style="color:#52c41a;padding:0" @click="handleMenuAction('start', record)">
+                  <PlayCircleOutlined /> 启动
+                </a-button>
+                <a-button type="link" size="small" danger style="padding:0" @click="handleMenuAction('stop', record)">
+                  <PauseCircleOutlined /> 停止
+                </a-button>
+                <a-button type="link" size="small" style="color:#faad14;padding:0" @click="handleMenuAction('restart', record)">
+                  <ReloadOutlined /> 重启
+                </a-button>
               </template>
-            </a-dropdown>
+              <a-button type="link" size="small" style="padding:0" @click="handleMenuAction('probe', record)">
+                <DashboardOutlined /> 探针
+              </a-button>
+              <a-button type="link" size="small" style="padding:0" @click="handleMenuAction('detail', record)">
+                详情
+              </a-button>
+            </a-space>
           </template>
         </template>
       </a-table>
@@ -194,7 +190,7 @@ import {
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode, getProcessTaskStatus } from '../api/project'
-import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, MoreOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
 import InstanceDetailDrawer from '../components/InstanceDetailDrawer.vue'
 import dayjs from 'dayjs'
 
@@ -243,8 +239,8 @@ function rowClassName(record: any) {
   return changedRowKeys.value.has(record.rowKey) ? 'row-flash' : ''
 }
 
-// nodeId → [{ node, rowKey }] 索引，支持同节点多项目（用数组避免覆盖）
-const nodeIndexMap = new Map<number, Array<{ node: any; rowKey: string }>>()
+// nodeId → [{ node, rowKey, projectId }] 索引，支持同节点多项目（用数组避免覆盖）
+const nodeIndexMap = new Map<number, Array<{ node: any; rowKey: string; projectId: number }>>()
 function rebuildNodeIndex() {
   nodeIndexMap.clear()
   for (const project of dashboard.value?.projects || []) {
@@ -252,7 +248,8 @@ function rebuildNodeIndex() {
       const list = nodeIndexMap.get(node.nodeId) || []
       list.push({
         node,
-        rowKey: project.projectId + '-' + node.nodeId
+        rowKey: project.projectId + '-' + node.nodeId,
+        projectId: project.projectId
       })
       nodeIndexMap.set(node.nodeId, list)
     }
@@ -300,7 +297,7 @@ const columns = [
   { title: '内存', key: 'memory', width: 120 },
   { title: '响应', key: 'responseMs', width: 100, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.responseMs || 0) - (b.responseMs || 0), defaultSortOrder: 'descend' as const },
   { title: '采集时间', key: 'collectTime', width: 150 },
-  { title: '操作', key: 'action', width: 70, fixed: 'right' as const }
+  { title: '操作', key: 'action', width: 250, fixed: 'right' as const }
 ]
 
 // 实时数据直接 patch 到 dashboard 源数据，无需独立缓存层
@@ -510,15 +507,19 @@ function mergeDashboard(newData: any) {
       const key = p.projectId + '_' + n.nodeId
       const old = oldNodeMap.get(key)
       if (old) {
-        // 状态字段用 DB（权威源）
-        old.processStatus = n.processStatus
-        old.processPid = n.processPid
-        old.healthStatus = n.healthStatus
-        old.healthDetail = n.healthDetail
+        // 结构字段（名称/jar）始终以 DB 为准
         old.nodeName = n.nodeName
         old.jarName = n.jarName
-        // 实时指标：DB 更新时才更新
+        // 状态字段 + 实时指标统一受 collectTime 保护：
+        // DB 快照比 WS 实时 patch 新时才覆盖，避免 HTTP 轮询把刚更新的 PID/状态反咬回去。
+        // （WS 推送时会把 collectTime 置为 Date.now()，故 DB 的旧快照不会覆盖实时值）
         if (n.collectTime && (!old.collectTime || n.collectTime > old.collectTime)) {
+          // 应用级状态（PID/进程/健康）— 现在 WS 也实时推，DB 仅作权威兜底
+          old.processStatus = n.processStatus
+          old.processPid = n.processPid
+          old.healthStatus = n.healthStatus
+          old.healthDetail = n.healthDetail
+          // 主机级实时指标
           old.hostCpuPercent = n.hostCpuPercent
           old.cpuPercent = n.cpuPercent
           old.hostMemoryPercent = n.hostMemoryPercent
@@ -530,9 +531,9 @@ function mergeDashboard(newData: any) {
           old.collectTime = n.collectTime
         }
         if (n.xmxMb !== undefined) old.xmxMb = n.xmxMb
-        // 堆内存始终用 DB 值（WS 不推送应用的堆）
-        old.heapUsedMb = n.heapUsedMb
-        old.heapMaxMb = n.heapMaxMb
+        // 堆内存始终以 DB 值为准（WS 不推送应用的堆，这里用 DB 覆盖 WS 未更新的堆）
+        if (n.heapUsedMb !== undefined) old.heapUsedMb = n.heapUsedMb
+        if (n.heapMaxMb !== undefined) old.heapMaxMb = n.heapMaxMb
       }
       // 新节点直接追加（首次出现）
     }
@@ -681,8 +682,8 @@ function connectWebSocket() {
         const data = JSON.parse(event.data)
         if (data.type === 'monitor_update' && data.nodeId && data.metrics) {
           wsMsgCount.value++
-          // 实时更新监控指标（只更新 CPU/内存等高频数据，不覆盖状态字段）
-          updateMonitorData(data.nodeId, data.metrics)
+          // 实时更新监控指标 + 应用级状态（CPU/内存/PID/健康 同走一条 WS 线路）
+          updateMonitorData(data.nodeId, data.metrics, data.computed)
           lastUpdateTime.value = Date.now()
         }
       } catch (e) {
@@ -720,14 +721,14 @@ function disconnectWebSocket() {
   }
 }
 
-function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
+function updateMonitorData(nodeId: number, metrics: Record<string, any>, computed?: Record<string, any>) {
   const entries = nodeIndexMap.get(nodeId)
   if (!entries || entries.length === 0) { console.warn('[Monitor] Node not found:', nodeId); return }
 
   for (const entry of entries) {
-    const { node, rowKey } = entry
+    const { node, rowKey, projectId } = entry
 
-    // 检测数据是否有变化
+    // 检测主机级指标是否有变化
     let changed = false
     if (node.hostCpuPercent !== metrics.cpuUsagePercent) changed = true
     if (node.hostMemoryPercent !== metrics.memoryUsagePercent) changed = true
@@ -738,9 +739,22 @@ function updateMonitorData(nodeId: number, metrics: Record<string, any>) {
     node.diskUsagePercent = metrics.diskUsagePercent
     node.collectTime = Date.now()
 
-    // 注意：不通过 WS 推送应用级数据（processPid/heapUsedMb/processStatus 等）
-    // 同节点多项目时 WS computed 只含最后一个项目的数据，会串到其他项目
-    // 应用级状态统一走 HTTP 轮询（fetchDashboard → mergeDashboard）
+    // 应用级状态（PID/进程/健康/堆）— 按 projectId 精确匹配 WS computed，
+    // 与 CPU/内存走同一条 WS 线路，避免「等很久 PID 不变、手动刷新才变」的诡异现象
+    const pc = computed ? computed[String(projectId)] || computed[projectId] : null
+    if (pc) {
+      node.processStatus = pc.processStatus
+      node.processPid = pc.processPid
+      node.healthStatus = pc.healthStatus
+      node.healthDetail = pc.healthDetail
+      if (pc.cpuPercent !== undefined) node.cpuPercent = pc.cpuPercent
+      if (pc.memoryMb !== undefined) node.memoryMb = pc.memoryMb
+      if (pc.heapUsedMb !== undefined) node.heapUsedMb = pc.heapUsedMb
+      if (pc.heapMaxMb !== undefined) node.heapMaxMb = pc.heapMaxMb
+      if (pc.xmxMb !== undefined) node.xmxMb = pc.xmxMb
+      if (pc.responseMs !== undefined) node.responseMs = pc.responseMs
+      changed = true
+    }
 
     // 数据变化时触发行闪烁
     if (changed) flashRow(rowKey)
@@ -819,16 +833,18 @@ function scheduleNextRefresh() {
   if (autoRefreshTimer) { clearTimeout(autoRefreshTimer); autoRefreshTimer = null }
   autoRefreshTimer = setTimeout(async () => {
     try {
-      // 智能跳过：WS 连接正常且近期收到过消息时，延长轮询间隔
-      if (wsConnected.value && wsMsgCount.value > 0) {
-        console.log('[AutoRefresh] WS 正常，跳过本轮轮询')
-        nextRefreshSec.value = collectIntervalSec.value
-      } else {
-        console.log('[AutoRefresh] 执行轮询刷新，WS状态:', wsConnected.value, 'WS消息数:', wsMsgCount.value)
-        await fetchDashboard()
-        lastCollectTime.value = Date.now()
-        nextRefreshSec.value = collectIntervalSec.value
-      }
+      // 说明：WS 只推实时指标 + 应用级状态(computed)，但不会推送「列表结构变化」
+      // （如新部署项目、节点上下线、筛选结果变化等）。因此 HTTP 轮询必须保留，
+      // 作为列表级数据的最终兜底，不能因为 WS 健康就彻底跳过，否则状态字段/列表
+      // 会出现「等很久不更新、手动刷新才变」的诡异现象。
+      // WS 正常时适当延长间隔（降低 DB 压力），WS 断开时按原间隔保持强一致。
+      const interval = (wsConnected.value && wsMsgCount.value > 0)
+        ? Math.max(collectIntervalSec.value, 30)
+        : collectIntervalSec.value
+      console.log('[AutoRefresh] 执行轮询刷新，WS状态:', wsConnected.value, 'WS消息数:', wsMsgCount.value, '间隔:', interval)
+      await fetchDashboard()
+      lastCollectTime.value = Date.now()
+      nextRefreshSec.value = interval
     } catch (e) {
       console.error('[AutoRefresh] 刷新失败:', e)
       nextRefreshSec.value = collectIntervalSec.value
