@@ -5,6 +5,7 @@ import com.ops.common.model.NginxMinuteStatModel;
 import com.ops.common.model.NginxSourceWhitelistModel;
 import com.ops.server.mapper.NginxAccessSourceMapper;
 import com.ops.server.mapper.NginxDimensionStatMapper;
+import com.ops.server.mapper.NginxIpStatMapper;
 import com.ops.server.mapper.NginxMinuteStatMapper;
 import com.ops.server.mapper.NginxSourceWhitelistMapper;
 import com.ops.server.mapper.NodeMapper;
@@ -13,6 +14,7 @@ import com.ops.server.traffic.service.NginxTrafficAlarmService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
@@ -36,6 +38,8 @@ public class NginxTrafficService {
     private NginxMinuteStatMapper minuteStatMapper;
     @Autowired
     private NginxDimensionStatMapper dimensionMapper;
+    @Autowired
+    private NginxIpStatMapper ipStatMapper;
     @Autowired
     private NginxSourceWhitelistMapper whitelistMapper;
     @Autowired
@@ -75,7 +79,7 @@ public class NginxTrafficService {
             model.setSlowThresholdSec(3D);
         }
         if (model.getMaxKeysPerMinute() == null) {
-            model.setMaxKeysPerMinute(2000);
+            model.setMaxKeysPerMinute(500);
         }
         if (model.getId() == null) {
             model.setCreateTime(now);
@@ -123,10 +127,12 @@ public class NginxTrafficService {
         }
         long now = System.currentTimeMillis();
         List<Map<String, Object>> rows = (List<Map<String, Object>>) payload.get("rows");
+        List<Map<String, Object>> ipRows = (List<Map<String, Object>>) payload.get("ipRows");
         List<Map<String, Object>> uaRows = (List<Map<String, Object>>) payload.get("uaRows");
         List<Map<String, Object>> refererRows = (List<Map<String, Object>>) payload.get("refererRows");
         List<Map<String, Object>> samples = (List<Map<String, Object>>) payload.get("samples");
         if ((rows == null || rows.isEmpty())
+                && (ipRows == null || ipRows.isEmpty())
                 && (uaRows == null || uaRows.isEmpty())
                 && (refererRows == null || refererRows.isEmpty())
                 && (samples == null || samples.isEmpty())) {
@@ -140,29 +146,54 @@ public class NginxTrafficService {
                     continue;
                 }
                 if (minuteStatMapper.incrementStat(stat) == 0) {
-                    minuteStatMapper.insertStat(stat);
+                    try {
+                        minuteStatMapper.insertStat(stat);
+                    } catch (DuplicateKeyException e) {
+                        // 并发 insert 冲突，回退到 increment 补偿
+                        minuteStatMapper.incrementStat(stat);
+                    }
                 }
             }
         }
-        if (uaRows != null && !uaRows.isEmpty()) {
-            List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(uaRows.size());
-            for (Map<String, Object> r : uaRows) {
-                Map<String, Object> m = new HashMap<String, Object>(r);
-                m.put("sourceId", sourceId);
-                m.put("createTime", now);
-                batch.add(m);
+        // IP 维度统计（独立表，支持 rank/ip 查询）
+        if (ipRows != null && !ipRows.isEmpty()) {
+            for (Map<String, Object> r : ipRows) {
+                String ip = r.get("clientIp") == null ? "" : String.valueOf(r.get("clientIp"));
+                int rc = toInt(r.get("requestCount"));
+                long srt = toLong(r.get("sumRequestTimeMs")) == null ? 0L : toLong(r.get("sumRequestTimeMs"));
+                long mrt = toLong(r.get("maxRequestTimeMs")) == null ? 0L : toLong(r.get("maxRequestTimeMs"));
+                int sc = toInt(r.get("slowCount"));
+                int s5 = toInt(r.get("status5xx"));
+                Long bt = toLong(r.get("bucketTime"));
+                if (bt == null) continue;
+                safeUpsertIp(sourceId, bt, ip, rc, srt, mrt, sc, s5, r, now);
             }
-            dimensionMapper.batchInsertUa(batch);
+        }
+        if (uaRows != null && !uaRows.isEmpty()) {
+            for (Map<String, Object> r : uaRows) {
+                String userAgent = r.get("userAgent") == null ? "" : String.valueOf(r.get("userAgent"));
+                int rc = toInt(r.get("requestCount"));
+                long srt = toLong(r.get("sumRequestTimeMs")) == null ? 0L : toLong(r.get("sumRequestTimeMs"));
+                long mrt = toLong(r.get("maxRequestTimeMs")) == null ? 0L : toLong(r.get("maxRequestTimeMs"));
+                int sc = toInt(r.get("slowCount"));
+                int s5 = toInt(r.get("status5xx"));
+                Long bt = toLong(r.get("bucketTime"));
+                if (bt == null) continue;
+                safeUpsertUa(sourceId, bt, userAgent, rc, srt, mrt, sc, s5, r, now);
+            }
         }
         if (refererRows != null && !refererRows.isEmpty()) {
-            List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(refererRows.size());
             for (Map<String, Object> r : refererRows) {
-                Map<String, Object> m = new HashMap<String, Object>(r);
-                m.put("sourceId", sourceId);
-                m.put("createTime", now);
-                batch.add(m);
+                String ref = r.get("referer") == null ? "" : String.valueOf(r.get("referer"));
+                int rc = toInt(r.get("requestCount"));
+                long srt = toLong(r.get("sumRequestTimeMs")) == null ? 0L : toLong(r.get("sumRequestTimeMs"));
+                long mrt = toLong(r.get("maxRequestTimeMs")) == null ? 0L : toLong(r.get("maxRequestTimeMs"));
+                int sc = toInt(r.get("slowCount"));
+                int s5 = toInt(r.get("status5xx"));
+                Long bt = toLong(r.get("bucketTime"));
+                if (bt == null) continue;
+                safeUpsertReferer(sourceId, bt, ref, rc, srt, mrt, sc, s5, r, now);
             }
-            dimensionMapper.batchInsertReferer(batch);
         }
         if (samples != null && !samples.isEmpty()) {
             List<Map<String, Object>> batch = new ArrayList<Map<String, Object>>(samples.size());
@@ -226,9 +257,9 @@ public class NginxTrafficService {
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countByIp(ids, range.start, range.end, keyword, wl);
+        int total = ipStatMapper.countByIp(ids, range.start, range.end, keyword, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumByIp(ids, range.start, range.end, keyword, offset, ps, sort, wl));
+                ipStatMapper.sumByIp(ids, range.start, range.end, keyword, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
@@ -257,9 +288,9 @@ public class NginxTrafficService {
         int p = normalizePage(page);
         int ps = normalizePageSize(pageSize);
         int offset = (p - 1) * ps;
-        int total = minuteStatMapper.countByIpUri(ids, range.start, range.end, clientIp, uri, wl);
+        int total = ipStatMapper.countByIpUri(ids, range.start, range.end, clientIp, uri, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumByIpUri(ids, range.start, range.end, clientIp, uri, offset, ps, sort, wl));
+                ipStatMapper.sumByIpUri(ids, range.start, range.end, clientIp, uri, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
@@ -655,6 +686,69 @@ public class NginxTrafficService {
     private int toInt(Object value) {
         Long l = toLong(value);
         return l == null ? 0 : l.intValue();
+    }
+
+    /** 截断字符串到数据库列长度限制（VARCHAR(500)），避免唯一索引截断导致数据错乱 */
+    private String truncate(String s) {
+        if (s == null) return "";
+        return s.length() > 480 ? s.substring(0, 480) : s;
+    }
+
+    /**
+     * 安全 UPSERT：先尝试 UPDATE，失败则 INSERT，唯一索引冲突时回退到 UPDATE。
+     * 解决并发上报导致的 DuplicateKeyException 事务回滚问题。
+     */
+    private void safeUpsertIp(Long sourceId, Long bucketTime, String clientIp,
+                              int rc, long srt, long mrt, int sc, int s5,
+                              Map<String, Object> row, long now) {
+        if (ipStatMapper.incrementIpStat(sourceId, bucketTime, clientIp, rc, srt, mrt, sc, s5) > 0) {
+            return;
+        }
+        Map<String, Object> m = new HashMap<String, Object>(row);
+        m.put("sourceId", sourceId);
+        m.put("createTime", now);
+        try {
+            ipStatMapper.insertIpStat(m);
+        } catch (DuplicateKeyException e) {
+            // 并发 insert 冲突，回退到 increment 补偿
+            ipStatMapper.incrementIpStat(sourceId, bucketTime, clientIp, rc, srt, mrt, sc, s5);
+        }
+    }
+
+    private void safeUpsertUa(Long sourceId, Long bucketTime, String userAgent,
+                              int rc, long srt, long mrt, int sc, int s5,
+                              Map<String, Object> row, long now) {
+        String uaTrunc = truncate(userAgent);
+        if (dimensionMapper.incrementUaStat(sourceId, bucketTime, uaTrunc, rc, srt, mrt, sc, s5) > 0) {
+            return;
+        }
+        Map<String, Object> m = new HashMap<String, Object>(row);
+        m.put("sourceId", sourceId);
+        m.put("createTime", now);
+        m.put("userAgent", uaTrunc);
+        try {
+            dimensionMapper.insertUaStat(m);
+        } catch (DuplicateKeyException e) {
+            dimensionMapper.incrementUaStat(sourceId, bucketTime, uaTrunc, rc, srt, mrt, sc, s5);
+        }
+    }
+
+    private void safeUpsertReferer(Long sourceId, Long bucketTime, String referer,
+                                   int rc, long srt, long mrt, int sc, int s5,
+                                   Map<String, Object> row, long now) {
+        String refTrunc = truncate(referer);
+        if (dimensionMapper.incrementRefererStat(sourceId, bucketTime, refTrunc, rc, srt, mrt, sc, s5) > 0) {
+            return;
+        }
+        Map<String, Object> m = new HashMap<String, Object>(row);
+        m.put("sourceId", sourceId);
+        m.put("createTime", now);
+        m.put("referer", refTrunc);
+        try {
+            dimensionMapper.insertRefererStat(m);
+        } catch (DuplicateKeyException e) {
+            dimensionMapper.incrementRefererStat(sourceId, bucketTime, refTrunc, rc, srt, mrt, sc, s5);
+        }
     }
 
     private long longVal(Map<String, Object> map, String key) {

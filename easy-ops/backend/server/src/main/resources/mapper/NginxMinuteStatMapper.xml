@@ -74,6 +74,12 @@
         DELETE FROM nginx_minute_stat WHERE bucket_time &lt; #{cutoff}
     </delete>
 
+    <delete id="deleteBeforeBucketTimeBatch">
+        DELETE FROM nginx_minute_stat WHERE id IN (
+            SELECT id FROM nginx_minute_stat WHERE bucket_time &lt; #{cutoff} LIMIT #{batchSize}
+        )
+    </delete>
+
     <select id="sumByIp" resultType="java.util.HashMap">
         SELECT client_ip AS "clientIp",
                SUM(request_count) AS "requestCount",
