@@ -67,8 +67,8 @@
         <div style="font-size:13px;line-height:2">
           <div><b>部署目录</b>：<code>{{ project.deployDir || '未配置（将使用全局默认路径）' }}</code></div>
           <div v-if="project.projectType === 'frontend'">
-            <div><b>解压后目录名</b>：<code>{{ project.frontendDirName || '未配置' }}</code></div>
-            <div><b>最终路径</b>：<code>{{ project.deployDir || '{deployDir}' }}/{{ project.frontendDirName || '{dirName}' }}/</code></div>
+            <div><b>解压后目录名</b>：<code>{{ project.frontendDirName || '未配置（解压到部署目录本身）' }}</code></div>
+            <div><b>最终路径</b>：<code>{{ (project.deployDir || '{deployDir}') + (project.frontendDirName ? '/' + project.frontendDirName : '') }}/</code></div>
           </div>
           <div v-else style="margin-top:6px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
             <div style="font-weight:500;margin-bottom:4px">以此为基础自动派生的路径：</div>

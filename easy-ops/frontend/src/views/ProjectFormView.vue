@@ -138,9 +138,9 @@
         </a-col>
         <a-col :span="8" v-if="formState.projectType === 'frontend'">
           <a-form-item label="解压后目录名" name="frontendDirName">
-            <a-input v-model:value="formState.frontendDirName" placeholder="例如: dist 或 web" />
+            <a-input v-model:value="formState.frontendDirName" placeholder="留空则解压到部署目录本身" />
             <template #extra>
-              <span style="color: #888">必填。zip 解压后在部署目录下创建的子目录名</span>
+              <span style="color: #888">选填。填写时 zip 解压到「部署目录/该目录名」；留空则直接解压到部署目录本身（适合 Nginx 根目录）</span>
             </template>
           </a-form-item>
         </a-col>
@@ -376,7 +376,7 @@ const guideData = computed(() => {
     return [
       { key: '1', field: '应用名称', required: '✅ 必填', note: '前端应用的显示名称' },
       { key: '2', field: '部署目录', required: '✅ 必填', note: '应用在服务器上的根目录' },
-      { key: '3', field: '解压后目录名', required: '✅ 必填', note: 'zip 解压后在部署目录下创建的子目录名，如 dist、web' },
+      { key: '3', field: '解压后目录名', required: '⬜ 选填', note: '填写则解压到「部署目录/子目录名」；留空则直接解压到部署目录本身' },
       { key: '4', field: '部署节点', required: '✅ 必填', note: '选择要部署到的服务器节点' }
     ]
   }
@@ -398,7 +398,7 @@ const guideData = computed(() => {
       name: '✅ 必填',
       jarName: '⬜ 不用填',
       deployDir: '✅ 必填',
-      frontendDir: '✅ 填写（Nginx 目录）',
+      frontendDir: '⬜ 可留空（默认解压到部署目录本身）',
       scripts: '⬜ 不用填',
       nodeIds: '✅ 必填',
       note: '上传 dist.zip 时自动解压到前端目录，供 Nginx 等使用'
@@ -409,7 +409,7 @@ const guideData = computed(() => {
       name: '✅ 必填',
       jarName: '✅ 必填',
       deployDir: '✅ 必填',
-      frontendDir: '✅ 填写',
+      frontendDir: '⬜ 可留空',
       scripts: '✅ 填写',
       nodeIds: '✅ 必填',
       note: '上传 jar 走后端部署流程，上传 dist.zip 走前端部署流程'
@@ -443,7 +443,7 @@ const rules = computed<Record<string, Rule[]>>(() => ({
   projectType: [{ required: true, message: '请选择应用类型' }],
   jarName: isFrontend.value ? [] : [{ required: true, message: '请输入 Jar 包名（如 demo-test-app.jar）' }],
   deployDir: [{ required: true, message: '请输入部署目录' }],
-  frontendDirName: isFrontend.value ? [{ required: true, message: '请输入解压后目录名' }] : [],
+  frontendDirName: [],
   nodeIds: [{ required: true, type: 'array', min: 1, message: '请至少选择一个部署节点' }],
   startScript: isFrontend.value ? [] : [{
     validator: (_rule: Rule, value: string) => {

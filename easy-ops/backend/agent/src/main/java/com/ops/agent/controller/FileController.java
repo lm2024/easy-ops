@@ -390,11 +390,18 @@ public class FileController {
     }
 
     private void unzipFile(File zipFile, File destDir) throws IOException {
+        String destCanonical = destDir.getCanonicalPath();
         java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile));
         java.util.zip.ZipEntry entry;
         byte[] buffer = new byte[8192];
         while ((entry = zis.getNextEntry()) != null) {
             File outFile = new File(destDir, entry.getName());
+            // zip-slip 防护：拒绝 ../ 或绝对路径逃逸出目标目录
+            String outCanonical = outFile.getCanonicalPath();
+            if (!outCanonical.equals(destCanonical) && !outCanonical.startsWith(destCanonical + File.separator)) {
+                zis.close();
+                throw new IOException("zip 条目路径非法（越出目标目录）: " + entry.getName());
+            }
             if (entry.isDirectory()) {
                 outFile.mkdirs();
             } else {
