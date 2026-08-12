@@ -185,16 +185,16 @@ const upgradeStatus = ref<AgentUpgradeStatus | null>(null)
 let statusTimer: ReturnType<typeof setInterval> | null = null
 
 const packageColumns = [
-  { title: '版本', dataIndex: 'version', key: 'version' },
-  { title: '大小', dataIndex: 'size', key: 'size', width: 100 },
-  { title: '上传时间', dataIndex: 'lastModified', key: 'lastModified', width: 180 },
+  { title: '版本', dataIndex: 'version', key: 'version', sorter: (a: any, b: any) => (a.version || '').localeCompare(b.version || '') },
+  { title: '大小', dataIndex: 'size', key: 'size', width: 100, sorter: (a: any, b: any) => (a.size || 0) - (b.size || 0) },
+  { title: '上传时间', dataIndex: 'lastModified', key: 'lastModified', width: 180, sorter: (a: any, b: any) => (a.lastModified || 0) - (b.lastModified || 0) },
   { title: '操作', key: 'action', width: 80 }
 ]
 
 const nodeColumns = [
-  { title: '节点名称', dataIndex: 'name', key: 'name' },
-  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 120 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 70 },
+  { title: '节点名称', dataIndex: 'name', key: 'name', sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
+  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 120, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 70, sorter: (a: any, b: any) => (a.status || '').localeCompare(b.status || '') },
   { title: '当前版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 110 }
 ]
 

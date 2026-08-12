@@ -63,9 +63,9 @@ const users = ref<UserModel[]>([])
 const loading = ref(false)
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-  { title: '用户名', dataIndex: 'username', key: 'username' },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 80, sorter: (a: any, b: any) => a.id - b.id },
+  { title: '用户名', dataIndex: 'username', key: 'username', sorter: (a: any, b: any) => (a.username || '').localeCompare(b.username || '') },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100, sorter: (a: any, b: any) => (a.status || 0) - (b.status || 0) },
   { title: '操作', key: 'action', width: 160, fixed: 'right' as const }
 ]
 

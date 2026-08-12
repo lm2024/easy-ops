@@ -142,6 +142,8 @@
             <a-radio-button value="">请求数</a-radio-button>
             <a-radio-button value="avg">平均耗时</a-radio-button>
             <a-radio-button value="max">最慢单次</a-radio-button>
+            <a-radio-button value="slow">慢请求数</a-radio-button>
+            <a-radio-button value="5xx">5xx错误</a-radio-button>
           </a-radio-group>
         </a-space>
         <a-row :gutter="16">
@@ -206,7 +208,7 @@
           </a-col>
           <a-col :span="12">
             <a-card size="small">
-              <template #title>客户端 UA <span class="card-subtitle">· 按请求数 ↓</span></template>
+              <template #title>客户端 UA <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
               <template #extra>
                 <a-input-search v-model:value="uaKeyword" placeholder="筛选 UA" style="width: 180px" @search="onRankUaSearch" />
               </template>
@@ -222,7 +224,7 @@
           </a-col>
         </a-row>
         <a-card size="small" style="margin-top: 16px">
-          <template #title>来源 Referer <span class="card-subtitle">· 按请求数 ↓</span></template>
+          <template #title>来源 Referer <span class="card-subtitle">· 按{{ sortLabel }} ↓</span></template>
           <template #extra>
             <a-input-search v-model:value="refererKeyword" placeholder="筛选 Referer" style="width: 200px" @search="onRankRefererSearch" />
           </template>
@@ -241,8 +243,17 @@
       <div v-if="activeTab === 'slow'" class="tab-body">
         <div class="overview-hint">
           慢请求阈值：<strong>{{ slowThresholdHint }}</strong> 秒（在「日志源配置」编辑日志源修改）
-          · 仅展示耗时 ≥ 阈值的接口 · 排序：慢请求次数 ↓
+          · 仅展示耗时 ≥ 阈值的接口
         </div>
+        <a-space style="margin-bottom: 12px">
+          <span class="card-subtitle">排序维度：</span>
+          <a-radio-group v-model:value="slowSort" @change="onSlowSortChange">
+            <a-radio-button value="">慢请求数</a-radio-button>
+            <a-radio-button value="avg">平均耗时</a-radio-button>
+            <a-radio-button value="max">最慢单次</a-radio-button>
+            <a-radio-button value="count">总请求数</a-radio-button>
+          </a-radio-group>
+        </a-space>
         <a-table
           :columns="slowColumns"
           :data-source="rankSlow"
@@ -523,6 +534,7 @@ const rankSlowTotal = ref(0)
 const rankMethodTotal = ref(0)
 
 const rankSort = ref('')
+const slowSort = ref('')
 const sortLabel = computed(() => (rankSort.value === 'avg' ? '平均耗时' : rankSort.value === 'max' ? '最慢单次' : '请求数'))
 const uaKeyword = ref('')
 const refererKeyword = ref('')
@@ -961,7 +973,7 @@ async function loadRankSlow() {
   const res = await getNginxRankSlow(timeQuery.value, {
     page: rankSlowPage.value,
     pageSize: rankPageSize.value
-  })
+  }, slowSort.value || undefined)
   rankSlow.value = res.data?.list || []
   rankSlowTotal.value = res.data?.total || 0
 }
@@ -979,7 +991,7 @@ async function loadRankUa() {
   const res = await getNginxRankUa(timeQuery.value, uaKeyword.value || undefined, {
     page: rankUaPage.value,
     pageSize: rankPageSize.value
-  })
+  }, rankSort.value || undefined)
   rankUa.value = res.data?.list || []
   rankUaTotal.value = res.data?.total || 0
 }
@@ -988,7 +1000,7 @@ async function loadRankReferer() {
   const res = await getNginxRankReferer(timeQuery.value, refererKeyword.value || undefined, {
     page: rankRefererPage.value,
     pageSize: rankPageSize.value
-  })
+  }, rankSort.value || undefined)
   rankReferer.value = res.data?.list || []
   rankRefererTotal.value = res.data?.total || 0
 }
@@ -1018,7 +1030,12 @@ function onRankRefererSearch() {
 
 function onRankSortChange() {
   resetRankPages()
-  Promise.all([loadRankIp(), loadRankUri(), loadRankIpUri(), loadRankMethod()])
+  Promise.all([loadRankIp(), loadRankUri(), loadRankIpUri(), loadRankMethod(), loadRankUa(), loadRankReferer()])
+}
+
+function onSlowSortChange() {
+  rankSlowPage.value = 1
+  loadRankSlow()
 }
 
 const rankIpPagination = buildRankPagination(rankIpPage, rankIpTotal, loadRankIp)

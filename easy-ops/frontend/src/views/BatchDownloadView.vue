@@ -52,8 +52,8 @@ const selectedNode = ref('')
 const downloading = ref(false)
 
 const columns = [
-  { title: '文件路径', dataIndex: 'path', key: 'path' },
-  { title: '类型', dataIndex: 'type', key: 'type', width: 120 },
+  { title: '文件路径', dataIndex: 'path', key: 'path', sorter: (a: any, b: any) => (a.path || '').localeCompare(b.path || '') },
+  { title: '类型', dataIndex: 'type', key: 'type', width: 120, sorter: (a: any, b: any) => (a.type || '').localeCompare(b.type || '') },
   { title: '选择', key: 'action', width: 80 }
 ]
 

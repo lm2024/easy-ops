@@ -158,8 +158,9 @@ public class NginxTrafficController {
                               @RequestParam(required = false) Long startTime,
                               @RequestParam(required = false) Long endTime,
                               @RequestParam(defaultValue = "1") Integer page,
-                              @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankSlow(sourceIds, windowMinutes, startTime, endTime, page, pageSize));
+                              @RequestParam(defaultValue = "20") Integer pageSize,
+                              @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankSlow(sourceIds, windowMinutes, startTime, endTime, page, pageSize, sort));
     }
 
     @GetMapping("/rank/method")
@@ -180,8 +181,9 @@ public class NginxTrafficController {
                             @RequestParam(required = false) Long endTime,
                             @RequestParam(required = false) String keyword,
                             @RequestParam(defaultValue = "1") Integer page,
-                            @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankUa(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+                            @RequestParam(defaultValue = "20") Integer pageSize,
+                            @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankUa(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
     @GetMapping("/rank/referer")
@@ -191,8 +193,9 @@ public class NginxTrafficController {
                                  @RequestParam(required = false) Long endTime,
                                  @RequestParam(required = false) String keyword,
                                  @RequestParam(defaultValue = "1") Integer page,
-                                 @RequestParam(defaultValue = "20") Integer pageSize) {
-        return Result.success(nginxTrafficService.rankReferer(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize));
+                                 @RequestParam(defaultValue = "20") Integer pageSize,
+                                 @RequestParam(required = false) String sort) {
+        return Result.success(nginxTrafficService.rankReferer(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
     @GetMapping("/latency/samples")
