@@ -223,12 +223,22 @@ public class DeployController {
         String agentFilePath = agentFileDir + "/" + jarName;
         boolean isFrontendDeploy = "frontend".equalsIgnoreCase(version.getPackageType())
                 || jarName.toLowerCase().endsWith(".zip");
-        // 前端部署目录：优先使用 frontendDirName 拼接
+        // 前端部署目录：
+        // 1) frontendDirName 非空（且非 "/"、"."）→ {deployDir}/{frontendDirName}（部署目录下子目录）
+        // 2) frontendDeployDir 非空 → 自定义绝对路径（如 Nginx 静态目录）
+        // 3) 都为空（或 frontendDirName 为 "/"、"."）→ deployDir 本身（dist 直接解压到部署目录根，适配 Nginx 根目录场景）
+        String dirName = project.getFrontendDirName() != null ? project.getFrontendDirName().trim() : "";
         String frontendDir;
-        if (isFrontendDeploy && project.getFrontendDirName() != null && !project.getFrontendDirName().isEmpty()) {
-            frontendDir = deployDir + "/" + project.getFrontendDirName();
+        if (isFrontendDeploy && !dirName.isEmpty() && !dirName.equals("/") && !dirName.equals(".")) {
+            // 仅允许单段目录名：拒绝路径分隔符与 ".."，防止拼接出部署目录的上级路径被备份/清空
+            if (dirName.contains("/") || dirName.contains("\\") || dirName.equals("..") || dirName.startsWith("..")) {
+                throw new RuntimeException("解压后目录名非法（不能包含路径分隔符或 '..'）: " + dirName);
+            }
+            frontendDir = deployDir + "/" + dirName;
+        } else if (project.getFrontendDeployDir() != null && !project.getFrontendDeployDir().trim().isEmpty()) {
+            frontendDir = project.getFrontendDeployDir().trim();
         } else {
-            frontendDir = globalPathProperties.resolveFrontendDir(deployDir, project.getFrontendDeployDir());
+            frontendDir = deployDir;
         }
 
         String startScript = project.getStartScript();
@@ -275,45 +285,99 @@ public class DeployController {
 
             try {
                 if (isFrontendDeploy) {
-                    // 前端部署：清理旧目录 + 传输 + 解压
-                    pushStep(deployId, nid, node.getName(), "running", "clean", nodeIdx, "正在清理旧目录...");
-                    // 通过 shell 清理目标目录内容
-                    String cleanUrl = agentBase + "/api/shell/exec";
-                    Map<String, String> cleanReq = new HashMap<>();
-                    cleanReq.put("command", "rm -rf " + frontendDir + "/* && mkdir -p " + frontendDir);
-                    try {
-                        restTemplate.postForEntity(cleanUrl, cleanReq, String.class);
-                    } catch (Exception e) {
-                        // 清理失败不影响部署（目录可能不存在）
-                        nodeLog.append("⚠️ 清理旧目录: ").append(e.getMessage()).append("\n");
+                    // ===== 前端部署：校验 → 备份 → 清空 → 传输 → 解压，失败自动还原 =====
+                    String cleanTarget = frontendDir != null ? frontendDir.trim() : "";
+                    if (cleanTarget.isEmpty() || cleanTarget.equals("/")) {
+                        throw new RuntimeException("前端部署目录非法（空或根目录 /），已终止部署，避免误删文件");
                     }
-
-                    pushStep(deployId, nid, node.getName(), "running", "transfer", nodeIdx, "正在传输前端包...");
+                    // 去掉尾部斜杠：否则备份目录 {dir}.backup-{ts} 会建在目标目录内部，清空时被连带删除
+                    while (cleanTarget.length() > 1 && cleanTarget.endsWith("/")) {
+                        cleanTarget = cleanTarget.substring(0, cleanTarget.length() - 1);
+                    }
+                    if (cleanTarget.equals("/")) {
+                        throw new RuntimeException("前端部署目录非法（根目录 /），已终止部署，避免误删文件");
+                    }
+                    // 前端部署目录不得落在版本包存档目录内：deployDir 未配置时 frontendDir 会退化到版本目录，
+                    // 备份/清空会删掉 versions 版本包；deployDir 已配置时也不允许直接指向 {deployDir}/versions
+                    String versionStore = (project.getDeployDir() != null && !project.getDeployDir().trim().isEmpty())
+                            ? deployDir + "/versions" : agentFileDir;
+                    if (cleanTarget.equals(versionStore) || cleanTarget.startsWith(versionStore + "/")) {
+                        throw new RuntimeException("前端部署目录非法（落在版本包存档目录内），请先为前端项目配置部署目录 deployDir");
+                    }
+                    // 系统关键目录黑名单：防止 frontendDeployDir 误配成系统目录导致大面积删除
+                    String[] forbiddenRoots = {"/usr", "/etc", "/var", "/home", "/root", "/opt", "/bin", "/sbin",
+                            "/lib", "/tmp", "/proc", "/sys", "/dev", "/app", "/app/data"};
+                    for (String f : forbiddenRoots) {
+                        if (cleanTarget.equals(f)) {
+                            throw new RuntimeException("前端部署目录非法（禁止使用系统目录: " + f + "），已终止部署");
+                        }
+                    }
+                    String cleanUrl = agentBase + "/api/shell/exec";
+                    String backupPath = null;
+                    boolean backupDone = false;
+                    // 前置校验：版本包必须已存在，避免清空线上目录后才发现包不存在
                     String jarPath = findJarPath(projectId, version);
                     java.io.File zipFile = new java.io.File(jarPath);
                     if (!zipFile.exists()) throw new RuntimeException("前端包不存在: " + jarPath);
 
-                    String uploadUrl = agentBase + "/api/file/receive";
-                    HttpHeaders fileHeaders = new HttpHeaders();
-                    fileHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
-                    MultiValueMap<String, Object> fileBody = new LinkedMultiValueMap<>();
-                    fileBody.add("file", new FileSystemResource(zipFile));
-                    fileBody.add("projectId", String.valueOf(projectId));
-                    fileBody.add("versionName", version.getVersion());
-                    fileBody.add("targetDir", agentFileDir);
-                    restTemplate.postForEntity(uploadUrl, new HttpEntity<>(fileBody, fileHeaders), String.class);
+                    try {
+                        pushStep(deployId, nid, node.getName(), "running", "clean", nodeIdx, "正在备份并清理旧目录...");
+                        // 1) 备份现役目录到同级 {dir}.backup-{时间戳}（目录非空时才备份）。
+                        //    备份失败必须终止部署（不再清空），否则旧文件将无法还原
+                        backupPath = cleanTarget + ".backup-" + System.currentTimeMillis();
+                        String backupCmd = "if [ -d '" + shellQuote(cleanTarget) + "' ] && [ -n \"$(ls -A '" + shellQuote(cleanTarget) + "' 2>/dev/null)\" ]; then "
+                                + "mkdir -p '" + shellQuote(backupPath) + "' && cp -a '" + shellQuote(cleanTarget) + "/.' '" + shellQuote(backupPath) + "/'; fi";
+                        execShellChecked(cleanUrl, backupCmd);
+                        backupDone = true;
 
-                    String unzipUrl = agentBase + "/api/file/unzip";
-                    Map<String, String> unzipReq = new HashMap<>();
-                    unzipReq.put("zipPath", agentFileDir + "/" + jarName);
-                    unzipReq.put("targetDir", frontendDir);
-                    restTemplate.postForEntity(unzipUrl, unzipReq, String.class);
+                        // 2) 清空目标目录（连同隐藏文件）再重建
+                        String cleanCmd = "rm -rf '" + shellQuote(cleanTarget) + "' && mkdir -p '" + shellQuote(cleanTarget) + "'";
+                        execShellChecked(cleanUrl, cleanCmd);
 
-                    nodeLog.append("✅ 前端部署成功: ").append(frontendDir).append("\n");
-                    deployRecordMapper.updateStatus(deploy.getId(), DeployStatus.SUCCESS.getCode(), nodeLog.toString(), System.currentTimeMillis());
-                    pushStep(deployId, nid, node.getName(), "done", "transfer", nodeIdx, "✅ 前端部署成功");
-                    nodeResult.put("success", true);
-                    nodeResult.put("message", "前端部署成功");
+                        pushStep(deployId, nid, node.getName(), "running", "transfer", nodeIdx, "正在传输前端包...");
+                        String uploadUrl = agentBase + "/api/file/receive";
+                        HttpHeaders fileHeaders = new HttpHeaders();
+                        fileHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+                        MultiValueMap<String, Object> fileBody = new LinkedMultiValueMap<>();
+                        fileBody.add("file", new FileSystemResource(zipFile));
+                        fileBody.add("projectId", String.valueOf(projectId));
+                        fileBody.add("versionName", version.getVersion());
+                        fileBody.add("targetDir", agentFileDir);
+                        checkAgentResult("传输前端包", restTemplate.postForEntity(uploadUrl, new HttpEntity<>(fileBody, fileHeaders), String.class));
+
+                        String unzipUrl = agentBase + "/api/file/unzip";
+                        Map<String, String> unzipReq = new HashMap<>();
+                        unzipReq.put("zipPath", agentFileDir + "/" + jarName);
+                        unzipReq.put("targetDir", cleanTarget);
+                        checkAgentResult("解压前端包", restTemplate.postForEntity(unzipUrl, unzipReq, String.class));
+
+                        // 3) 部署成功：保留最近 3 份备份，清理更旧的
+                        String pruneCmd = "ls -dt '" + shellQuote(cleanTarget + ".backup-") + "'*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf";
+                        try {
+                            execShellChecked(cleanUrl, pruneCmd);
+                        } catch (Exception e) {
+                            nodeLog.append("⚠️ 清理旧备份: ").append(e.getMessage()).append("\n");
+                        }
+                        backupPath = null; // 部署成功，无需还原
+
+                        nodeLog.append("✅ 前端部署成功: ").append(cleanTarget).append("\n");
+                        deployRecordMapper.updateStatus(deploy.getId(), DeployStatus.SUCCESS.getCode(), nodeLog.toString(), System.currentTimeMillis());
+                        pushStep(deployId, nid, node.getName(), "done", "transfer", nodeIdx, "✅ 前端部署成功");
+                        nodeResult.put("success", true);
+                        nodeResult.put("message", "前端部署成功");
+                    } catch (Exception e) {
+                        // 失败自动还原备份（仅当备份已成功且部署未完成时）
+                        if (backupDone && backupPath != null) {
+                            try {
+                                String restoreCmd = "if [ -d '" + shellQuote(backupPath) + "' ]; then rm -rf '" + shellQuote(cleanTarget) + "' && mkdir -p '" + shellQuote(cleanTarget) + "' && cp -a '" + shellQuote(backupPath) + "/.' '" + shellQuote(cleanTarget) + "/' && rm -rf '" + shellQuote(backupPath) + "'; fi";
+                                execShellChecked(cleanUrl, restoreCmd);
+                                nodeLog.append("♻️ 部署失败，已自动还原备份\n");
+                            } catch (Exception restoreEx) {
+                                nodeLog.append("❌ 还原备份失败: ").append(restoreEx.getMessage()).append("（备份保留在: ").append(backupPath).append("，可手动恢复）\n");
+                            }
+                        }
+                        throw e;
+                    }
                 } else {
                     // 后端部署：4 个步骤
 
@@ -765,5 +829,65 @@ public class DeployController {
         deployRecordMapper.updateStatus(id, 3, "⛔ 已手动取消定时部署", System.currentTimeMillis());
         auditLog.log("DEPLOY", "CANCEL", "取消定时部署: 记录ID=" + id);
         return Result.success();
+    }
+
+    /** shell 单引号转义，防止路径中的单引号破坏命令结构 */
+    private static String shellQuote(String s) {
+        return s.replace("'", "'\\''");
+    }
+
+    /**
+     * 执行 Agent shell 命令并校验执行结果（exitCode==0）。
+     * Agent 的 /api/shell/exec 无论成败都返回 HTTP 200，真实成败在 body data.exitCode，
+     * 必须解析，否则备份/清空/还原失败会被静默当作成功。
+     */
+    @SuppressWarnings("unchecked")
+    private void execShellChecked(String shellUrl, String command) {
+        Map<String, String> req = new HashMap<>();
+        req.put("command", command);
+        Map<String, Object> resp;
+        try {
+            resp = restTemplate.postForObject(shellUrl, req, Map.class);
+        } catch (Exception e) {
+            throw new RuntimeException("命令执行失败（连接异常）: " + command + " → " + e.getMessage());
+        }
+        if (resp == null) {
+            throw new RuntimeException("命令执行失败（无响应）: " + command);
+        }
+        int exitCode = -1;
+        String stdout = "";
+        if (resp.get("data") instanceof Map) {
+            Map<String, Object> dm = (Map<String, Object>) resp.get("data");
+            if (dm.get("exitCode") != null) {
+                try {
+                    exitCode = Integer.parseInt(dm.get("exitCode").toString());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            stdout = dm.get("stdout") != null ? dm.get("stdout").toString() : "";
+        }
+        if (exitCode != 0) {
+            String detail = stdout.length() > 500 ? stdout.substring(0, 500) + "..." : stdout;
+            throw new RuntimeException("命令执行失败(exit=" + exitCode + "): " + command + "\n" + detail);
+        }
+    }
+
+    /**
+     * 校验 Agent 业务接口响应（Result.code == 200）。
+     * Agent 处理失败时 HTTP 状态码仍是 200，错误在 body 的 code/message，必须检查，
+     * 否则解压/上传失败会被误判为部署成功。
+     */
+    @SuppressWarnings("unchecked")
+    private void checkAgentResult(String action, ResponseEntity<String> resp) {
+        if (!resp.getStatusCode().is2xxSuccessful()) {
+            throw new RuntimeException(action + " 失败（HTTP " + resp.getStatusCodeValue() + "）");
+        }
+        String body = resp.getBody();
+        if (body != null && !body.trim().isEmpty()) {
+            Map<String, Object> m = JSON.parseObject(body, Map.class);
+            if (m != null && m.get("code") != null && !String.valueOf(m.get("code")).equals("200")) {
+                throw new RuntimeException(action + " 失败: " + (m.get("message") != null ? m.get("message") : body));
+            }
+        }
     }
 }
