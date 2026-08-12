@@ -86,12 +86,12 @@ const pagination = ref({
 })
 
 const columns = [
-  { title: '用户', dataIndex: 'username', key: 'username', width: 100 },
-  { title: '模块', dataIndex: 'module', key: 'module', width: 90 },
-  { title: '操作', dataIndex: 'action', key: 'action', width: 110 },
-  { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true },
-  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130 },
-  { title: '时间', dataIndex: 'createTime', key: 'createTime', width: 160 }
+  { title: '用户', dataIndex: 'username', key: 'username', width: 100, sorter: (a: any, b: any) => (a.username || '').localeCompare(b.username || '') },
+  { title: '模块', dataIndex: 'module', key: 'module', width: 90, sorter: (a: any, b: any) => (a.module || '').localeCompare(b.module || '') },
+  { title: '操作', dataIndex: 'action', key: 'action', width: 110, sorter: (a: any, b: any) => (a.action || '').localeCompare(b.action || '') },
+  { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true, sorter: (a: any, b: any) => (a.content || '').localeCompare(b.content || '') },
+  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
+  { title: '时间', dataIndex: 'createTime', key: 'createTime', width: 160, sorter: (a: any, b: any) => (a.createTime || 0) - (b.createTime || 0) }
 ]
 
 function moduleColor(m: string): string {

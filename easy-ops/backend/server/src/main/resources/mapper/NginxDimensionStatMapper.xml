@@ -95,7 +95,13 @@
               AND user_agent LIKE '%' || #{keyword} || '%'
           </if>
         GROUP BY user_agent
-        ORDER BY SUM(request_count) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
+            <when test="sort != null and sort == '5xx'">ORDER BY SUM(status_5xx) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
@@ -129,7 +135,13 @@
               AND referer LIKE '%' || #{keyword} || '%'
           </if>
         GROUP BY referer
-        ORDER BY SUM(request_count) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
+            <when test="sort != null and sort == '5xx'">ORDER BY SUM(status_5xx) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 

@@ -179,22 +179,22 @@ const editingPolicy = reactive<SelfHealPolicyModel>({
 })
 
 const policyColumns = [
-  { title: '项目ID', dataIndex: 'projectId', key: 'projectId', width: 80 },
-  { title: '状态', key: 'enabled', width: 80 },
-  { title: '最大重试', dataIndex: 'maxRetries', key: 'maxRetries', width: 90 },
-  { title: '重试间隔(s)', dataIndex: 'retryIntervalSec', key: 'retryIntervalSec', width: 110 },
-  { title: '检查间隔(s)', dataIndex: 'checkIntervalSec', key: 'checkIntervalSec', width: 110 },
-  { title: '熔断', key: 'circuitBreaker', width: 80 },
+  { title: '项目ID', dataIndex: 'projectId', key: 'projectId', width: 80, sorter: (a: any, b: any) => (a.projectId || 0) - (b.projectId || 0) },
+  { title: '状态', key: 'enabled', width: 80, sorter: (a: any, b: any) => (a.enabled ? 1 : 0) - (b.enabled ? 1 : 0) },
+  { title: '最大重试', dataIndex: 'maxRetries', key: 'maxRetries', width: 90, sorter: (a: any, b: any) => (a.maxRetries || 0) - (b.maxRetries || 0) },
+  { title: '重试间隔(s)', dataIndex: 'retryIntervalSec', key: 'retryIntervalSec', width: 110, sorter: (a: any, b: any) => (a.retryIntervalSec || 0) - (b.retryIntervalSec || 0) },
+  { title: '检查间隔(s)', dataIndex: 'checkIntervalSec', key: 'checkIntervalSec', width: 110, sorter: (a: any, b: any) => (a.checkIntervalSec || 0) - (b.checkIntervalSec || 0) },
+  { title: '熔断', key: 'circuitBreaker', width: 80, sorter: (a: any, b: any) => (a.circuitBreaker ? 1 : 0) - (b.circuitBreaker ? 1 : 0) },
   { title: '操作', key: 'action', width: 160 }
 ]
 
 const eventColumns = [
-  { title: '应用', key: 'projectName', width: 120 },
-  { title: '节点', key: 'nodeName', width: 140 },
-  { title: '事件类型', key: 'eventType', width: 110 },
-  { title: '重试次数', key: 'retryInfo', width: 120 },
-  { title: '详情', key: 'detail', ellipsis: true },
-  { title: '时间', key: 'createTime', width: 150 }
+  { title: '应用', key: 'projectName', width: 120, sorter: (a: any, b: any) => (a.projectName || '').localeCompare(b.projectName || '') },
+  { title: '节点', key: 'nodeName', width: 140, sorter: (a: any, b: any) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: '事件类型', key: 'eventType', width: 110, sorter: (a: any, b: any) => (a.eventType || '').localeCompare(b.eventType || '') },
+  { title: '重试次数', key: 'retryInfo', width: 120, sorter: (a: any, b: any) => (a.retryCount || 0) - (b.retryCount || 0) },
+  { title: '详情', key: 'detail', ellipsis: true, sorter: (a: any, b: any) => (a.detail || '').localeCompare(b.detail || '') },
+  { title: '时间', key: 'createTime', width: 150, sorter: (a: any, b: any) => (a.createTime || 0) - (b.createTime || 0) }
 ]
 
 function formatTime(ts?: number) {

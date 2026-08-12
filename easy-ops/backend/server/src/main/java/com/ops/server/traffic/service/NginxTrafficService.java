@@ -296,7 +296,7 @@ public class NginxTrafficService {
 
     public Map<String, Object> rankSlow(List<Long> sourceIds, Integer windowMinutes,
                                         Long startTime, Long endTime,
-                                        Integer page, Integer pageSize) {
+                                        Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
         Map<String, Object> wl = buildWhitelistParam(ids);
@@ -305,7 +305,7 @@ public class NginxTrafficService {
         int offset = (p - 1) * ps;
         int total = minuteStatMapper.countSlowByUri(ids, range.start, range.end, wl);
         List<Map<String, Object>> list = normalizeRows(
-                minuteStatMapper.sumSlowByUri(ids, range.start, range.end, offset, ps, wl));
+                minuteStatMapper.sumSlowByUri(ids, range.start, range.end, offset, ps, sort, wl));
         return buildRankPage(list, total, p, ps, "slowCount", "desc");
     }
 
@@ -326,7 +326,7 @@ public class NginxTrafficService {
 
     public Map<String, Object> rankUa(List<Long> sourceIds, Integer windowMinutes,
                                       Long startTime, Long endTime, String keyword,
-                                      Integer page, Integer pageSize) {
+                                      Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
         int p = normalizePage(page);
@@ -334,13 +334,13 @@ public class NginxTrafficService {
         int offset = (p - 1) * ps;
         int total = dimensionMapper.countByUa(ids, range.start, range.end, keyword);
         List<Map<String, Object>> list = normalizeRows(
-                dimensionMapper.sumByUa(ids, range.start, range.end, keyword, offset, ps));
+                dimensionMapper.sumByUa(ids, range.start, range.end, keyword, offset, ps, sort));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 
     public Map<String, Object> rankReferer(List<Long> sourceIds, Integer windowMinutes,
                                            Long startTime, Long endTime, String keyword,
-                                           Integer page, Integer pageSize) {
+                                           Integer page, Integer pageSize, String sort) {
         TimeRange range = resolveRange(windowMinutes, startTime, endTime);
         List<Long> ids = resolveSourceIds(sourceIds);
         int p = normalizePage(page);
@@ -348,7 +348,7 @@ public class NginxTrafficService {
         int offset = (p - 1) * ps;
         int total = dimensionMapper.countByReferer(ids, range.start, range.end, keyword);
         List<Map<String, Object>> list = normalizeRows(
-                dimensionMapper.sumByReferer(ids, range.start, range.end, keyword, offset, ps));
+                dimensionMapper.sumByReferer(ids, range.start, range.end, keyword, offset, ps, sort));
         return buildRankPage(list, total, p, ps, "requestCount", "desc");
     }
 

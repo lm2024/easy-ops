@@ -383,14 +383,14 @@ const nodeDetailError = reactive<Record<string, string>>({})
 let detailRefreshTimer: ReturnType<typeof setInterval> | null = null
 
 const columns = [
-  { title: '节点名称', dataIndex: 'name', key: 'name', width: 200 },
-  { title: '标签', dataIndex: 'tags', key: 'tags', width: 200, sorter: true },
-  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: true },
+  { title: '节点名称', dataIndex: 'name', key: 'name', width: 200, sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
+  { title: '标签', dataIndex: 'tags', key: 'tags', width: 200, sorter: (a: any, b: any) => (a.tags || '').localeCompare(b.tags || '') },
+  { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
   { title: '磁盘', key: 'diskInfo', width: 300 },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 80, sorter: true },
-  { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 110 },
-  { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 250 },
-  { title: '最后心跳', dataIndex: 'lastHeartbeat', key: 'lastHeartbeat', width: 150 },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 80, sorter: (a: any, b: any) => (a.status || 0) - (b.status || 0) },
+  { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 110, sorter: (a: any, b: any) => (a.agentVersion || '').localeCompare(b.agentVersion || '') },
+  { title: '系统信息', dataIndex: 'systemInfo', key: 'systemInfo', width: 250, sorter: (a: any, b: any) => (a.systemInfo || '').localeCompare(b.systemInfo || '') },
+  { title: '最后心跳', dataIndex: 'lastHeartbeat', key: 'lastHeartbeat', width: 150, sorter: (a: any, b: any) => (a.lastHeartbeat || 0) - (b.lastHeartbeat || 0) },
   { title: '操作', key: 'action', width: 200, fixed: 'right' as const }
 ]
 

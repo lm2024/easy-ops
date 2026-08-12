@@ -332,11 +332,11 @@ const fileSyncStatus = ref<Record<number, { status: number; label: string }>>({}
 
 // ==================== 表格列定义 ====================
 const columns = [
-  { title: '文件名', dataIndex: 'fileName', key: 'fileName', width: 150 },
-  { title: '路径', dataIndex: 'filePath', key: 'filePath', ellipsis: true },
-  { title: '类型', dataIndex: 'fileType', key: 'fileType', width: 80 },
-  { title: '权限', dataIndex: 'isExecutable', key: 'isExecutable', width: 80 },
-  { title: '同步状态', key: 'syncStatus', width: 100 },
+  { title: '文件名', dataIndex: 'fileName', key: 'fileName', width: 150, sorter: (a: any, b: any) => (a.fileName || '').localeCompare(b.fileName || '') },
+  { title: '路径', dataIndex: 'filePath', key: 'filePath', ellipsis: true, sorter: (a: any, b: any) => (a.filePath || '').localeCompare(b.filePath || '') },
+  { title: '类型', dataIndex: 'fileType', key: 'fileType', width: 80, sorter: (a: any, b: any) => (a.fileType || '').localeCompare(b.fileType || '') },
+  { title: '权限', dataIndex: 'isExecutable', key: 'isExecutable', width: 80, sorter: (a: any, b: any) => (a.isExecutable ? 1 : 0) - (b.isExecutable ? 1 : 0) },
+  { title: '同步状态', key: 'syncStatus', width: 100, sorter: (a: any, b: any) => (a.syncStatus || '').localeCompare(b.syncStatus || '') },
   { title: '操作', key: 'action', width: 120 }
 ]
 

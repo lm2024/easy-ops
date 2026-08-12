@@ -101,6 +101,9 @@
         <choose>
             <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
             <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
+            <when test="sort != null and sort == '4xx'">ORDER BY SUM(status_4xx) DESC</when>
+            <when test="sort != null and sort == '5xx'">ORDER BY SUM(status_5xx) DESC</when>
             <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
         </choose>
         LIMIT #{pageSize} OFFSET #{offset}
@@ -143,6 +146,9 @@
         <choose>
             <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
             <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
+            <when test="sort != null and sort == '4xx'">ORDER BY SUM(status_4xx) DESC</when>
+            <when test="sort != null and sort == '5xx'">ORDER BY SUM(status_5xx) DESC</when>
             <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
         </choose>
         LIMIT #{pageSize} OFFSET #{offset}
@@ -188,6 +194,7 @@
         <choose>
             <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
             <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
             <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
         </choose>
         LIMIT #{pageSize} OFFSET #{offset}
@@ -226,7 +233,12 @@
           AND slow_count &gt; 0
           <include refid="whitelistFilter" />
         GROUP BY uri
-        ORDER BY SUM(slow_count) DESC, MAX(max_request_time_ms) DESC
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'count'">ORDER BY SUM(request_count) DESC</when>
+            <otherwise>ORDER BY SUM(slow_count) DESC, MAX(max_request_time_ms) DESC</otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET #{offset}
     </select>
 
@@ -262,6 +274,9 @@
         <choose>
             <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
             <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <when test="sort != null and sort == 'slow'">ORDER BY SUM(slow_count) DESC</when>
+            <when test="sort != null and sort == '4xx'">ORDER BY SUM(status_4xx) DESC</when>
+            <when test="sort != null and sort == '5xx'">ORDER BY SUM(status_5xx) DESC</when>
             <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
         </choose>
         LIMIT #{pageSize} OFFSET #{offset}
@@ -294,7 +309,14 @@
           <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
           <include refid="whitelistFilter" />
         GROUP BY bucket_time
-        ORDER BY bucket_time ASC
+        <choose>
+            <when test="sort != null and sort == 'requestCount'">ORDER BY SUM(request_count) DESC</when>
+            <when test="sort != null and sort == 'status4xx'">ORDER BY SUM(status_4xx) DESC</when>
+            <when test="sort != null and sort == 'status5xx'">ORDER BY SUM(status_5xx) DESC</when>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY bucket_time ASC</otherwise>
+        </choose>
     </select>
 
     <select id="overview" resultType="java.util.HashMap">

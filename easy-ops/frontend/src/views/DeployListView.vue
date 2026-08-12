@@ -426,14 +426,14 @@ const statusMap: Record<number, { badge: string; text: string }> = {
 }
 
 const historyColumns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 60 },
-  { title: '应用', dataIndex: 'projectId', key: 'projectName', width: 120 },
-  { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 130 },
-  { title: '版本', dataIndex: 'versionId', key: 'versionId', width: 80 },
-  { title: 'Jar包', dataIndex: 'jarName', key: 'jarName', width: 130, ellipsis: true },
-  { title: '状态', dataIndex: 'status', key: 'status', width: 100 },
-  { title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 160 },
-  { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160 },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 60, sorter: (a: any, b: any) => a.id - b.id },
+  { title: '应用', dataIndex: 'projectId', key: 'projectName', width: 120, sorter: (a: any, b: any) => (a.projectName || '').localeCompare(b.projectName || '') },
+  { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 130, sorter: (a: any, b: any) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: '版本', dataIndex: 'versionId', key: 'versionId', width: 80, sorter: (a: any, b: any) => (a.versionId || 0) - (b.versionId || 0) },
+  { title: 'Jar包', dataIndex: 'jarName', key: 'jarName', width: 130, ellipsis: true, sorter: (a: any, b: any) => (a.jarName || '').localeCompare(b.jarName || '') },
+  { title: '状态', dataIndex: 'status', key: 'status', width: 100, sorter: (a: any, b: any) => (a.status || '').localeCompare(b.status || '') },
+  { title: '开始时间', dataIndex: 'startTime', key: 'startTime', width: 160, sorter: (a: any, b: any) => (a.startTime || 0) - (b.startTime || 0) },
+  { title: '结束时间', dataIndex: 'endTime', key: 'endTime', width: 160, sorter: (a: any, b: any) => (a.endTime || 0) - (b.endTime || 0) },
   { title: '操作', key: 'action', width: 100, fixed: 'right' as const }
 ]
 

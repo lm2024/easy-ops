@@ -158,28 +158,28 @@ const loading = ref(false)
 // ====== 应用列表 ======
 const appList = ref<any[]>([])
 const appColumns = [
-  { title: '应用名称', key: 'name', dataIndex: 'name', width: 140 },
+  { title: '应用名称', key: 'name', dataIndex: 'name', width: 140, sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
   { title: '部署节点', key: 'nodes', width: 220 },
-  { title: '健康状态', key: 'health', width: 200 },
-  { title: '最近部署', key: 'lastDeploy', width: 180 },
+  { title: '健康状态', key: 'health', width: 200, sorter: (a: any, b: any) => (a.healthStatus || '').localeCompare(b.healthStatus || '') },
+  { title: '最近部署', key: 'lastDeploy', width: 180, sorter: (a: any, b: any) => (a.lastDeployTime || 0) - (b.lastDeployTime || 0) },
   { title: '操作', key: 'action', width: 120 }
 ]
 
 // ====== 节点列表 ======
 const nodeList = ref<any[]>([])
 const nodeColumns = [
-  { title: '节点', dataIndex: 'name', key: 'name', width: 120 },
-  { title: '地址', key: 'ip', width: 160 },
-  { title: '状态', key: 'status', width: 80 }
+  { title: '节点', dataIndex: 'name', key: 'name', width: 120, sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
+  { title: '地址', key: 'ip', width: 160, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
+  { title: '状态', key: 'status', width: 80, sorter: (a: any, b: any) => (a.status || '').localeCompare(b.status || '') }
 ]
 
 // ====== 最近部署 ======
 const recentDeploys = ref<any[]>([])
 const recentColumns = [
-  { title: '应用', key: 'project', width: 120 },
-  { title: '节点', key: 'nodeName', dataIndex: 'nodeName', width: 120 },
-  { title: '状态', key: 'status', width: 100 },
-  { title: '时间', key: 'time', width: 160 }
+  { title: '应用', key: 'project', width: 120, sorter: (a: any, b: any) => (a.project || '').localeCompare(b.project || '') },
+  { title: '节点', key: 'nodeName', dataIndex: 'nodeName', width: 120, sorter: (a: any, b: any) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: '状态', key: 'status', width: 100, sorter: (a: any, b: any) => (a.status || '').localeCompare(b.status || '') },
+  { title: '时间', key: 'time', width: 160, sorter: (a: any, b: any) => (a.time || 0) - (b.time || 0) }
 ]
 
 const projectNameMap = ref<Record<string, string>>({})

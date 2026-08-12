@@ -20,7 +20,7 @@
         <a-col :span="6"><a-statistic title="Agent 总数" :value="agentPagination.total" /></a-col>
         <a-col :span="6"><a-statistic title="在线" :value="agentOnlineCount" value-style="color: #52c41a" /></a-col>
         <a-col :span="6"><a-statistic title="离线" :value="agentOfflineCount" value-style="color: #ff4d4f" /></a-col>
-        <a-col :span="6"><a-statistic title="数据最后同步" :value="agentLastRefreshLabel" /></a-col>
+        <a-col :span="6"><a-statistic title="最近上报" :value="agentLastRefreshLabel" /></a-col>
       </a-row>
 
       <!-- Agent 列表 -->
@@ -70,7 +70,7 @@
             </div>
           </template>
           <template v-if="column.key === 'lastSync'">
-            <a-tooltip :title="'Agent 真实上报时间：' + syncInfo(record.lastHeartbeat, record.collectTime).abs">
+            <a-tooltip :title="syncInfo(record.lastHeartbeat, record.collectTime).stale ? '心跳超过 2 分钟未更新，Agent 可能已离线' : '上次上报时间：' + syncInfo(record.lastHeartbeat, record.collectTime).abs">
               <span :style="{ color: syncInfo(record.lastHeartbeat, record.collectTime).color, fontWeight: 600 }">
                 {{ syncInfo(record.lastHeartbeat, record.collectTime).text }}
               </span>
@@ -128,12 +128,12 @@ const agentLastRefreshLabel = computed(() => {
   return dayjs(agentLastRefreshTime.value).format('HH:mm:ss')
 })
 
-// 指标文字颜色：正常用近黑色（与表格其它列一致，不再灰显），超阈值才变色
+// 指标文字颜色：正常时继承主题默认色（适配亮/暗主题），超阈值才变色
 function metricTextColor(v: number | undefined, warn: number, danger: number): string {
   const x = v ?? 0
-  if (x >= danger) return '#cf1322'
-  if (x >= warn) return '#d48806'
-  return '#1f1f1f'
+  if (x >= danger) return '#ff4d4f'
+  if (x >= warn) return '#faad14'
+  return 'inherit'  // 继承主题文字颜色，亮/暗主题自适应
 }
 // 进度条颜色：绿/橙/红，直观表达健康度
 function barColor(v: number | undefined, warn: number, danger: number): string {
@@ -146,31 +146,34 @@ function clampPct(v?: number): number {
   if (v == null) return 0
   return Math.max(0, Math.min(100, v))
 }
-// 同步时间展示：优先 collectTime，回退 lastHeartbeat；超过 60s 视为过期标红
-const SYNC_STALE_MS = 60 * 1000
+// 同步时间展示：优先 collectTime，回退 lastHeartbeat；超过 2 分钟视为异常
+const SYNC_STALE_MS = 2 * 60 * 1000
 function syncInfo(lastHeartbeat?: number, collectTime?: number) {
   const ts = (collectTime ?? lastHeartbeat ?? 0) as number
-  if (!ts) return { text: '从未同步', abs: '—', color: '#ff4d4f' }
+  if (!ts) return { text: '从未同步', abs: '—', color: '#ff4d4f', stale: true }
   const age = nowTs.value - ts
   const stale = age > SYNC_STALE_MS
   const abs = dayjs(ts).format('MM-DD HH:mm:ss')
-  const rel = age < 1000 ? '刚刚' : Math.floor(age / 1000) + ' 秒前'
-  return { text: stale ? rel + '（可能过期）' : rel, abs, color: stale ? '#ff4d4f' : '#52c41a' }
+  // 正常时显示绝对时间，异常时显示"XX分钟前"
+  const rel = age < 60000 ? Math.floor(age / 1000) + '秒前'
+           : age < 3600000 ? Math.floor(age / 60000) + '分钟前'
+           : Math.floor(age / 3600000) + '小时前'
+  return { text: stale ? rel : abs, abs, color: stale ? '#ff4d4f' : '#52c41a', stale }
 }
 
 const agentColumns = [
-  { title: 'Agent 名称', dataIndex: 'nodeName', key: 'nodeName', width: 140 },
-  { title: 'IP / 端口', dataIndex: 'ip', key: 'ip', width: 160 },
-  { title: '状态', key: 'status', width: 70 },
-  { title: 'CPU', key: 'hostCpuPercent', width: 80 },
-  { title: '内存', key: 'hostMemoryPercent', width: 80 },
-  { title: '磁盘', key: 'diskUsagePercent', width: 90 },
-  { title: '最后同步', key: 'lastSync', width: 160 },
-  { title: '总内存', key: 'totalMemoryMb', width: 90 },
-  { title: 'CPU 核数', dataIndex: 'cpuCores', key: 'cpuCores', width: 80 },
-  { title: '系统', dataIndex: 'osInfo', key: 'osInfo', width: 160, ellipsis: true },
-  { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80 },
-  { title: 'Agent PID', dataIndex: 'agentPid', key: 'agentPid', width: 80 },
+  { title: 'Agent 名称', dataIndex: 'nodeName', key: 'nodeName', width: 140, sorter: (a: any, b: any) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: 'IP / 端口', dataIndex: 'ip', key: 'ip', width: 160, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
+  { title: '状态', key: 'status', width: 70, sorter: (a: any, b: any) => a.status - b.status },
+  { title: 'CPU', key: 'hostCpuPercent', width: 80, sorter: (a: any, b: any) => (a.hostCpuPercent || 0) - (b.hostCpuPercent || 0) },
+  { title: '内存', key: 'hostMemoryPercent', width: 80, sorter: (a: any, b: any) => (a.hostMemoryPercent || 0) - (b.hostMemoryPercent || 0) },
+  { title: '磁盘', key: 'diskUsagePercent', width: 90, sorter: (a: any, b: any) => (a.diskUsagePercent || 0) - (b.diskUsagePercent || 0) },
+  { title: '最后同步', key: 'lastSync', width: 160, sorter: (a: any, b: any) => ((a.collectTime ?? a.lastHeartbeat ?? 0) as number) - ((b.collectTime ?? b.lastHeartbeat ?? 0) as number) },
+  { title: '总内存', key: 'totalMemoryMb', width: 90, sorter: (a: any, b: any) => (a.totalMemoryMb || 0) - (b.totalMemoryMb || 0) },
+  { title: 'CPU 核数', dataIndex: 'cpuCores', key: 'cpuCores', width: 80, sorter: (a: any, b: any) => (a.cpuCores || 0) - (b.cpuCores || 0) },
+  { title: '系统', dataIndex: 'osInfo', key: 'osInfo', width: 160, ellipsis: true, sorter: (a: any, b: any) => (a.osInfo || '').localeCompare(b.osInfo || '') },
+  { title: '版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 80, sorter: (a: any, b: any) => (a.agentVersion || '').localeCompare(b.agentVersion || '') },
+  { title: 'Agent PID', dataIndex: 'agentPid', key: 'agentPid', width: 80, sorter: (a: any, b: any) => (a.agentPid || 0) - (b.agentPid || 0) },
   { title: '操作', key: 'action', width: 80, fixed: 'right' as const },
 ]
 

@@ -81,9 +81,9 @@ const alarmType = ref('')
 const pagination = ref({ current: 1, pageSize: 20, total: 0 })
 
 const columns = [
-  { title: '类型', dataIndex: 'type', key: 'type', width: 150 },
-  { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true },
-  { title: '发送结果', dataIndex: 'sendResult', key: 'sendResult', width: 100 },
+  { title: '类型', dataIndex: 'type', key: 'type', width: 150, sorter: (a: any, b: any) => (a.type || '').localeCompare(b.type || '') },
+  { title: '内容', dataIndex: 'content', key: 'content', ellipsis: true, sorter: (a: any, b: any) => (a.content || '').localeCompare(b.content || '') },
+  { title: '发送结果', dataIndex: 'sendResult', key: 'sendResult', width: 100, sorter: (a: any, b: any) => (a.sendResult || '').localeCompare(b.sendResult || '') },
   { title: '操作', key: 'action', width: 100, fixed: 'right' as const }
 ]
 

@@ -110,13 +110,13 @@
             </div>
           </template>
           <template v-if="column.key === 'cpu'">
-            <div>总: <b :style="{ color: (record.hostCpuPercent || 0) > 80 ? '#ff4d4f' : '#333' }">{{ formatPercent(record.hostCpuPercent) }}</b></div>
-            <div style="font-size:11px;color:#888">进程: {{ formatPercent(record.cpuPercent) }}</div>
+            <div>总: <b :style="{ color: (record.hostCpuPercent || 0) > 80 ? '#ff4d4f' : 'inherit' }">{{ formatPercent(record.hostCpuPercent) }}</b></div>
+            <div style="font-size:11px;opacity:0.65">进程: {{ formatPercent(record.cpuPercent) }}</div>
           </template>
           <template v-if="column.key === 'memory'">
             <div>总: <b>{{ record.hostMemoryPercent != null ? record.hostMemoryPercent + '%' : '-' }}</b></div>
-            <div v-if="record.processStatus === 'N/A'" style="font-size:11px;color:#bfbfbf">堆: -</div>
-            <div v-else style="font-size:11px;color:#888">
+            <div v-if="record.processStatus === 'N/A'" style="font-size:11px;opacity:0.45">堆: -</div>
+            <div v-else style="font-size:11px;opacity:0.65">
               堆: {{ record.heapUsedMb || 0 }}/{{ record.heapMaxMb || 0 }}MB
               <a-tooltip v-if="record.xmxMb">
                 <template #title>当前分配 {{ record.heapMaxMb || 0 }}MB，JVM 上限(-Xmx) {{ record.xmxMb }}MB。堆会根据需要自动扩展，最多到 -Xmx 设置值。</template>
@@ -288,15 +288,15 @@ const probe = reactive<ProjectHealthProbeModel>({
 })
 
 const columns = [
-  { title: '应用', dataIndex: 'projectName', key: 'projectName', width: 120, fixed: 'left' as const },
-  { title: '节点 / IP', key: 'nodeName', width: 140 },
-  { title: '进程', key: 'processStatus', width: 80 },
+  { title: '应用', dataIndex: 'projectName', key: 'projectName', width: 120, fixed: 'left' as const, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.projectName || '').localeCompare(b.projectName || '') },
+  { title: '节点 / IP', key: 'nodeName', width: 140, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: '进程', key: 'processStatus', width: 80, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.processStatus || '').localeCompare(b.processStatus || '') },
   { title: '应用PID', key: 'processPid', width: 95, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.processPid || 0) - (b.processPid || 0) },
-  { title: '健康', key: 'healthStatus', width: 90, sorter: true },
+  { title: '健康', key: 'healthStatus', width: 90, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.healthStatus || '').localeCompare(b.healthStatus || '') },
   { title: 'CPU', key: 'cpu', width: 110, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.hostCpuPercent || 0) - (b.hostCpuPercent || 0) },
-  { title: '内存', key: 'memory', width: 120 },
+  { title: '内存', key: 'memory', width: 120, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.memoryMb || 0) - (b.memoryMb || 0) },
   { title: '响应', key: 'responseMs', width: 100, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.responseMs || 0) - (b.responseMs || 0), defaultSortOrder: 'descend' as const },
-  { title: '采集时间', key: 'collectTime', width: 150 },
+  { title: '采集时间', key: 'collectTime', width: 150, sorter: (a: MonitorTableRow, b: MonitorTableRow) => (a.collectTime || 0) - (b.collectTime || 0) },
   { title: '操作', key: 'action', width: 250, fixed: 'right' as const }
 ]
 
