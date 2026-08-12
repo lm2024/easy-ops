@@ -13,6 +13,28 @@
         </foreach>
     </insert>
 
+    <update id="incrementUaStat">
+        UPDATE nginx_ua_stat
+        SET request_count = request_count + #{requestCount},
+            sum_request_time_ms = sum_request_time_ms + #{sumRequestTimeMs},
+            max_request_time_ms = CASE WHEN #{maxRequestTimeMs} &gt; max_request_time_ms THEN #{maxRequestTimeMs} ELSE max_request_time_ms END,
+            slow_count = slow_count + #{slowCount},
+            status_5xx = status_5xx + #{status5xx}
+        WHERE source_id = #{sourceId}
+          AND bucket_time = #{bucketTime}
+          AND user_agent = #{userAgent}
+    </update>
+
+    <insert id="insertUaStat">
+        INSERT INTO nginx_ua_stat (
+            source_id, bucket_time, user_agent, request_count,
+            sum_request_time_ms, max_request_time_ms, slow_count, status_5xx, create_time
+        ) VALUES (
+            #{row.sourceId}, #{row.bucketTime}, #{row.userAgent}, #{row.requestCount},
+            #{row.sumRequestTimeMs}, #{row.maxRequestTimeMs}, #{row.slowCount}, #{row.status5xx}, #{row.createTime}
+        )
+    </insert>
+
     <insert id="batchInsertReferer">
         INSERT INTO nginx_referer_stat (
             source_id, bucket_time, referer, request_count,
@@ -22,6 +44,28 @@
             (#{r.sourceId}, #{r.bucketTime}, #{r.referer}, #{r.requestCount},
              #{r.sumRequestTimeMs}, #{r.maxRequestTimeMs}, #{r.slowCount}, #{r.status5xx}, #{r.createTime})
         </foreach>
+    </insert>
+
+    <update id="incrementRefererStat">
+        UPDATE nginx_referer_stat
+        SET request_count = request_count + #{requestCount},
+            sum_request_time_ms = sum_request_time_ms + #{sumRequestTimeMs},
+            max_request_time_ms = CASE WHEN #{maxRequestTimeMs} &gt; max_request_time_ms THEN #{maxRequestTimeMs} ELSE max_request_time_ms END,
+            slow_count = slow_count + #{slowCount},
+            status_5xx = status_5xx + #{status5xx}
+        WHERE source_id = #{sourceId}
+          AND bucket_time = #{bucketTime}
+          AND referer = #{referer}
+    </update>
+
+    <insert id="insertRefererStat">
+        INSERT INTO nginx_referer_stat (
+            source_id, bucket_time, referer, request_count,
+            sum_request_time_ms, max_request_time_ms, slow_count, status_5xx, create_time
+        ) VALUES (
+            #{row.sourceId}, #{row.bucketTime}, #{row.referer}, #{row.requestCount},
+            #{row.sumRequestTimeMs}, #{row.maxRequestTimeMs}, #{row.slowCount}, #{row.status5xx}, #{row.createTime}
+        )
     </insert>
 
     <insert id="batchInsertSample">
@@ -118,6 +162,14 @@
 
     <delete id="deleteSamplesBefore">
         DELETE FROM nginx_request_sample WHERE ts &lt; #{cutoff}
+    </delete>
+
+    <delete id="deleteUaBefore">
+        DELETE FROM nginx_ua_stat WHERE bucket_time &lt; #{cutoff}
+    </delete>
+
+    <delete id="deleteRefererBefore">
+        DELETE FROM nginx_referer_stat WHERE bucket_time &lt; #{cutoff}
     </delete>
 
 </mapper>

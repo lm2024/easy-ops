@@ -92,7 +92,7 @@ public class NginxAccessCollector {
                     continue;
                 }
                 if (!runtimes.containsKey(sourceId)) {
-                    int maxKeys = toInt(source.get("maxKeysPerMinute"), 2000);
+                    int maxKeys = toInt(source.get("maxKeysPerMinute"), 500);
                     double slow = toDouble(source.get("slowThresholdSec"), 3D);
                     runtimes.put(sourceId, new SourceRuntime(sourceId, maxKeys, slow));
                 }
@@ -119,7 +119,7 @@ public class NginxAccessCollector {
             }
             SourceRuntime runtime = runtimes.get(sourceId);
             if (runtime == null) {
-                int maxKeys = toInt(source.get("maxKeysPerMinute"), 2000);
+                int maxKeys = toInt(source.get("maxKeysPerMinute"), 500);
                 double slow = toDouble(source.get("slowThresholdSec"), 3D);
                 runtime = new SourceRuntime(sourceId, maxKeys, slow);
                 runtimes.put(sourceId, runtime);
@@ -199,13 +199,15 @@ public class NginxAccessCollector {
             return;
         }
         try {
-            // drainCurrent 返回单元素包裹：{rows, uaRows, refererRows, samples}
+            // drainCurrent 返回单元素包裹：{rows, ipRows, uaRows, refererRows, samples}
             Map<String, Object> bundle = wrapped.get(0);
             List<Map<String, Object>> rows = (List<Map<String, Object>>) bundle.get("rows");
+            List<Map<String, Object>> ipRows = (List<Map<String, Object>>) bundle.get("ipRows");
             List<Map<String, Object>> uaRows = (List<Map<String, Object>>) bundle.get("uaRows");
             List<Map<String, Object>> refererRows = (List<Map<String, Object>>) bundle.get("refererRows");
             List<Map<String, Object>> samples = (List<Map<String, Object>>) bundle.get("samples");
             if ((rows == null || rows.isEmpty())
+                    && (ipRows == null || ipRows.isEmpty())
                     && (uaRows == null || uaRows.isEmpty())
                     && (refererRows == null || refererRows.isEmpty())
                     && (samples == null || samples.isEmpty())) {
@@ -214,6 +216,7 @@ public class NginxAccessCollector {
             Map<String, Object> payload = new HashMap<String, Object>();
             payload.put("sourceId", sourceId);
             payload.put("rows", rows == null ? java.util.Collections.emptyList() : rows);
+            payload.put("ipRows", ipRows == null ? java.util.Collections.emptyList() : ipRows);
             payload.put("uaRows", uaRows == null ? java.util.Collections.emptyList() : uaRows);
             payload.put("refererRows", refererRows == null ? java.util.Collections.emptyList() : refererRows);
             payload.put("samples", samples == null ? java.util.Collections.emptyList() : samples);
@@ -223,8 +226,9 @@ public class NginxAccessCollector {
             headers.set("X-Token", agentToken);
             HttpEntity<String> entity = new HttpEntity<String>(MAPPER.writeValueAsString(payload), headers);
             restTemplate.postForEntity(serverUrl + "/nginx-traffic/ingest", entity, String.class);
-            int total = (rows == null ? 0 : rows.size()) + (uaRows == null ? 0 : uaRows.size())
-                    + (refererRows == null ? 0 : refererRows.size()) + (samples == null ? 0 : samples.size());
+            int total = (rows == null ? 0 : rows.size()) + (ipRows == null ? 0 : ipRows.size())
+                    + (uaRows == null ? 0 : uaRows.size()) + (refererRows == null ? 0 : refererRows.size())
+                    + (samples == null ? 0 : samples.size());
             log.info("Nginx 统计已上报 sourceId={} 行数={}", sourceId, total);
         } catch (Exception e) {
             log.warn("上报 Nginx 统计失败 sourceId={}", sourceId, e);
