@@ -86,7 +86,8 @@ public class AuthInterceptor implements HandlerInterceptor {
     }
 
     /**
-     * SEC-003 修复: Agent token 校验并写入 nodeId 到请求属性
+     * SEC-003 修复: Agent token 校验并写入 nodeId 到请求属性。
+     * 同时设置 admin 用户身份，允许 Agent 调用管理接口（如创建日志源）。
      */
     private boolean validateAgentToken(HttpServletRequest request, HttpServletResponse response, String token) throws java.io.IOException {
         String nodeId = extractNodeIdFromRequest(token);
@@ -105,6 +106,10 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         // 写入请求属性供 Controller 使用 (SEC-003)
         request.setAttribute(ATTR_NODE_ID, nodeId);
+        // Agent 身份也赋予 admin 权限，支持 Agent 调用管理接口
+        request.setAttribute(ATTR_USER_ID, "1");
+        request.setAttribute(ATTR_USER_NAME, "admin");
+        request.setAttribute(ATTR_USER_ROLE, "admin");
         return true;
     }
 

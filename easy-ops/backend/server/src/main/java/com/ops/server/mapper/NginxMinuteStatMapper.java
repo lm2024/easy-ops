@@ -16,6 +16,9 @@ public interface NginxMinuteStatMapper {
 
     int deleteBeforeBucketTime(@Param("cutoff") Long cutoff);
 
+    /** 分批删除：每次最多删 batchSize 条，返回实际删除数 */
+    int deleteBeforeBucketTimeBatch(@Param("cutoff") Long cutoff, @Param("batchSize") int batchSize);
+
     List<Map<String, Object>> sumByIp(@Param("sourceIds") List<Long> sourceIds,
                                       @Param("startTime") Long startTime,
                                       @Param("endTime") Long endTime,

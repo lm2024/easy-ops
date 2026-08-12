@@ -7,17 +7,16 @@ import java.util.Map;
 
 /**
  * 按分钟桶在内存中聚合访问统计。
- * 主维度：(client_ip, uri, method)；扩展：UA / Referer 独立聚合（Top-N 封顶）+ 慢/错/抽样原始样本。
+ * 主维度：(uri, method) —— 降低基数，减少存储行数。
+ * 扩展：IP Top-N 独立追踪（供 rank/ip 查询）+ UA / Referer 独立聚合 + 慢/错/抽样原始样本。
  */
 public class MinuteBucketAggregator {
 
     static class BucketKey {
-        final String clientIp;
         final String uri;
         final String method;
 
-        BucketKey(String clientIp, String uri, String method) {
-            this.clientIp = clientIp;
+        BucketKey(String uri, String method) {
             this.uri = uri;
             this.method = method;
         }
@@ -28,13 +27,12 @@ public class MinuteBucketAggregator {
                 return false;
             }
             BucketKey other = (BucketKey) o;
-            return clientIp.equals(other.clientIp) && uri.equals(other.uri) && method.equals(other.method);
+            return uri.equals(other.uri) && method.equals(other.method);
         }
 
         @Override
         public int hashCode() {
             int h = 17;
-            h = 31 * h + clientIp.hashCode();
             h = 31 * h + uri.hashCode();
             h = 31 * h + method.hashCode();
             return h;
@@ -59,6 +57,8 @@ public class MinuteBucketAggregator {
         int slowCount;
     }
 
+    private static final int MAX_DIM_VALUE_LEN = 480; // 数据库 VARCHAR(500)，留 20 字符余量
+
     static class DimValue {
         int requestCount;
         long sumRequestTimeMs;
@@ -70,18 +70,23 @@ public class MinuteBucketAggregator {
     private final int maxKeys;
     private final double slowThresholdSec;
     private final int maxSamples;
+    private final int maxIpKeys;
     private long currentMinuteStart = -1L;
     private final Map<BucketKey, BucketValue> buckets = new HashMap<BucketKey, BucketValue>();
+    private final Map<String, DimValue> ipBuckets = new HashMap<String, DimValue>();
     private final Map<String, DimValue> uaBuckets = new HashMap<String, DimValue>();
     private final Map<String, DimValue> refererBuckets = new HashMap<String, DimValue>();
     private final List<Map<String, Object>> samples = new ArrayList<Map<String, Object>>();
     private int overflowCount;
+    private int ipOverflowCount;
     private int sampleCounter;
 
     public MinuteBucketAggregator(int maxKeys, double slowThresholdSec) {
         this.maxKeys = Math.max(100, maxKeys);
         this.slowThresholdSec = slowThresholdSec <= 0 ? 3D : slowThresholdSec;
         this.maxSamples = Math.max(50, maxKeys / 5);
+        // IP 维度独立追踪，上限为 maxKeys 的 1/4（控制内存）
+        this.maxIpKeys = Math.max(50, maxKeys / 4);
     }
 
     /**
@@ -103,7 +108,9 @@ public class MinuteBucketAggregator {
 
     private void addToBucket(NginxLogParser.ParsedLine line) {
         String method = line.method == null || line.method.isEmpty() ? "GET" : line.method;
-        BucketKey key = new BucketKey(line.clientIp, line.uri, method);
+
+        // ===== 主维度：(uri, method) =====
+        BucketKey key = new BucketKey(line.uri, method);
         if (!buckets.containsKey(key) && buckets.size() >= maxKeys) {
             overflowCount++;
             return;
@@ -145,20 +152,20 @@ public class MinuteBucketAggregator {
             value.slowCount++;
         }
 
-        // UA 维度
-        if (line.userAgent != null && !line.userAgent.isEmpty() && !"-".equals(line.userAgent)) {
-            DimValue dv = uaBuckets.get(line.userAgent);
+        // ===== IP 维度（独立 Top-N 追踪） =====
+        if (line.clientIp != null && !line.clientIp.isEmpty() && !"-".equals(line.clientIp)) {
+            DimValue dv = ipBuckets.get(line.clientIp);
             if (dv == null) {
-                if (uaBuckets.size() >= maxKeys) {
-                    // 超出 Top-N 上限，归入 __OTHER__
-                    dv = uaBuckets.get("__OTHER__");
+                if (ipBuckets.size() >= maxIpKeys) {
+                    dv = ipBuckets.get("__OTHER__");
                     if (dv == null) {
                         dv = new DimValue();
-                        uaBuckets.put("__OTHER__", dv);
+                        ipBuckets.put("__OTHER__", dv);
                     }
+                    ipOverflowCount++;
                 } else {
                     dv = new DimValue();
-                    uaBuckets.put(line.userAgent, dv);
+                    ipBuckets.put(line.clientIp, dv);
                 }
             }
             dv.requestCount++;
@@ -174,9 +181,39 @@ public class MinuteBucketAggregator {
             }
         }
 
-        // Referer 维度
+        // ===== UA 维度 =====
+        if (line.userAgent != null && !line.userAgent.isEmpty() && !"-".equals(line.userAgent)) {
+            String uaKey = truncate(line.userAgent);
+            DimValue dv = uaBuckets.get(uaKey);
+            if (dv == null) {
+                if (uaBuckets.size() >= maxKeys) {
+                    dv = uaBuckets.get("__OTHER__");
+                    if (dv == null) {
+                        dv = new DimValue();
+                        uaBuckets.put("__OTHER__", dv);
+                    }
+                } else {
+                    dv = new DimValue();
+                    uaBuckets.put(uaKey, dv);
+                }
+            }
+            dv.requestCount++;
+            dv.sumRequestTimeMs += line.requestTimeMs;
+            if (line.requestTimeMs > dv.maxRequestTimeMs) {
+                dv.maxRequestTimeMs = line.requestTimeMs;
+            }
+            if (line.requestTimeMs >= slowThresholdSec * 1000D) {
+                dv.slowCount++;
+            }
+            if (status >= 500) {
+                dv.status5xx++;
+            }
+        }
+
+        // ===== Referer 维度 =====
         if (line.referer != null && !line.referer.isEmpty() && !"-".equals(line.referer)) {
-            DimValue dv = refererBuckets.get(line.referer);
+            String refKey = truncate(line.referer);
+            DimValue dv = refererBuckets.get(refKey);
             if (dv == null) {
                 if (refererBuckets.size() >= maxKeys) {
                     dv = refererBuckets.get("__OTHER__");
@@ -186,7 +223,7 @@ public class MinuteBucketAggregator {
                     }
                 } else {
                     dv = new DimValue();
-                    refererBuckets.put(line.referer, dv);
+                    refererBuckets.put(refKey, dv);
                 }
             }
             dv.requestCount++;
@@ -202,10 +239,10 @@ public class MinuteBucketAggregator {
             }
         }
 
-        // 原始样本：慢请求 / 错误 / 按比例抽样（封顶）
+        // ===== 原始样本：慢请求 / 错误 / 按比例抽样（封顶） =====
         boolean keep = line.requestTimeMs >= slowThresholdSec * 1000D
                 || status >= 400
-                || (sampleCounter++ % 10 == 0);
+                || (sampleCounter++ % 100 == 0);
         if (keep && samples.size() < maxSamples) {
             Map<String, Object> s = new HashMap<String, Object>();
             s.put("ts", line.msec > 0 ? line.msec : line.timestampMs);
@@ -242,7 +279,8 @@ public class MinuteBucketAggregator {
      * 强制导出当前分钟数据（上报前调用）。
      */
     public synchronized List<Map<String, Object>> flushCurrent() {
-        if (currentMinuteStart < 0 || (buckets.isEmpty() && uaBuckets.isEmpty() && refererBuckets.isEmpty() && samples.isEmpty())) {
+        if (currentMinuteStart < 0 || (buckets.isEmpty() && ipBuckets.isEmpty()
+                && uaBuckets.isEmpty() && refererBuckets.isEmpty() && samples.isEmpty())) {
             return null;
         }
         return drainCurrent();
@@ -255,7 +293,7 @@ public class MinuteBucketAggregator {
             BucketValue value = entry.getValue();
             Map<String, Object> row = new HashMap<String, Object>();
             row.put("bucketTime", currentMinuteStart);
-            row.put("clientIp", key.clientIp);
+            row.put("clientIp", "*__");  // 聚合标记：主表按 (uri, method) 聚合
             row.put("uri", key.uri);
             row.put("method", key.method);
             row.put("requestCount", value.requestCount);
@@ -278,7 +316,7 @@ public class MinuteBucketAggregator {
         if (overflowCount > 0) {
             Map<String, Object> other = new HashMap<String, Object>();
             other.put("bucketTime", currentMinuteStart);
-            other.put("clientIp", "__OTHER__");
+            other.put("clientIp", "*__");
             other.put("uri", "__OTHER__");
             other.put("method", "-");
             other.put("requestCount", overflowCount);
@@ -299,12 +337,26 @@ public class MinuteBucketAggregator {
             rows.add(other);
         }
 
+        // IP 维度行（独立上报，供 rank/ip 查询）
+        List<Map<String, Object>> ipRows = new ArrayList<Map<String, Object>>();
+        for (Map.Entry<String, DimValue> e : ipBuckets.entrySet()) {
+            Map<String, Object> r = new HashMap<String, Object>();
+            r.put("bucketTime", currentMinuteStart);
+            r.put("clientIp", e.getKey());
+            r.put("requestCount", e.getValue().requestCount);
+            r.put("sumRequestTimeMs", e.getValue().sumRequestTimeMs);
+            r.put("maxRequestTimeMs", e.getValue().maxRequestTimeMs);
+            r.put("slowCount", e.getValue().slowCount);
+            r.put("status5xx", e.getValue().status5xx);
+            ipRows.add(r);
+        }
+
         // UA 维度行
         List<Map<String, Object>> uaRows = new ArrayList<Map<String, Object>>();
         for (Map.Entry<String, DimValue> e : uaBuckets.entrySet()) {
             Map<String, Object> r = new HashMap<String, Object>();
             r.put("bucketTime", currentMinuteStart);
-            r.put("userAgent", e.getKey());
+            r.put("userAgent", truncate(e.getKey()));
             r.put("requestCount", e.getValue().requestCount);
             r.put("sumRequestTimeMs", e.getValue().sumRequestTimeMs);
             r.put("maxRequestTimeMs", e.getValue().maxRequestTimeMs);
@@ -317,7 +369,7 @@ public class MinuteBucketAggregator {
         for (Map.Entry<String, DimValue> e : refererBuckets.entrySet()) {
             Map<String, Object> r = new HashMap<String, Object>();
             r.put("bucketTime", currentMinuteStart);
-            r.put("referer", e.getKey());
+            r.put("referer", truncate(e.getKey()));
             r.put("requestCount", e.getValue().requestCount);
             r.put("sumRequestTimeMs", e.getValue().sumRequestTimeMs);
             r.put("maxRequestTimeMs", e.getValue().maxRequestTimeMs);
@@ -328,20 +380,23 @@ public class MinuteBucketAggregator {
 
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("rows", rows);
+        result.put("ipRows", ipRows);
         result.put("uaRows", uaRows);
         result.put("refererRows", refererRows);
         result.put("samples", new ArrayList<Map<String, Object>>(samples));
 
         // 清桶
         buckets.clear();
+        ipBuckets.clear();
         uaBuckets.clear();
         refererBuckets.clear();
         samples.clear();
         overflowCount = 0;
+        ipOverflowCount = 0;
 
         @SuppressWarnings("unchecked")
         List<Map<String, Object>> flat = (List<Map<String, Object>>) result.get("rows");
-        return flat.isEmpty() && uaRows.isEmpty() && refererRows.isEmpty()
+        return flat.isEmpty() && uaRows.isEmpty() && refererRows.isEmpty() && ipRows.isEmpty()
                 ? null : java.util.Collections.singletonList(result);
     }
 
@@ -351,5 +406,11 @@ public class MinuteBucketAggregator {
 
     private long floorMinute(long ts) {
         return ts - (ts % 60000L);
+    }
+
+    /** 截断字符串到数据库列长度限制，避免唯一索引截断导致数据错乱 */
+    private String truncate(String s) {
+        if (s == null) return "";
+        return s.length() > MAX_DIM_VALUE_LEN ? s.substring(0, MAX_DIM_VALUE_LEN) : s;
     }
 }

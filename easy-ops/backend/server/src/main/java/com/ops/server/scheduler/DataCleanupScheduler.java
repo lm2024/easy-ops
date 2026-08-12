@@ -36,6 +36,9 @@ import java.util.function.IntSupplier;
  *   - kb_document_lock           清理过期文档锁
  *   - scheduler_lock             清理过期分布式锁
  *   - nginx_minute_stat          按 bucket_time 清理（保留天数见 easyops.nginx-traffic.minute-retain-days）
+ *   - nginx_ua_stat              按 bucket_time 清理（同上）
+ *   - nginx_referer_stat         按 bucket_time 清理（同上）
+ *   - nginx_request_sample       按 ts 清理（同上）
  * 
  * 配置项（application.yml）：easyops.data.cleanup
  *   - cron:        每日清理 cron 表达式，默认 "0 0 2 * * ?"
@@ -84,6 +87,10 @@ public class DataCleanupScheduler {
     @Autowired
     private NginxMinuteStatMapper nginxMinuteStatMapper;
     @Autowired
+    private NginxDimensionStatMapper nginxDimensionStatMapper;
+    @Autowired
+    private NginxIpStatMapper nginxIpStatMapper;
+    @Autowired
     private NotificationRecordMapper notificationRecordMapper;
     @Autowired
     private UserNotificationStateMapper userNotificationStateMapper;
@@ -123,12 +130,55 @@ public class DataCleanupScheduler {
         tasks.add(task("global_script_distribute_record", c -> globalScriptDistributeRecordMapper.deleteBefore(c)));
 
         // ---- 特殊清理（非 create_time 驱动，cutoff 参数不使用） ----
+        // nginx_minute_stat 使用分批删除，避免大数据量锁表
         tasks.add(task("nginx_minute_stat", c -> {
             int days = Math.max(1, nginxMinuteRetainDays);
             long bucketCutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
-            int deleted = nginxMinuteStatMapper.deleteBeforeBucketTime(bucketCutoff);
+            final int batchSize = 10000;
+            int totalDeleted = 0;
+            int deleted;
+            do {
+                deleted = nginxMinuteStatMapper.deleteBeforeBucketTimeBatch(bucketCutoff, batchSize);
+                totalDeleted += deleted;
+            } while (deleted >= batchSize);
+            if (totalDeleted > 0) {
+                log.info("清理 nginx_minute_stat 保留{}天 删除{}条 bucket_time<{}", days, totalDeleted, bucketCutoff);
+            }
+            return totalDeleted;
+        }));
+        tasks.add(task("nginx_ip_stat", c -> {
+            int days = Math.max(1, nginxMinuteRetainDays);
+            long bucketCutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            int deleted = nginxIpStatMapper.deleteBefore(bucketCutoff);
             if (deleted > 0) {
-                log.info("清理 nginx_minute_stat 保留{}天 删除{}条 bucket_time<{}", days, deleted, bucketCutoff);
+                log.info("清理 nginx_ip_stat 保留{}天 删除{}条", days, deleted);
+            }
+            return deleted;
+        }));
+        tasks.add(task("nginx_ua_stat", c -> {
+            int days = Math.max(1, nginxMinuteRetainDays);
+            long bucketCutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            int deleted = nginxDimensionStatMapper.deleteUaBefore(bucketCutoff);
+            if (deleted > 0) {
+                log.info("清理 nginx_ua_stat 保留{}天 删除{}条", days, deleted);
+            }
+            return deleted;
+        }));
+        tasks.add(task("nginx_referer_stat", c -> {
+            int days = Math.max(1, nginxMinuteRetainDays);
+            long bucketCutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            int deleted = nginxDimensionStatMapper.deleteRefererBefore(bucketCutoff);
+            if (deleted > 0) {
+                log.info("清理 nginx_referer_stat 保留{}天 删除{}条", days, deleted);
+            }
+            return deleted;
+        }));
+        tasks.add(task("nginx_request_sample", c -> {
+            int days = Math.max(1, nginxMinuteRetainDays);
+            long cutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            int deleted = nginxDimensionStatMapper.deleteSamplesBefore(cutoff);
+            if (deleted > 0) {
+                log.info("清理 nginx_request_sample 保留{}天 删除{}条", days, deleted);
             }
             return deleted;
         }));

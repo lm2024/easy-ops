@@ -50,6 +50,16 @@ public class NginxTrafficBootstrap {
             addColumnIfNotExists("nginx_minute_stat", "cache_miss_count", "INT DEFAULT 0");
             addColumnIfNotExists("nginx_minute_stat", "https_count", "INT DEFAULT 0");
 
+            // IP 维度统计表（独立于主表，支持 rank/ip 查询）
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS nginx_ip_stat (" +
+                " id BIGINT PRIMARY KEY AUTO_INCREMENT, source_id BIGINT NOT NULL, bucket_time BIGINT NOT NULL," +
+                " client_ip VARCHAR(64) NOT NULL, request_count INT DEFAULT 0, sum_request_time_ms BIGINT DEFAULT 0," +
+                " max_request_time_ms BIGINT DEFAULT 0, slow_count INT DEFAULT 0, status_5xx INT DEFAULT 0, create_time BIGINT)");
+            jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_nginx_ip_src_bt ON nginx_ip_stat(source_id, bucket_time)");
+            addUniqueIndexIfNotExists("nginx_ip_stat", "uq_nginx_ip_src_bt_ip",
+                    "source_id, bucket_time, client_ip");
+
             // UA / Referer / 原始样本 三张新表
             jdbcTemplate.execute(
                 "CREATE TABLE IF NOT EXISTS nginx_ua_stat (" +
@@ -57,12 +67,18 @@ public class NginxTrafficBootstrap {
                 " user_agent VARCHAR(500) NOT NULL, request_count INT DEFAULT 0, sum_request_time_ms BIGINT DEFAULT 0," +
                 " max_request_time_ms BIGINT DEFAULT 0, slow_count INT DEFAULT 0, status_5xx INT DEFAULT 0, create_time BIGINT)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_nginx_ua ON nginx_ua_stat(source_id, bucket_time)");
+            // 唯一索引：支持 UPSERT 合并同一分钟同一 UA 的统计数据
+            addUniqueIndexIfNotExists("nginx_ua_stat", "uq_nginx_ua_src_bt_ua",
+                    "source_id, bucket_time, user_agent");
+
             jdbcTemplate.execute(
                 "CREATE TABLE IF NOT EXISTS nginx_referer_stat (" +
                 " id BIGINT PRIMARY KEY AUTO_INCREMENT, source_id BIGINT NOT NULL, bucket_time BIGINT NOT NULL," +
                 " referer VARCHAR(500) NOT NULL, request_count INT DEFAULT 0, sum_request_time_ms BIGINT DEFAULT 0," +
                 " max_request_time_ms BIGINT DEFAULT 0, slow_count INT DEFAULT 0, status_5xx INT DEFAULT 0, create_time BIGINT)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_nginx_referer ON nginx_referer_stat(source_id, bucket_time)");
+            addUniqueIndexIfNotExists("nginx_referer_stat", "uq_nginx_referer_src_bt_ref",
+                    "source_id, bucket_time, referer");
             jdbcTemplate.execute(
                 "CREATE TABLE IF NOT EXISTS nginx_request_sample (" +
                 " id BIGINT PRIMARY KEY AUTO_INCREMENT, source_id BIGINT NOT NULL, ts BIGINT NOT NULL," +
@@ -70,6 +86,16 @@ public class NginxTrafficBootstrap {
                 " upstream_time_ms BIGINT DEFAULT 0, status INT DEFAULT 0, user_agent VARCHAR(500)," +
                 " referer VARCHAR(500), create_time BIGINT)");
             jdbcTemplate.execute("CREATE INDEX IF NOT EXISTS idx_nginx_sample_src_ts ON nginx_request_sample(source_id, ts)");
+
+            // 清理旧数据：聚合键降维后 client_ip 改为 '*__'，旧数据（真实IP）会导致统计重复
+            // 仅清理最近 1 天内的旧格式数据，避免影响历史回溯
+            long oneDayAgo = System.currentTimeMillis() - 24L * 3600L * 1000L;
+            int cleaned = jdbcTemplate.update(
+                "DELETE FROM nginx_minute_stat WHERE client_ip <> '*__' AND bucket_time > ?",
+                oneDayAgo);
+            if (cleaned > 0) {
+                log.info("清理旧格式 nginx_minute_stat 数据 {} 条（client_ip != '*__'）", cleaned);
+            }
 
             Integer sourceCount = jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM nginx_access_source", Integer.class);
@@ -87,6 +113,15 @@ public class NginxTrafficBootstrap {
             jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN IF NOT EXISTS " + column + " " + def);
         } catch (Exception e) {
             log.warn("补充列失败 {}.{}: {}", table, column, e.getMessage());
+        }
+    }
+
+    private void addUniqueIndexIfNotExists(String table, String indexName, String columns) {
+        try {
+            jdbcTemplate.execute("CREATE UNIQUE INDEX IF NOT EXISTS " + indexName
+                    + " ON " + table + "(" + columns + ")");
+        } catch (Exception e) {
+            log.warn("创建唯一索引失败 {}.{}: {}", table, indexName, e.getMessage());
         }
     }
 }

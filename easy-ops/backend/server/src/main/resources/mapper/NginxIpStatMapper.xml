@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NginxIpStatMapper">
+
+    <!-- 查询侧白名单过滤：IP/URI 精确排除 + LIKE 排除 -->
+    <sql id="whitelistFilter">
+        <if test="wl != null and wl.hasWhitelist == true">
+            <if test="wl.ipExact != null and wl.ipExact.size() > 0">
+                AND client_ip NOT IN
+                <foreach collection="wl.ipExact" item="ip" open="(" separator="," close=")">#{ip}</foreach>
+            </if>
+            <if test="wl.ipLike != null and wl.ipLike.size() > 0">
+                <foreach collection="wl.ipLike" item="ip" open=" AND (" separator=" AND " close=")">
+                    client_ip NOT LIKE #{ip}
+                </foreach>
+            </if>
+        </if>
+    </sql>
+
+    <update id="incrementIpStat">
+        UPDATE nginx_ip_stat
+        SET request_count = request_count + #{requestCount},
+            sum_request_time_ms = sum_request_time_ms + #{sumRequestTimeMs},
+            max_request_time_ms = CASE WHEN #{maxRequestTimeMs} &gt; max_request_time_ms THEN #{maxRequestTimeMs} ELSE max_request_time_ms END,
+            slow_count = slow_count + #{slowCount},
+            status_5xx = status_5xx + #{status5xx}
+        WHERE source_id = #{sourceId}
+          AND bucket_time = #{bucketTime}
+          AND client_ip = #{clientIp}
+    </update>
+
+    <insert id="insertIpStat">
+        INSERT INTO nginx_ip_stat (
+            source_id, bucket_time, client_ip, request_count,
+            sum_request_time_ms, max_request_time_ms, slow_count, status_5xx, create_time
+        ) VALUES (
+            #{row.sourceId}, #{row.bucketTime}, #{row.clientIp}, #{row.requestCount},
+            #{row.sumRequestTimeMs}, #{row.maxRequestTimeMs}, #{row.slowCount}, #{row.status5xx}, #{row.createTime}
+        )
+    </insert>
+
+    <select id="sumByIp" resultType="java.util.HashMap">
+        SELECT client_ip AS "clientIp",
+               SUM(request_count) AS "requestCount",
+               SUM(status_5xx) AS "status5xx",
+               SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_ip_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="keyword != null and keyword != ''">
+              AND client_ip LIKE '%' || #{keyword} || '%'
+          </if>
+          <include refid="whitelistFilter" />
+        GROUP BY client_ip
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByIp" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT client_ip
+            FROM nginx_ip_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="keyword != null and keyword != ''">
+                  AND client_ip LIKE '%' || #{keyword} || '%'
+              </if>
+              <include refid="whitelistFilter" />
+            GROUP BY client_ip
+        ) t
+    </select>
+
+    <!-- rank/ip-uri：改为分别查询 IP 维度和 URI 维度，不做跨表 JOIN -->
+    <!-- IP 维度：查 nginx_ip_stat 聚合 IP 级别统计 -->
+    <select id="sumByIpUri" resultType="java.util.HashMap">
+        SELECT client_ip AS "clientIp",
+               '__IP_SUMMARY__' AS "uri",
+               '-' AS "method",
+               SUM(request_count) AS "requestCount",
+               SUM(slow_count) AS "slowCount",
+               MAX(max_request_time_ms) AS "maxRequestTimeMs",
+               ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) AS "avgRequestTimeMs"
+        FROM nginx_ip_stat
+        WHERE bucket_time &gt;= #{startTime}
+          AND bucket_time &lt; #{endTime}
+          AND source_id IN
+          <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+          <if test="clientIp != null and clientIp != ''">
+              AND client_ip LIKE '%' || #{clientIp} || '%'
+          </if>
+          <include refid="whitelistFilter" />
+        GROUP BY client_ip
+        <choose>
+            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
+            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
+            <otherwise>ORDER BY SUM(request_count) DESC</otherwise>
+        </choose>
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <select id="countByIpUri" resultType="int">
+        SELECT COUNT(*) FROM (
+            SELECT client_ip
+            FROM nginx_ip_stat
+            WHERE bucket_time &gt;= #{startTime}
+              AND bucket_time &lt; #{endTime}
+              AND source_id IN
+              <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
+              <if test="clientIp != null and clientIp != ''">
+                  AND client_ip LIKE '%' || #{clientIp} || '%'
+              </if>
+              <include refid="whitelistFilter" />
+            GROUP BY client_ip
+        ) t
+    </select>
+
+    <delete id="deleteBefore">
+        DELETE FROM nginx_ip_stat WHERE bucket_time &lt; #{cutoff}
+    </delete>
+
+</mapper>
