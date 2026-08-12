@@ -88,10 +88,10 @@ const pagination = ref({ current: 1, pageSize: 20, total: 0 })
 const nodeMap = ref<Map<string, string>>(new Map())
 
 const columns = [
-  { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
-  { title: '名称', dataIndex: 'name', key: 'name', width: 200, ellipsis: true },
-  { title: 'JVM参数', dataIndex: 'jvmOpts', key: 'jvmOpts', width: 200, ellipsis: true },
-  { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 200, ellipsis: true },
+  { title: 'ID', dataIndex: 'id', key: 'id', width: 70, sorter: (a: any, b: any) => a.id - b.id },
+  { title: '名称', dataIndex: 'name', key: 'name', width: 200, ellipsis: true, sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
+  { title: 'JVM参数', dataIndex: 'jvmOpts', key: 'jvmOpts', width: 200, ellipsis: true, sorter: (a: any, b: any) => (a.jvmOpts || '').localeCompare(b.jvmOpts || '') },
+  { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 200, ellipsis: true, sorter: (a: any, b: any) => (a.nodeIds || '').localeCompare(b.nodeIds || '') },
   { title: '操作', key: 'action', width: 240, fixed: 'right' as const }
 ]
 

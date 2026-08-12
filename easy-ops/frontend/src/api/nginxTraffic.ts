@@ -104,9 +104,9 @@ export function getNginxRankIpUri(
   })
 }
 
-export function getNginxRankSlow(query?: NginxTimeQuery, pageQuery?: NginxPageQuery) {
+export function getNginxRankSlow(query?: NginxTimeQuery, pageQuery?: NginxPageQuery, sort?: string) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/slow', {
-    params: { ...buildTimeParams(query), page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 
@@ -116,15 +116,15 @@ export function getNginxRankMethod(query?: NginxTimeQuery, pageQuery?: NginxPage
   })
 }
 
-export function getNginxRankUa(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+export function getNginxRankUa(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery, sort?: string) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/ua', {
-    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), keyword, sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 
-export function getNginxRankReferer(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery) {
+export function getNginxRankReferer(query?: NginxTimeQuery, keyword?: string, pageQuery?: NginxPageQuery, sort?: string) {
   return request.get<any, Result<NginxRankPageResult>>('/nginx-traffic/rank/referer', {
-    params: { ...buildTimeParams(query), keyword, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
+    params: { ...buildTimeParams(query), keyword, sort, page: pageQuery?.page, pageSize: pageQuery?.pageSize }
   })
 }
 

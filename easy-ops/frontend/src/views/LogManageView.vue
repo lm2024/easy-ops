@@ -424,10 +424,10 @@ const deployDirHint = computed(() => {
 })
 
 const aggColumns = [
-  { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 100 },
-  { title: '时间', dataIndex: 'timestamp', key: 'timestamp', width: 180 },
-  { title: '文件', dataIndex: 'sourceFile', key: 'sourceFile', width: 120 },
-  { title: '内容', dataIndex: 'content', key: 'content' },
+  { title: '节点', dataIndex: 'nodeName', key: 'nodeName', width: 100, sorter: (a: any, b: any) => (a.nodeName || '').localeCompare(b.nodeName || '') },
+  { title: '时间', dataIndex: 'timestamp', key: 'timestamp', width: 180, sorter: (a: any, b: any) => (a.timestamp || 0) - (b.timestamp || 0) },
+  { title: '文件', dataIndex: 'sourceFile', key: 'sourceFile', width: 120, sorter: (a: any, b: any) => (a.sourceFile || '').localeCompare(b.sourceFile || '') },
+  { title: '内容', dataIndex: 'content', key: 'content', sorter: (a: any, b: any) => (a.content || '').localeCompare(b.content || '') },
   { title: '操作', key: 'action', width: 80, fixed: 'right' as const }
 ]
 

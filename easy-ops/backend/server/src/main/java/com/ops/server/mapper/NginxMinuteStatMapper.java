@@ -71,6 +71,7 @@ public interface NginxMinuteStatMapper {
                                            @Param("endTime") Long endTime,
                                            @Param("offset") int offset,
                                            @Param("pageSize") int pageSize,
+                                           @Param("sort") String sort,
                                            @Param("wl") Map<String, Object> wl);
 
     List<Map<String, Object>> sumByMethod(@Param("sourceIds") List<Long> sourceIds,

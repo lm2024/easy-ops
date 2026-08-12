@@ -34,7 +34,8 @@ public interface NginxDimensionStatMapper {
                                       @Param("endTime") Long endTime,
                                       @Param("keyword") String keyword,
                                       @Param("offset") int offset,
-                                      @Param("pageSize") int pageSize);
+                                      @Param("pageSize") int pageSize,
+                                      @Param("sort") String sort);
 
     int countByUa(@Param("sourceIds") List<Long> sourceIds,
                   @Param("startTime") Long startTime,
@@ -46,7 +47,8 @@ public interface NginxDimensionStatMapper {
                                            @Param("endTime") Long endTime,
                                            @Param("keyword") String keyword,
                                            @Param("offset") int offset,
-                                           @Param("pageSize") int pageSize);
+                                           @Param("pageSize") int pageSize,
+                                           @Param("sort") String sort);
 
     int countByReferer(@Param("sourceIds") List<Long> sourceIds,
                        @Param("startTime") Long startTime,

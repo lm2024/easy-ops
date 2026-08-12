@@ -129,11 +129,11 @@ const pagination = ref({ current: 1, pageSize: 20, total: 0 })
 const currentProject = computed(() => projects.value.find(p => String(p.id) === projectId.value))
 
 const columns = [
-  { title: '版本', dataIndex: 'version', key: 'version' },
-  { title: '类型', dataIndex: 'packageType', key: 'packageType', width: 90 },
-  { title: '包名', dataIndex: 'jarName', key: 'jarName' },
-  { title: '文件大小', dataIndex: 'fileSize', key: 'fileSize', width: 120 },
-  { title: '上传时间', dataIndex: 'createTime', key: 'createTime', width: 180 },
+  { title: '版本', dataIndex: 'version', key: 'version', sorter: (a: any, b: any) => (a.version || '').localeCompare(b.version || '') },
+  { title: '类型', dataIndex: 'packageType', key: 'packageType', width: 90, sorter: (a: any, b: any) => (a.packageType || '').localeCompare(b.packageType || '') },
+  { title: '包名', dataIndex: 'jarName', key: 'jarName', sorter: (a: any, b: any) => (a.jarName || '').localeCompare(b.jarName || '') },
+  { title: '文件大小', dataIndex: 'fileSize', key: 'fileSize', width: 120, sorter: (a: any, b: any) => (a.fileSize || 0) - (b.fileSize || 0) },
+  { title: '上传时间', dataIndex: 'createTime', key: 'createTime', width: 180, sorter: (a: any, b: any) => (a.createTime || 0) - (b.createTime || 0) },
   { title: '操作', key: 'action', width: 100, fixed: 'right' as const }
 ]
 
