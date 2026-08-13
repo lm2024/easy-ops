@@ -22,7 +22,7 @@ public interface ProjectScriptFileMapper {
 
     int update(ProjectScriptFileModel model);
 
-    int deleteById(@Param("id") Long id);
+    int deleteById(@Param("id") Long id, @Param("tenantId") Long tenantId);
 
-    int deleteByProjectId(@Param("projectId") Long projectId);
+    int deleteByProjectId(@Param("projectId") Long projectId, @Param("tenantId") Long tenantId);
 }

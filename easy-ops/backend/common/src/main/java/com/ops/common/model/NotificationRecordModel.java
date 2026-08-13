@@ -16,6 +16,7 @@ public class NotificationRecordModel implements Serializable {
     private String level;
     private String title;
     private String content;
+    private Long tenantId;
     private Long projectId;
     private Long nodeId;
     private String sourceType;

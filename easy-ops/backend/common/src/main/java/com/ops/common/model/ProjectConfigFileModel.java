@@ -19,4 +19,5 @@ public class ProjectConfigFileModel implements Serializable {
     private String remark;
     private Long createTime;
     private Long updateTime;
+    private Long tenantId;
 }

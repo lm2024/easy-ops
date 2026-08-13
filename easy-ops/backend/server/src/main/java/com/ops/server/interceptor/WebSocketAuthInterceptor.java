@@ -58,12 +58,17 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
             return true;
         }
 
-        if (!validateAgentToken(token, servletRequest)) {
+        com.ops.common.model.NodeModel agentNode = validateAgentTokenWithNode(token, servletRequest);
+        if (agentNode == null) {
             return false;
         }
 
         attributes.put("token", token);
-        log.debug("WebSocket authenticated successfully for agent token");
+        attributes.put("role", "agent");
+        if (agentNode.getTenantId() != null) {
+            attributes.put("tenantId", agentNode.getTenantId());
+        }
+        log.debug("WebSocket authenticated successfully for agent token, nodeId={}", agentNode.getId());
         return true;
     }
 
@@ -91,17 +96,23 @@ public class WebSocketAuthInterceptor implements HandshakeInterceptor {
     }
 
     /**
-     * 校验 Agent token 是否有效
+     * 校验 Agent token 是否有效，返回节点信息（含 tenantId）；无效返回 null
      */
-    private boolean validateAgentToken(String token, HttpServletRequest servletRequest) {
+    private com.ops.common.model.NodeModel validateAgentTokenWithNode(String token, HttpServletRequest servletRequest) {
         String dbToken = nodeMapper.getTokenByToken(token);
         if (dbToken != null && dbToken.equals(token)) {
-            return true;
+            String nodeId = nodeMapper.getNodeIdByToken(token);
+            if (nodeId != null) {
+                try {
+                    return nodeMapper.findById(Long.parseLong(nodeId));
+                } catch (NumberFormatException ignored) {}
+            }
+            return new com.ops.common.model.NodeModel();
         }
 
         String remoteAddr = servletRequest != null ? servletRequest.getRemoteAddr() : "unknown";
         log.warn("WebSocket authentication failed: invalid token from {}", remoteAddr);
-        return false;
+        return null;
     }
 
     @Override

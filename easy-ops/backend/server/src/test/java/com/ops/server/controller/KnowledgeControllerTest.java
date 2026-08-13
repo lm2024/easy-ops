@@ -2,6 +2,7 @@ package com.ops.server.controller;
 
 import com.ops.server.knowledge.service.KnowledgeCategoryService;
 import com.ops.server.knowledge.service.KnowledgeDocumentService;
+import com.ops.server.knowledge.service.KbSearchService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 
@@ -20,6 +21,8 @@ class KnowledgeControllerTest extends BaseControllerTest {
     private KnowledgeCategoryService categoryService;
     @MockBean
     private KnowledgeDocumentService documentService;
+    @MockBean
+    private KbSearchService searchService;
 
     @Test
     void listCategories() throws Exception {
@@ -34,7 +37,8 @@ class KnowledgeControllerTest extends BaseControllerTest {
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("list", Collections.emptyList());
         result.put("total", 0L);
-        when(documentService.search(eq("OOM"), anyInt(), anyInt())).thenReturn(result);
+        // /kb/search 由 KbSearchController → KbSearchService.fullTextSearch 处理（按租户隔离）
+        when(searchService.fullTextSearch(eq("OOM"), isNull(), anyInt(), anyInt())).thenReturn(result);
 
         mockMvc.perform(get("/kb/search").param("q", "OOM"))
                 .andExpect(status().isOk())

@@ -2,10 +2,10 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ops.server.mapper.NodeMapper">
     <select id="findById" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info WHERE id = #{id}
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info WHERE id = #{id}
     </select>
     <select id="findByName" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info WHERE name = #{name}
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info WHERE name = #{name}
     </select>
     <select id="getNodeIdByToken" resultType="string">
         SELECT CAST(id AS VARCHAR) FROM node_info WHERE token = #{token} LIMIT 1
@@ -14,7 +14,7 @@
         SELECT token FROM node_info WHERE token = #{token} LIMIT 1
     </select>
     <select id="findByStatus" resultType="com.ops.common.model.NodeModel">
-        SELECT * FROM node_info
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent FROM node_info
         <where>
             <if test="status != null and status != ''">
                 AND status = #{status}
@@ -25,7 +25,20 @@
                      OR tags LIKE '%' || #{keyword} || '%')
             </if>
         </where>
-        ORDER BY create_time DESC
+        <choose>
+            <when test="sortField == 'tags'">
+                ORDER BY tags <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>
+            </when>
+            <when test="sortField == 'ip'">
+                ORDER BY ip <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>
+            </when>
+            <when test="sortField == 'status'">
+                ORDER BY status <if test="sortOrder == 'descend'">DESC</if><if test="sortOrder != 'descend'">ASC</if>, last_heartbeat DESC
+            </when>
+            <otherwise>
+                ORDER BY create_time DESC
+            </otherwise>
+        </choose>
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
     <select id="countByStatus" resultType="long">
@@ -41,16 +54,40 @@
             </if>
         </where>
     </select>
+    <select id="findByStatusInTenant" resultType="com.ops.common.model.NodeModel">
+        SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent
+        FROM node_info
+        <where>
+            <!-- 本租户节点 + default 租户池节点（可认领），已归属其他租户的节点保持私密 -->
+            AND (tenant_id = #{tenantId} OR tenant_id = #{defaultTenantId})
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%' OR tags LIKE '%' || #{keyword} || '%')
+            </if>
+        </where>
+        ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countByStatusInTenant" resultType="long">
+        SELECT COUNT(*) FROM node_info
+        <where>
+            AND (tenant_id = #{tenantId} OR tenant_id = #{defaultTenantId})
+            <if test="status != null and status != ''">AND status = #{status}</if>
+            <if test="keyword != null and keyword != ''">
+                AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%' OR tags LIKE '%' || #{keyword} || '%')
+            </if>
+        </where>
+    </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO node_info (name, ip, port, token, status, os_info, java_version,
+        INSERT INTO node_info (name, tenant_id, ip, port, token, status, os_info, java_version,
                                last_heartbeat, create_time, update_time, tags,
                                cpu_cores, total_memory_mb, total_disk_mb, os_arch)
-        VALUES (#{name}, #{ip}, #{port}, #{token}, #{status}, #{osInfo}, #{javaVersion},
+        VALUES (#{name}, #{tenantId}, #{ip}, #{port}, #{token}, #{status}, #{osInfo}, #{javaVersion},
                 #{lastHeartbeat}, #{createTime}, #{updateTime}, #{tags},
                 #{cpuCores}, #{totalMemoryMb}, #{totalDiskMb}, #{osArch})
     </insert>
     <update id="update">
-        UPDATE node_info SET name = #{name}, ip = #{ip}, port = #{port}, token = #{token},
+        UPDATE node_info SET name = #{name}, tenant_id = #{tenantId}, ip = #{ip}, port = #{port}, token = #{token},
         status = #{status}, os_info = #{osInfo}, java_version = #{javaVersion},
         last_heartbeat = #{lastHeartbeat}, update_time = #{updateTime},
         tags = #{tags}, cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
@@ -67,13 +104,26 @@
         UPDATE node_info SET status = 1, ip = #{ip}, os_info = #{osInfo}, java_version = #{javaVersion},
         cpu_cores = #{cpuCores}, total_memory_mb = #{totalMemoryMb},
         total_disk_mb = #{totalDiskMb}, os_arch = #{osArch}, agent_version = #{agentVersion},
+        agent_pid = #{agentPid},
         last_heartbeat = #{lastHeartbeat}, update_time = #{lastHeartbeat} WHERE id = #{id}
+    </update>
+    <update id="updateDiskInfo">
+        UPDATE node_info SET disk_info = #{diskInfoJson} WHERE id = #{id}
+    </update>
+    <update id="updateHostMetrics">
+        UPDATE node_info SET host_cpu_percent = #{cpuPercent}, host_memory_percent = #{memPercent}, host_disk_percent = #{diskPercent} WHERE id = #{id}
+    </update>
+    <update id="updatePort">
+        UPDATE node_info SET port = #{port}, update_time = #{updateTime} WHERE id = #{id}
+    </update>
+    <update id="updateTenant">
+        UPDATE node_info SET tenant_id = #{tenantId}, update_time = #{updateTime} WHERE id = #{id}
     </update>
     <update id="updateStatusOffline">
         UPDATE node_info SET status = 0 WHERE id = #{id}
     </update>
     <select id="getOfflineCandidates" resultType="com.ops.common.model.NodeModel">
-        SELECT id, name, ip, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
+        SELECT id, name, ip, tenant_id AS tenantId, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
     </select>
     <!-- (Task 5) 修复 nodeIds 模糊匹配，CAST nodeId 为 VARCHAR 避免 H2 类型转换错误 -->
     <select id="countByNodeId" resultType="int">
@@ -83,5 +133,17 @@
     <select id="getProjectNamesByNodeId" resultType="string">
         SELECT name FROM project_info
         WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
+    </select>
+
+    <select id="getProjectIdsByNodeId" resultType="long">
+        SELECT id FROM project_info
+        WHERE (FIND_IN_SET(CAST(#{nodeId} AS VARCHAR), node_ids) > 0 OR node_ids = CAST(#{nodeId} AS VARCHAR))
+    </select>
+
+    <select id="findByIds" resultType="com.ops.common.model.NodeModel">
+        SELECT *, disk_info AS diskInfoJson FROM node_info WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
     </select>
 </mapper>

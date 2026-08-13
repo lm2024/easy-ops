@@ -17,4 +17,11 @@ public class UserModel implements Serializable {
     private Integer status;
     private Long createTime;
     private Long updateTime;
+
+    /** 租户绑定（transient，用户管理接口使用，非 sys_user 表字段） */
+    private Long tenantId;
+    /** 租户内角色（transient）：TENANT_ADMIN / OPERATOR / VIEWER */
+    private String tenantRole;
+    /** 租户名称（transient，展示用） */
+    private String tenantName;
 }

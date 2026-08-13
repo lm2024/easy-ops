@@ -14,22 +14,26 @@
         SELECT * FROM node_script_snapshot WHERE node_id = #{nodeId}
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO node_script_snapshot (project_id, node_id, script_file_id, content_hash, content_size, file_mode, sync_status, last_sync_time, update_time)
-        VALUES (#{projectId}, #{nodeId}, #{scriptFileId}, #{contentHash}, #{contentSize}, #{fileMode}, #{syncStatus}, #{lastSyncTime}, #{updateTime})
+        INSERT INTO node_script_snapshot (project_id, node_id, script_file_id, content_hash, content_size, file_mode, sync_status, last_sync_time, update_time, tenant_id)
+        VALUES (#{projectId}, #{nodeId}, #{scriptFileId}, #{contentHash}, #{contentSize}, #{fileMode}, #{syncStatus}, #{lastSyncTime}, #{updateTime}, #{tenantId})
     </insert>
     <update id="update">
         UPDATE node_script_snapshot
         SET content_hash = #{contentHash}, content_size = #{contentSize}, file_mode = #{fileMode},
             sync_status = #{syncStatus}, last_sync_time = #{lastSyncTime}, update_time = #{updateTime}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
     <delete id="deleteById">
         DELETE FROM node_script_snapshot WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
     <delete id="deleteByScriptFileId">
         DELETE FROM node_script_snapshot WHERE script_file_id = #{scriptFileId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
     <delete id="deleteByProjectId">
         DELETE FROM node_script_snapshot WHERE project_id = #{projectId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
 </mapper>

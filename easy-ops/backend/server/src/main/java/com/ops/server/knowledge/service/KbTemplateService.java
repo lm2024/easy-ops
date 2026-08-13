@@ -86,6 +86,7 @@ public class KbTemplateService {
         }
         KbDocumentModel doc = new KbDocumentModel();
         doc.setCategoryId(categoryId);
+        doc.setTenantId(securityContext.getCurrentTenantId());
         doc.setTitle(template.getName());
         doc.setContent(template.getContent());
         doc.setStatus(1);

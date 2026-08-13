@@ -55,8 +55,8 @@ public class KnowledgeDocumentService {
         return documentMapper.findById(id);
     }
 
-    public KbDocumentModel findByCategoryAndTitle(Long categoryId, String title) {
-        return documentMapper.findByCategoryAndTitle(categoryId, title);
+    public KbDocumentModel findByCategoryAndTitle(Long categoryId, String title, Long tenantId) {
+        return documentMapper.findByCategoryAndTitle(categoryId, title, tenantId);
     }
 
     /**
@@ -82,9 +82,9 @@ public class KnowledgeDocumentService {
         return documentMapper.findById(id);
     }
 
-    public Map<String, Object> listByCategory(Long categoryId, Integer page, Integer pageSize) {
-        List<KbDocumentModel> list = documentMapper.findByCategory(categoryId, page, pageSize);
-        Long total = documentMapper.countByCategory(categoryId);
+    public Map<String, Object> listByCategory(Long categoryId, Long tenantId, Integer page, Integer pageSize) {
+        List<KbDocumentModel> list = documentMapper.findByCategory(categoryId, tenantId, page, pageSize);
+        Long total = documentMapper.countByCategory(categoryId, tenantId);
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("list", list);
         result.put("total", total);
@@ -148,6 +148,7 @@ public class KnowledgeDocumentService {
         doc.setSourceType(existing.getSourceType());
         doc.setSourceId(existing.getSourceId());
         doc.setProjectId(existing.getProjectId());
+        doc.setTenantId(existing.getTenantId() != null ? existing.getTenantId() : 0L);
         doc.setLastEditorId(userId);
         doc.setContentSize(doc.getContent() != null ? doc.getContent().length() : 0);
         doc.setSummary(buildSummary(doc.getContent()));
@@ -167,16 +168,16 @@ public class KnowledgeDocumentService {
         return documentMapper.findById(id);
     }
 
-    public void delete(Long id) {
-        documentMapper.deleteById(id);
+    public void delete(Long id, Long tenantId) {
+        documentMapper.deleteById(id, tenantId);
         versionMapper.deleteByDocumentId(id);
         commentMapper.deleteByDocumentId(id);
         imageMapper.deleteByDocumentId(id);
         lockMapper.deleteByDocumentId(id);
     }
 
-    public void move(Long id, Long categoryId) {
-        documentMapper.updateCategory(id, categoryId, System.currentTimeMillis());
+    public void move(Long id, Long categoryId, Long tenantId) {
+        documentMapper.updateCategory(id, categoryId, tenantId, System.currentTimeMillis());
     }
 
     public Map<String, Object> acquireLock(Long documentId) {
@@ -232,17 +233,17 @@ public class KnowledgeDocumentService {
         return versionMapper.findByDocAndVersion(documentId, versionNo);
     }
 
-    public Map<String, Object> search(String keyword, Integer page, Integer pageSize) {
-        List<KbDocumentModel> list = documentMapper.search(keyword, page, pageSize);
-        Long total = documentMapper.countSearch(keyword);
+    public Map<String, Object> search(String keyword, Long tenantId, Integer page, Integer pageSize) {
+        List<KbDocumentModel> list = documentMapper.search(keyword, tenantId, page, pageSize);
+        Long total = documentMapper.countSearch(keyword, tenantId);
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("list", list);
         result.put("total", total);
         return result;
     }
 
-    public void incrementView(Long id) {
-        documentMapper.incrementViewCount(id);
+    public void incrementView(Long id, Long tenantId) {
+        documentMapper.incrementViewCount(id, tenantId);
     }
 
     public StreamingResponseBody exportMd(Long id) {
@@ -277,8 +278,8 @@ public class KnowledgeDocumentService {
     /**
      * 保存 Yjs 状态到 kb_document.yjs_state
      */
-    public void saveYjsState(Long id, byte[] yjsState) {
-        documentMapper.updateYjsState(id, yjsState);
+    public void saveYjsState(Long id, Long tenantId, byte[] yjsState) {
+        documentMapper.updateYjsState(id, yjsState, tenantId);
     }
 
     /**
@@ -291,13 +292,13 @@ public class KnowledgeDocumentService {
     /**
      * 从 Yjs 导出的 Markdown 更新文档 content
      */
-    public KbDocumentModel updateContentFromYjs(Long id, String content) {
+    public KbDocumentModel updateContentFromYjs(Long id, String content, Long tenantId) {
         KbDocumentModel existing = documentMapper.findById(id);
         if (existing == null) {
             throw new BusinessException(1004, "文档不存在");
         }
         int contentSize = content != null ? content.length() : 0;
-        documentMapper.updateContentFromYjs(id, content, contentSize, System.currentTimeMillis());
+        documentMapper.updateContentFromYjs(id, content, contentSize, System.currentTimeMillis(), tenantId);
         return documentMapper.findById(id);
     }
 

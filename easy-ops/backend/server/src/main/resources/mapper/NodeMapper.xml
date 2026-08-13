@@ -58,13 +58,8 @@
         SELECT *, disk_info AS diskInfoJson, host_cpu_percent AS hostCpuPercent, host_memory_percent AS hostMemoryPercent, host_disk_percent AS diskUsagePercent
         FROM node_info
         <where>
-            AND tenant_id = #{tenantId}
-            <if test="projectIds != null and projectIds.size() > 0">
-                AND id IN (SELECT DISTINCT n.id FROM node_info n JOIN project_info p
-                    ON FIND_IN_SET(CAST(n.id AS VARCHAR), p.node_ids) &gt; 0
-                    WHERE p.tenant_id = #{tenantId} AND p.id IN
-                    <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">#{projectId}</foreach>)
-            </if>
+            <!-- 本租户节点 + default 租户池节点（可认领），已归属其他租户的节点保持私密 -->
+            AND (tenant_id = #{tenantId} OR tenant_id = #{defaultTenantId})
             <if test="status != null and status != ''">AND status = #{status}</if>
             <if test="keyword != null and keyword != ''">
                 AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%' OR tags LIKE '%' || #{keyword} || '%')
@@ -76,13 +71,7 @@
     <select id="countByStatusInTenant" resultType="long">
         SELECT COUNT(*) FROM node_info
         <where>
-            AND tenant_id = #{tenantId}
-            <if test="projectIds != null and projectIds.size() > 0">
-                AND id IN (SELECT DISTINCT n.id FROM node_info n JOIN project_info p
-                    ON FIND_IN_SET(CAST(n.id AS VARCHAR), p.node_ids) &gt; 0
-                    WHERE p.tenant_id = #{tenantId} AND p.id IN
-                    <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">#{projectId}</foreach>)
-            </if>
+            AND (tenant_id = #{tenantId} OR tenant_id = #{defaultTenantId})
             <if test="status != null and status != ''">AND status = #{status}</if>
             <if test="keyword != null and keyword != ''">
                 AND (name LIKE '%' || #{keyword} || '%' OR ip LIKE '%' || #{keyword} || '%' OR tags LIKE '%' || #{keyword} || '%')
@@ -127,11 +116,14 @@
     <update id="updatePort">
         UPDATE node_info SET port = #{port}, update_time = #{updateTime} WHERE id = #{id}
     </update>
+    <update id="updateTenant">
+        UPDATE node_info SET tenant_id = #{tenantId}, update_time = #{updateTime} WHERE id = #{id}
+    </update>
     <update id="updateStatusOffline">
         UPDATE node_info SET status = 0 WHERE id = #{id}
     </update>
     <select id="getOfflineCandidates" resultType="com.ops.common.model.NodeModel">
-        SELECT id, name, ip, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
+        SELECT id, name, ip, tenant_id AS tenantId, last_heartbeat AS lastHeartbeat FROM node_info WHERE status = 1 AND last_heartbeat &lt; #{cutoff}
     </select>
     <!-- (Task 5) 修复 nodeIds 模糊匹配，CAST nodeId 为 VARCHAR 避免 H2 类型转换错误 -->
     <select id="countByNodeId" resultType="int">

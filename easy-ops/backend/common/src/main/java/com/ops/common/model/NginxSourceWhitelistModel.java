@@ -15,6 +15,8 @@ public class NginxSourceWhitelistModel implements Serializable {
     private Long id;
     /** 关联日志源 */
     private Long sourceId;
+    /** 所属租户（来源=所属日志源的租户） */
+    private Long tenantId;
     /** 维度类型：IP / URI / URI_PREFIX / METHOD */
     private String type;
     /** 匹配值（METHOD 时为 GET/POST...；URI_PREFIX 时为前缀） */

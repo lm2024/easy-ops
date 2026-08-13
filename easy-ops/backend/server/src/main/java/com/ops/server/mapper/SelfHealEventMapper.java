@@ -18,6 +18,14 @@ public interface SelfHealEventMapper {
 
     Long countByFilters(@Param("projectId") Long projectId);
 
+    List<SelfHealEventModel> findByFiltersInTenant(@Param("projectId") Long projectId,
+                                                 @Param("tenantId") Long tenantId,
+                                                 @Param("page") Integer page,
+                                                 @Param("pageSize") Integer pageSize);
+
+    Long countByFiltersInTenant(@Param("projectId") Long projectId,
+                                @Param("tenantId") Long tenantId);
+
     SelfHealEventModel findLatest(@Param("projectId") Long projectId,
                                   @Param("nodeId") Long nodeId);
 

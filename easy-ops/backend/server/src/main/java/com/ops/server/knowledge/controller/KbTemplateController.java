@@ -1,9 +1,13 @@
 package com.ops.server.knowledge.controller;
 
+import com.ops.common.model.KbCategoryModel;
 import com.ops.common.model.KbDocumentModel;
 import com.ops.common.model.KbTemplateModel;
 import com.ops.common.response.Result;
 import com.ops.server.knowledge.service.KbTemplateService;
+import com.ops.server.mapper.KbCategoryMapper;
+import com.ops.server.service.TenantResourceAccessService;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -19,6 +23,15 @@ public class KbTemplateController {
 
     @Autowired
     private KbTemplateService templateService;
+
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
+    @Autowired
+    private KbCategoryMapper categoryMapper;
+
+    @Autowired
+    private SecurityContext securityContext;
 
     /** 模板列表（category 可选） */
     @GetMapping
@@ -60,10 +73,27 @@ public class KbTemplateController {
             return Result.paramError("templateId 和 categoryId 不能为空");
         }
         try {
+            requireCategoryAccess(categoryMapper.findById(categoryId));
             KbDocumentModel doc = templateService.createFromTemplate(templateId, categoryId);
             return Result.success(doc);
         } catch (Exception e) {
             return Result.error(1004, e.getMessage());
+        }
+    }
+
+    /** 校验分类归属（模板本身共享，仅按分类归属做文档写入校验） */
+    private void requireCategoryAccess(KbCategoryModel category) {
+        if (category == null) {
+            throw new IllegalArgumentException("分类不存在");
+        }
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId != null && !securityContext.isPlatformAdmin()) {
+            if (category.getProjectId() != null) {
+                tenantResourceAccessService.requireProject(category.getProjectId());
+            } else if (category.getTenantId() != null && category.getTenantId() > 0
+                    && !tenantId.equals(category.getTenantId())) {
+                throw new IllegalArgumentException("无权访问该分类");
+            }
         }
     }
 }

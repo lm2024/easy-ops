@@ -309,14 +309,7 @@
           <foreach collection="sourceIds" item="sid" open="(" separator="," close=")">#{sid}</foreach>
           <include refid="whitelistFilter" />
         GROUP BY bucket_time
-        <choose>
-            <when test="sort != null and sort == 'requestCount'">ORDER BY SUM(request_count) DESC</when>
-            <when test="sort != null and sort == 'status4xx'">ORDER BY SUM(status_4xx) DESC</when>
-            <when test="sort != null and sort == 'status5xx'">ORDER BY SUM(status_5xx) DESC</when>
-            <when test="sort != null and sort == 'avg'">ORDER BY ROUND(SUM(sum_request_time_ms) * 1.0 / NULLIF(SUM(request_count), 0), 2) DESC</when>
-            <when test="sort != null and sort == 'max'">ORDER BY MAX(max_request_time_ms) DESC</when>
-            <otherwise>ORDER BY bucket_time ASC</otherwise>
-        </choose>
+        ORDER BY bucket_time ASC
     </select>
 
     <select id="overview" resultType="java.util.HashMap">

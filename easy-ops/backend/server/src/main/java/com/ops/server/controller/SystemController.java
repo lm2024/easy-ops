@@ -127,12 +127,17 @@ public class SystemController {
         authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
         AuthInterceptor.UserAuthContext loginAuth = authInterceptor.lookupUserAuth(token);
         Long tenantId = loginAuth == null ? null : loginAuth.getTenantId();
+        String tenantRole = loginAuth == null ? null : loginAuth.getTenantRole();
+        String tenantName = tenantId == null ? null : resolveTenantName(tenantId);
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
+        data.put("id", user.getId());
         data.put("username", user.getUsername());
         data.put("role", user.getRole());
         data.put("tenantId", tenantId);
+        data.put("tenantRole", tenantRole);
+        data.put("tenantName", tenantName);
 
         // Log operation (non-critical, suppress error if table doesn't exist yet)
         try {
@@ -202,12 +207,17 @@ public class SystemController {
         authInterceptor.cacheUserToken(token, user.getId().toString(), user.getUsername(), user.getRole());
         AuthInterceptor.UserAuthContext autoAuth = authInterceptor.lookupUserAuth(token);
         Long tenantId = autoAuth == null ? null : autoAuth.getTenantId();
+        String tenantRole = autoAuth == null ? null : autoAuth.getTenantRole();
+        String tenantName = tenantId == null ? null : resolveTenantName(tenantId);
 
         Map<String, Object> data = new HashMap<>();
         data.put("token", token);
+        data.put("id", user.getId());
         data.put("username", user.getUsername());
         data.put("role", user.getRole());
         data.put("tenantId", tenantId);
+        data.put("tenantRole", tenantRole);
+        data.put("tenantName", tenantName);
 
         try {
             OperationLogModel logModel = new OperationLogModel();
@@ -297,8 +307,39 @@ public class SystemController {
         return auth != null && "admin".equalsIgnoreCase(auth.getRole());
     }
 
+    /** 合法租户角色 */
+    private static final Set<String> TENANT_ROLES = new HashSet<>(Arrays.asList(
+            "TENANT_ADMIN", "OPERATOR", "VIEWER"));
+
+    /** 为用户补充主租户绑定信息（transient 字段，不落库） */
+    private void enrichTenantBinding(UserModel user) {
+        if (user == null) return;
+        user.setPassword(null);
+        try {
+            com.ops.common.model.TenantUserModel member = tenantMapper.findFirstActiveMember(user.getId());
+            if (member != null) {
+                user.setTenantId(member.getTenantId());
+                user.setTenantRole(member.getRole());
+                user.setTenantName(resolveTenantName(member.getTenantId()));
+            }
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 租户名称解析（供登录/用户列表展示） */
+    private String resolveTenantName(Long tenantId) {
+        try {
+            if (tenantId == null) return null;
+            com.ops.common.model.TenantModel tenant = tenantMapper.findById(tenantId);
+            return tenant == null ? null : tenant.getName();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /**
-     * GET /api/users - 用户列表（仅管理员可见）
+     * GET /api/users - 用户列表
+     * SUPER_ADMIN 看全量（带租户绑定）；TENANT_ADMIN 看本租户成员；OPERATOR/VIEWER 只看自己
      */
     @GetMapping("/users")
     public Result<?> listUsers(
@@ -309,24 +350,49 @@ public class SystemController {
         if (auth == null) {
             return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
         }
-        // 普通用户只能看到自己这一行（用于修改个人资料），管理员看全量
-        if (!isAdmin(auth)) {
-            UserModel self = null;
-            try {
-                self = userMapper.findById(Long.parseLong(auth.getUserId()));
-            } catch (NumberFormatException ignored) {
+        boolean superAdmin = isAdmin(auth);
+        boolean tenantAdmin = "TENANT_ADMIN".equalsIgnoreCase(auth.getTenantRole());
+
+        if (superAdmin) {
+            List<UserModel> users = userMapper.findAll(page, pageSize);
+            Long total = userMapper.countAll();
+            for (UserModel u : users) {
+                enrichTenantBinding(u);
             }
-            if (self != null) self.setPassword(null);
             Map<String, Object> data = new HashMap<>();
-            data.put("list", self == null ? Collections.emptyList() : Arrays.asList(self));
-            data.put("total", self == null ? 0L : 1L);
+            data.put("list", users);
+            data.put("total", total);
             return Result.success(data);
         }
-        List<UserModel> users = userMapper.findAll(page, pageSize);
-        Long total = userMapper.countAll();
+        if (tenantAdmin && auth.getTenantId() != null) {
+            List<com.ops.common.model.TenantUserModel> members = tenantMapper.listMembers(auth.getTenantId());
+            List<UserModel> users = new ArrayList<>();
+            for (com.ops.common.model.TenantUserModel m : members) {
+                UserModel u = userMapper.findById(m.getUserId());
+                if (u == null) continue;
+                u.setPassword(null);
+                u.setTenantId(m.getTenantId());
+                u.setTenantRole(m.getRole());
+                u.setTenantName(resolveTenantName(m.getTenantId()));
+                users.add(u);
+            }
+            Map<String, Object> data = new HashMap<>();
+            data.put("list", users);
+            data.put("total", (long) users.size());
+            return Result.success(data);
+        }
+        // 普通用户只能看到自己这一行（用于修改个人资料）
+        UserModel self = null;
+        try {
+            self = userMapper.findById(Long.parseLong(auth.getUserId()));
+        } catch (NumberFormatException ignored) {
+        }
+        if (self != null) {
+            enrichTenantBinding(self);
+        }
         Map<String, Object> data = new HashMap<>();
-        data.put("list", users);
-        data.put("total", total);
+        data.put("list", self == null ? Collections.emptyList() : Arrays.asList(self));
+        data.put("total", self == null ? 0L : 1L);
         return Result.success(data);
     }
 
@@ -347,18 +413,24 @@ public class SystemController {
         if (user == null) {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
         }
-        user.setPassword(null); // 不返回密码
+        enrichTenantBinding(user); // 带租户绑定信息（transient）
         return Result.success(user);
     }
 
     /**
      * POST /api/users - 新增用户
+     * SUPER_ADMIN 可指定 tenantId + tenantRole；TENANT_ADMIN 只能建本租户成员；其余无权限
      */
     @PostMapping("/users")
     public Result<?> createUser(@RequestBody UserModel user, HttpServletRequest request) {
         AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
-        if (!isAdmin(auth)) {
-            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        if (auth == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
+        }
+        boolean superAdmin = isAdmin(auth);
+        boolean tenantAdmin = "TENANT_ADMIN".equalsIgnoreCase(auth.getTenantRole());
+        if (!superAdmin && !tenantAdmin) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要平台管理员或租户管理员");
         }
         if (userMapper.findByUsername(user.getUsername()) != null) {
             return Result.paramError("用户名已存在");
@@ -376,11 +448,30 @@ public class SystemController {
         user.setCreateTime(System.currentTimeMillis());
         user.setUpdateTime(System.currentTimeMillis());
         userMapper.insert(user);
-        if (auth.getTenantId() != null) {
-            TenantUserModel member = new TenantUserModel();
-            member.setTenantId(auth.getTenantId());
+
+        // 租户绑定：SUPER_ADMIN 可指定 tenantId/tenantRole（缺省绑默认租户）；TENANT_ADMIN 强制本租户
+        Long bindTenantId = null;
+        String bindRole = "OPERATOR";
+        if (superAdmin) {
+            bindTenantId = user.getTenantId();
+            if (bindTenantId == null) {
+                com.ops.common.model.TenantModel defaultTenant = tenantMapper.findDefault();
+                bindTenantId = defaultTenant == null ? null : defaultTenant.getId();
+            }
+            if (user.getTenantRole() != null && !user.getTenantRole().trim().isEmpty()) {
+                bindRole = user.getTenantRole().trim().toUpperCase(Locale.ROOT);
+            }
+        } else if (tenantAdmin) {
+            bindTenantId = auth.getTenantId();
+        }
+        if (bindTenantId != null) {
+            if (!TENANT_ROLES.contains(bindRole)) {
+                bindRole = "OPERATOR";
+            }
+            com.ops.common.model.TenantUserModel member = new com.ops.common.model.TenantUserModel();
+            member.setTenantId(bindTenantId);
             member.setUserId(user.getId());
-            member.setRole("OPERATOR");
+            member.setRole(bindRole);
             member.setStatus(1);
             member.setCreateTime(user.getCreateTime());
             member.setUpdateTime(user.getUpdateTime());
@@ -391,6 +482,8 @@ public class SystemController {
 
     /**
      * PUT /api/users/{id} - 修改用户
+     * SUPER_ADMIN 可改任意用户及租户绑定；TENANT_ADMIN 只能改本租户成员；
+     * OPERATOR/VIEWER 只能改自己资料（防自我提权）
      */
     @PutMapping("/users/{id}")
     public Result<?> updateUser(@PathVariable Long id, @RequestBody UserModel user, HttpServletRequest request) {
@@ -398,21 +491,28 @@ public class SystemController {
         if (auth == null) {
             return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
         }
-        boolean admin = isAdmin(auth);
-        // 权限：仅管理员可改他人；普通用户只能改自己
-        if (!admin && !String.valueOf(id).equals(auth.getUserId())) {
+        boolean superAdmin = isAdmin(auth);
+        boolean tenantAdmin = "TENANT_ADMIN".equalsIgnoreCase(auth.getTenantRole());
+        // 权限：SUPER_ADMIN 可改他人；TENANT_ADMIN 本租户成员；普通用户只能改自己
+        if (!superAdmin && !tenantAdmin && !String.valueOf(id).equals(auth.getUserId())) {
             return Result.error(ErrorCode.FORBIDDEN, "只能修改自己的信息");
         }
         UserModel existing = userMapper.findById(id);
         if (existing == null) {
             return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
         }
+        // TENANT_ADMIN 修改他人时，须确认目标在本租户
+        if (tenantAdmin && !superAdmin && !String.valueOf(id).equals(auth.getUserId())
+                && auth.getTenantId() != null
+                && tenantMapper.findMember(auth.getTenantId(), id) == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "只能管理本租户成员");
+        }
         user.setId(id);
         if (user.getUsername() == null || user.getUsername().isEmpty()) {
             user.setUsername(existing.getUsername());
         }
         // 普通用户禁止修改角色/状态（防自我提权）；管理员可改
-        if (!admin) {
+        if (!superAdmin && !tenantAdmin) {
             user.setRole(existing.getRole());
             user.setStatus(existing.getStatus());
         } else {
@@ -435,18 +535,70 @@ public class SystemController {
         }
         user.setUpdateTime(System.currentTimeMillis());
         userMapper.update(user);
+
+        // SUPER_ADMIN 可调整目标用户的租户绑定（tenantId/tenantRole）
+        // tenantId 缺省时取用户现有主租户，支持仅改 tenantRole
+        Long bindTenantId = user.getTenantId();
+        if (superAdmin) {
+            if (bindTenantId == null && user.getTenantRole() != null && !user.getTenantRole().trim().isEmpty()) {
+                com.ops.common.model.TenantUserModel cur = tenantMapper.findFirstActiveMember(id);
+                if (cur != null) bindTenantId = cur.getTenantId();
+            }
+            if (bindTenantId != null) {
+                String bindRole = user.getTenantRole() == null || user.getTenantRole().trim().isEmpty()
+                        ? "OPERATOR" : user.getTenantRole().trim().toUpperCase(Locale.ROOT);
+                if (!TENANT_ROLES.contains(bindRole)) bindRole = "OPERATOR";
+                com.ops.common.model.TenantUserModel member = tenantMapper.findMember(bindTenantId, id);
+                long now = System.currentTimeMillis();
+                if (member == null) {
+                    member = new com.ops.common.model.TenantUserModel();
+                    member.setTenantId(bindTenantId);
+                    member.setUserId(id);
+                    member.setRole(bindRole);
+                    member.setStatus(1);
+                    member.setCreateTime(now);
+                    member.setUpdateTime(now);
+                    tenantMapper.insertMember(member);
+                } else {
+                    member.setRole(bindRole);
+                    member.setUpdateTime(now);
+                    tenantMapper.updateMember(member);
+                }
+            }
+        }
         return Result.success();
     }
 
     /**
      * DELETE /api/users/{id} - 删除用户
+     * SUPER_ADMIN 全权限；TENANT_ADMIN 只能删本租户成员；平台 admin 账号受保护
      */
     @DeleteMapping("/users/{id}")
     public Result<?> deleteUser(@PathVariable Long id, HttpServletRequest request) {
-        if (!isAdmin(getCurrentUserAuth(request))) {
-            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        AuthInterceptor.UserAuthContext auth = getCurrentUserAuth(request);
+        if (auth == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "未登录或登录已失效");
+        }
+        boolean superAdmin = isAdmin(auth);
+        boolean tenantAdmin = "TENANT_ADMIN".equalsIgnoreCase(auth.getTenantRole());
+        if (!superAdmin && !tenantAdmin) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要平台管理员或租户管理员");
+        }
+        UserModel target = userMapper.findById(id);
+        if (target == null) {
+            return Result.error(ErrorCode.SERVER_ERROR, "用户不存在");
+        }
+        // 保护平台 admin 账号不被误删
+        if ("admin".equalsIgnoreCase(target.getUsername())) {
+            return Result.paramError("平台管理员账号不可删除");
+        }
+        // TENANT_ADMIN 只能删本租户成员
+        if (tenantAdmin && !superAdmin && auth.getTenantId() != null
+                && tenantMapper.findMember(auth.getTenantId(), id) == null) {
+            return Result.error(ErrorCode.FORBIDDEN, "只能删除本租户成员");
         }
         userMapper.deleteById(id);
+        tenantMapper.deleteMembersByUser(id); // 清理所有租户成员关系
         return Result.success();
     }
 

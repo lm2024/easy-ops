@@ -1,9 +1,20 @@
 import request from '../utils/request'
 import type { UserModel, Result } from '../types'
 
+/** 登录返回 */
+export interface LoginResult {
+  token: string
+  id: number
+  username: string
+  role: string
+  tenantId?: number
+  tenantRole?: string
+  tenantName?: string
+}
+
 /** 用户登录 */
 export function login(username: string, password: string, captchaId: string, captchaCode: string) {
-  return request.post<any, Result<{ token: string; username: string; role: string }>>('/auth/login', {
+  return request.post<any, Result<LoginResult>>('/auth/login', {
     username, password, captchaId, captchaCode
   })
 }

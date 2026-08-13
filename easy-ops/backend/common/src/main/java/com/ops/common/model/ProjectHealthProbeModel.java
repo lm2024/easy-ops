@@ -22,4 +22,5 @@ public class ProjectHealthProbeModel implements Serializable {
     private Integer timeoutMs;
     private Long createTime;
     private Long updateTime;
+    private Long tenantId;
 }

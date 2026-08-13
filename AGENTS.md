@@ -259,3 +259,48 @@ echo "Bearer $TOKEN"
 - **日志大小控制**：Server 单文件 10MB/保留 7 天/总上限 50MB，Agent 单文件 10MB/保留 7 天/总上限 30MB。Agent 新增文件日志（之前只输出 stdout）。
 - **mapper SQL 日志降级**：`com.ops.server.mapper: WARN`，避免控制台被 SQL 刷屏。排查时临时改回 DEBUG。
 - **调度器日志降级**：`com.ops.server.scheduler: INFO`，避免分布式锁 DEBUG 刷屏。
+
+
+
+端口冲突不能改代码，必须结束掉冲突端口。再启动
+agent 部署在 Docker 中
+server 我自己验证是自己启动，前端也一样；我需要你全部验证你就应该自己重启自己验证
+不管开发任何功能都要有兜底方案
+任何任务。 开发完成后必须做功能测试。纯后端修改直接测试 api 
+前后端都修改了必须用无头浏览器验证功能，每个修改的按钮，每个返回的字段都要验证
+自测发现问题自己修改好，然后再次验证；做测试要模拟用户的各种奇葩的场景以及表单的各种奇葩输入，防止空指针或宕机；
+编写代码要极简风格。能用三行解决的问题不要写 十行；
+优先考虑性能。尤其是微服务整体性能。对 db 操作的性能，并发性能
+不要迎合我，要客观用最佳实践进行评审修改
+保持 jdk8，java8语法
+
+## 租户隔离规则（CRUD 必读）
+
+### 核心原则
+- **管理员（sys_user.role=admin）= 终极兜底**：`isSuperAdmin()` 放行优先于一切租户校验，管理员永远能访问全部资源。
+- **tenantId=null 代表平台视图**（管理员未切换租户），此时 `tenantScopeEnabled(null)=false`，跳过所有租户过滤。
+- **tenantId=-1 是哨兵值**：非管理员用户无租户成员关系时赋值，所有租户校验都会失败，用户无法访问任何资源。
+
+### 数据列表页 vs 节点管理页的隔离策略差异
+
+| 场景 | 过滤方式 | 原因 |
+|------|----------|------|
+| 告警/部署/监控/自愈/版本等**数据列表** | 只按 `tenantId` 过滤 | 数据严格属于当前租户，不能泄露 |
+| 节点管理列表 | `tenantId OR defaultTenantId` | 用户需要看到默认租户池节点才能认领 |
+| Agent 状态页 | 只按 `tenantId` 过滤 | 状态监控只看本租户节点，不含池节点 |
+| Agent 升级页 | `tenantId OR defaultTenantId` | 升级需要覆盖所有可达节点 |
+| 节点导出 | `tenantId OR defaultTenantId` | 与节点管理一致 |
+
+### 新增/修改列表页的 checklist
+1. 确定当前页是**数据展示**还是**资源管理**（含认领/操作池资源）
+2. 数据展示 → 只用 `securityContext.getCurrentTenantId()` 过滤，**不要传 defaultTenantId**
+3. 资源管理 → 用 `findByStatusInTenant(tenantId, defaultTenantId)` 包含池节点
+4. 管理员平台视图（tenantId=null）→ 走全量查询分支，不经过租户过滤
+5. 创建资源时 → 自动设置 `tenantId`，平台视图下归默认租户（避免孤儿数据）
+
+### 已知正确的实现参考
+- `AlarmController.listAlarms()` — 数据列表，单 tenantId
+- `DeployController.listRecords()` — 数据列表，单 tenantId
+- `AppMonitorController.agentStatus()` — 状态页，单 tenantId
+- `NodeController.listNodes()` — 资源管理，tenantId + defaultTenantId（含池节点）
+

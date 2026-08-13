@@ -12,10 +12,42 @@ export interface UserModel {
   id: number
   username: string
   password?: string
-  role: 'ADMIN' | 'OPERATOR'
+  role: string
   status: number
   createTime?: string
   updateTime?: string
+  /** 当前生效租户（transient） */
+  tenantId?: number
+  /** 租户内角色：TENANT_ADMIN / OPERATOR / VIEWER（transient） */
+  tenantRole?: string
+  /** 租户名称（transient） */
+  tenantName?: string
+}
+
+/** 租户类型 */
+export interface TenantModel {
+  id: number
+  code: string
+  name: string
+  status: number
+  createTime?: number
+  updateTime?: number
+  /** 统计字段 */
+  nodeCount?: number
+  projectCount?: number
+  memberCount?: number
+}
+
+/** 租户成员类型 */
+export interface TenantMemberModel {
+  id: number
+  tenantId: number
+  userId: number
+  username?: string
+  role: string
+  status: number
+  createTime?: number
+  updateTime?: number
 }
 
 /** 节点类型 */
@@ -43,6 +75,31 @@ export interface NodeModel {
   osArch?: string
   /** Agent 版本号（心跳上报） */
   agentVersion?: string
+  /** 所属租户（隔离归属） */
+  tenantId?: number
+  /** 所属租户名称（列表展示） */
+  tenantName?: string
+  /** 是否可认领池节点（default 归属且非当前租户） */
+  claimable?: boolean
+}
+
+/** 节点认领/转移申请 */
+export interface NodeTransferApplicationModel {
+  id: number
+  nodeId: number
+  nodeName?: string
+  applicantId?: number
+  applicantUsername?: string
+  targetTenantId?: number
+  targetTenantName?: string
+  sourceTenantId?: number
+  status: string
+  remark?: string
+  createTime?: number
+  updateTime?: number
+  approveTime?: number
+  approverId?: number
+  approverUsername?: string
 }
 
 /** 项目类型 */
@@ -311,6 +368,8 @@ export interface NginxTrafficAlarmRuleModel {
 
 /** Nginx 日志源白名单（查询侧排除，不参与统计/告警） */
 export interface NginxSourceWhitelistModel {
+  /** 前端临时 key，用于列表行标识 */
+  __key?: number
   id?: number
   sourceId?: number
   /** 维度：IP / URI / URI_PREFIX / METHOD */

@@ -6,14 +6,15 @@
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO config_distribute_record (project_id, config_file_id, operator_id, target_node_ids,
-            distribute_type, content_hash, restart_after, status, result_detail, create_time)
+            distribute_type, content_hash, restart_after, status, result_detail, create_time, tenant_id)
         VALUES (#{projectId}, #{configFileId}, #{operatorId}, #{targetNodeIds},
-            #{distributeType}, #{contentHash}, #{restartAfter}, #{status}, #{resultDetail}, #{createTime})
+            #{distributeType}, #{contentHash}, #{restartAfter}, #{status}, #{resultDetail}, #{createTime}, #{tenantId})
     </insert>
     <update id="updateStatus">
         UPDATE config_distribute_record
         SET status = #{status}, result_detail = #{resultDetail}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
 
     <delete id="deleteBefore">

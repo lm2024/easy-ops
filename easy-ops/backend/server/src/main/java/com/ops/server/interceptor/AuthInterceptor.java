@@ -38,7 +38,6 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     @Autowired
     private TenantMapper tenantMapper;
-
     // Agent token cache: nodeId -> token
     private final Map<String, String> agentTokenCache = new ConcurrentHashMap<>();
 
@@ -124,11 +123,22 @@ public class AuthInterceptor implements HandlerInterceptor {
         }
 
         // 写入请求属性供 Controller 使用 (SEC-003)
-        request.setAttribute(ATTR_USER_ID, data.userId);
-        request.setAttribute(ATTR_USER_NAME, data.username);
-        request.setAttribute(ATTR_USER_ROLE, data.role);
-        if (data.tenantId != null) {
-            request.setAttribute(ATTR_TENANT_ID, data.tenantId);
+        // synchronized 保证 tenantId/tenantRole 读取的一致性（switchTenant 可能并发修改）
+        Long tenantId;
+        String tenantRole;
+        synchronized (data) {
+            request.setAttribute(ATTR_USER_ID, data.userId);
+            request.setAttribute(ATTR_USER_NAME, data.username);
+            request.setAttribute(ATTR_USER_ROLE, data.role);
+            tenantId = data.tenantId;
+            tenantRole = data.tenantRole;
+        }
+        if (tenantId != null) {
+            request.setAttribute(ATTR_TENANT_ID, tenantId);
+        }
+        // 租户内角色（tenant_user.role）：TENANT_ADMIN / OPERATOR / VIEWER
+        if (tenantRole != null) {
+            request.setAttribute("currentTenantRole", tenantRole);
         }
 
         return true;
@@ -142,7 +152,7 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (data == null) {
             return null;
         }
-        return new UserAuthContext(data.userId, data.username, data.role, data.tenantId);
+        return new UserAuthContext(data.userId, data.username, data.role, data.tenantId, data.tenantRole);
     }
 
     private TokenData resolveUserTokenData(String token) {
@@ -165,7 +175,12 @@ public class AuthInterceptor implements HandlerInterceptor {
             Long userId = Long.parseLong(userIdStr);
             com.ops.common.model.UserModel user = userMapper.findById(userId);
             if (user != null) {
-                data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole(), resolveTenantId(user.getId()));
+                // 平台管理员（sys_user.role=admin）默认平台视图（tenantId=null 全量），显式切换才进入租户视角
+                boolean platformAdmin = user.getRole() != null
+                        && ("admin".equalsIgnoreCase(user.getRole()) || "super_admin".equalsIgnoreCase(user.getRole()));
+                Long tenantId = platformAdmin ? null : resolveTenantId(user.getId());
+                data = new TokenData(String.valueOf(user.getId()), user.getUsername(), user.getRole(),
+                        tenantId, platformAdmin ? null : resolveTenantRole(tenantId, user.getId()));
                 data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
                 userTokenCache.put(token, data);
                 return data;
@@ -190,25 +205,94 @@ public class AuthInterceptor implements HandlerInterceptor {
 
     // Cache methods for controllers
     public void cacheUserToken(String token, String userId, String username, String role) {
-        TokenData data = new TokenData(userId, username, role, resolveTenantId(parseLong(userId)));
+        Long uid = parseLong(userId);
+        // 平台管理员默认平台视图（全量），显式切换才进入租户视角
+        boolean platformAdmin = role != null
+                && ("admin".equalsIgnoreCase(role) || "super_admin".equalsIgnoreCase(role));
+        Long tenantId = platformAdmin ? null : resolveTenantId(uid);
+        TokenData data = new TokenData(userId, username, role, tenantId,
+                platformAdmin ? null : resolveTenantRole(tenantId, uid));
         data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
         userTokenCache.put(token, data);
     }
 
     public void cacheUserToken(String token, String userId, String username, String role, Long tenantId) {
-        TokenData data = new TokenData(userId, username, role, tenantId);
+        Long uid = parseLong(userId);
+        boolean platformAdmin = role != null
+                && ("admin".equalsIgnoreCase(role) || "super_admin".equalsIgnoreCase(role));
+        Long effectiveTenant = platformAdmin ? null : tenantId;
+        TokenData data = new TokenData(userId, username, role, effectiveTenant,
+                platformAdmin ? null : resolveTenantRole(effectiveTenant, uid));
         data.expireTime = System.currentTimeMillis() + 24 * 60 * 60 * 1000;
         userTokenCache.put(token, data);
+    }
+
+    /**
+     * 平台管理员切换当前生效租户（受控：仅更新 token 缓存，不影响权限来源 sys_user.role）。
+     * tenantId 为 null/0 时切回平台视图（全量）。
+     * 校验：目标租户必须存在且启用（status=1），否则拒绝切换。
+     */
+    public boolean switchTenant(String token, Long tenantId) {
+        TokenData data = userTokenCache.get(token);
+        if (data == null) return false;
+        synchronized (data) {
+            if (tenantId == null || tenantId == 0L) {
+                data.tenantId = null;
+                data.tenantRole = null;
+                return true;
+            }
+            // 校验目标租户存在且启用
+            if (tenantMapper != null) {
+                com.ops.common.model.TenantModel tenant = tenantMapper.findById(tenantId);
+                if (tenant == null || tenant.getStatus() == null || tenant.getStatus() != 1) {
+                    log.warn("[Auth] 切换租户失败：目标租户 tenantId={} 不存在或已禁用", tenantId);
+                    return false;
+                }
+            }
+            data.tenantId = tenantId;
+            data.tenantRole = resolveTenantRole(tenantId, parseLong(data.userId));
+            return true;
+        }
     }
 
     private Long parseLong(String value) {
         try { return value == null ? null : Long.valueOf(value); } catch (NumberFormatException e) { return null; }
     }
 
+    /**
+     * 解析非管理员用户的生效租户。
+     * 兜底逻辑：
+     *  1. 无活跃成员关系 → 哨兵 -1（所有租户校验都会失败，用户无法访问任何资源）
+     *  2. 租户被禁用（status≠1）→ 返回成员的 tenantId，但后续请求校验会拦截
+     *  3. 租户不存在（被物理删除）→ 返回成员的 tenantId，同上
+     * 管理员不走此方法（tenantId 直接设为 null → 平台视图）。
+     */
     private Long resolveTenantId(Long userId) {
         if (userId == null || tenantMapper == null) return null;
         com.ops.common.model.TenantUserModel member = tenantMapper.findFirstActiveMember(userId);
-        return member == null ? null : member.getTenantId();
+        if (member == null) {
+            // 非管理员用户无租户成员关系 → 哨兵 -1：租户查询为空，且不可被当成平台视图泄漏
+            return -1L;
+        }
+        // 校验租户是否存在且启用；禁用/删除的租户不应放行
+        try {
+            com.ops.common.model.TenantModel tenant = tenantMapper.findById(member.getTenantId());
+            if (tenant == null || tenant.getStatus() == null || tenant.getStatus() != 1) {
+                log.warn("[Auth] 用户 userId={} 的租户 tenantId={} 已禁用或不存在，拒绝访问", userId, member.getTenantId());
+                return -1L; // 回退到哨兵值，等效于无租户
+            }
+        } catch (Exception e) {
+            log.warn("[Auth] 校验租户状态异常，拒绝用户 userId={}", userId, e);
+            return -1L;
+        }
+        return member.getTenantId();
+    }
+
+    /** 解析用户在某租户内的角色（tenant_user.role），非成员返回 null */
+    private String resolveTenantRole(Long tenantId, Long userId) {
+        if (tenantId == null || userId == null || tenantMapper == null) return null;
+        com.ops.common.model.TenantUserModel member = tenantMapper.findMember(tenantId, userId);
+        return member == null ? null : member.getRole();
     }
 
     public void removeUserToken(String token) {
@@ -224,13 +308,19 @@ public class AuthInterceptor implements HandlerInterceptor {
         String username;
         String role;
         Long tenantId;
+        String tenantRole;
         long expireTime;
 
         TokenData(String userId, String username, String role, Long tenantId) {
+            this(userId, username, role, tenantId, null);
+        }
+
+        TokenData(String userId, String username, String role, Long tenantId, String tenantRole) {
             this.userId = userId;
             this.username = username;
             this.role = role;
             this.tenantId = tenantId;
+            this.tenantRole = tenantRole;
         }
     }
 
@@ -239,16 +329,22 @@ public class AuthInterceptor implements HandlerInterceptor {
         private final String username;
         private final String role;
         private final Long tenantId;
+        private final String tenantRole;
 
         public UserAuthContext(String userId, String username, String role) {
-            this(userId, username, role, null);
+            this(userId, username, role, null, null);
         }
 
         public UserAuthContext(String userId, String username, String role, Long tenantId) {
+            this(userId, username, role, tenantId, null);
+        }
+
+        public UserAuthContext(String userId, String username, String role, Long tenantId, String tenantRole) {
             this.userId = userId;
             this.username = username;
             this.role = role;
             this.tenantId = tenantId;
+            this.tenantRole = tenantRole;
         }
 
         public String getUserId() {
@@ -265,6 +361,10 @@ public class AuthInterceptor implements HandlerInterceptor {
 
         public Long getTenantId() {
             return tenantId;
+        }
+
+        public String getTenantRole() {
+            return tenantRole;
         }
     }
 }

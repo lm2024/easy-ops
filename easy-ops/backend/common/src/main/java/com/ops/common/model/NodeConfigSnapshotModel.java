@@ -21,4 +21,5 @@ public class NodeConfigSnapshotModel implements Serializable {
     private Integer syncStatus;
     private Long lastSyncTime;
     private Long updateTime;
+    private Long tenantId;
 }

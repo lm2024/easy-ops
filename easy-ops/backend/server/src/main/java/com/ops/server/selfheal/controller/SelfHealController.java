@@ -1,10 +1,13 @@
 package com.ops.server.selfheal.controller;
 
+import com.ops.common.model.ProjectModel;
 import com.ops.common.model.SelfHealEventModel;
 import com.ops.common.model.SelfHealPolicyModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.SelfHealEventMapper;
+import com.ops.server.mapper.SelfHealPolicyMapper;
 import com.ops.server.selfheal.service.SelfHealPolicyService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -27,6 +30,12 @@ public class SelfHealController {
     private SelfHealEventMapper eventMapper;
 
     @Autowired
+    private SelfHealPolicyMapper policyMapper;
+
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
+
+    @Autowired
     private SecurityContext securityContext;
 
     /**
@@ -34,7 +43,10 @@ public class SelfHealController {
      */
     @GetMapping("/policies")
     public Result<?> listPolicies() {
-        List<SelfHealPolicyModel> list = policyService.listAll();
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<SelfHealPolicyModel> list = (tenantId != null && tenantId.longValue() > 0L)
+                ? policyMapper.findAllInTenant(tenantId)
+                : policyService.listAll();
         return Result.success(list);
     }
 
@@ -55,8 +67,12 @@ public class SelfHealController {
      */
     @PostMapping("/policies")
     public Result<?> savePolicy(@RequestBody SelfHealPolicyModel policy) {
-        if (policy.getProjectId() != null && !securityContext.hasProjectPermission(policy.getProjectId())) {
-            return Result.error(403, "无项目权限");
+        if (policy.getProjectId() != null) {
+            Long tenantId = securityContext.getCurrentTenantId();
+            if (tenantId != null && tenantId.longValue() > 0L) {
+                ProjectModel project = resourceAccess.requireProject(policy.getProjectId());
+                policy.setTenantId(project.getTenantId());
+            }
         }
         SelfHealPolicyModel saved = policyService.save(policy);
         return Result.success(saved);
@@ -67,8 +83,8 @@ public class SelfHealController {
      */
     @PostMapping("/policies/{projectId}/circuit-break")
     public Result<?> resetCircuitBreaker(@PathVariable Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无项目权限");
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(projectId);
         }
         SelfHealPolicyModel policy = policyService.resetCircuitBreaker(projectId);
         return Result.success(policy);
@@ -82,11 +98,19 @@ public class SelfHealController {
             @RequestParam(required = false) Long projectId,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        if (projectId != null && !securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无项目权限");
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (projectId != null && tenantId != null && tenantId.longValue() > 0L) {
+            resourceAccess.requireProject(projectId);
         }
-        List<SelfHealEventModel> list = eventMapper.findByFilters(projectId, page, pageSize);
-        Long total = eventMapper.countByFilters(projectId);
+        List<SelfHealEventModel> list;
+        Long total;
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            list = eventMapper.findByFiltersInTenant(projectId, tenantId, page, pageSize);
+            total = eventMapper.countByFiltersInTenant(projectId, tenantId);
+        } else {
+            list = eventMapper.findByFilters(projectId, page, pageSize);
+            total = eventMapper.countByFilters(projectId);
+        }
         Map<String, Object> data = new HashMap<>();
         data.put("list", list);
         data.put("total", total);

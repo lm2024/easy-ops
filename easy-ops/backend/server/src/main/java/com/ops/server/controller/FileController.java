@@ -8,6 +8,7 @@ import com.ops.common.response.Result;
 import com.ops.server.client.AgentClient;
 import com.ops.server.mapper.FileAccessLogMapper;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -36,6 +37,9 @@ public class FileController {
     @Autowired
     private AgentClient agentClient;
 
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
     @Value("${server.path:./data}")
     private String serverPath;
 
@@ -48,6 +52,8 @@ public class FileController {
             @RequestParam(name = "logPath", defaultValue = "") String logPath,
             @RequestParam(defaultValue = "0") Integer offset,
             @RequestParam(defaultValue = "200") Integer lines) {
+
+        tenantResourceAccessService.requireNode(nodeId);
 
         NodeModel node = nodeMapper.findById(nodeId);
         if (!isValidNode(node)) {
@@ -75,6 +81,8 @@ public class FileController {
     @GetMapping("/config")
     public Result<?> viewConfig(@RequestParam Long nodeId,
                                  @RequestParam(name = "configPath") String configPath) {
+        tenantResourceAccessService.requireNode(nodeId);
+
         NodeModel node = nodeMapper.findById(nodeId);
         if (!isValidNode(node)) {
             return Result.error(1002, "节点不存在或离线");
@@ -109,6 +117,8 @@ public class FileController {
         String configPath = configPathObj.toString();
         String content = contentObj.toString();
 
+        tenantResourceAccessService.requireNode(nodeId);
+
         NodeModel node = nodeMapper.findById(nodeId);
         if (!isValidNode(node)) {
             return Result.error(1002, "节点不存在或离线");
@@ -140,6 +150,15 @@ public class FileController {
     public ResponseEntity<StreamingResponseBody> batchDownload(@RequestBody Map<String, Object> request) {
         @SuppressWarnings("unchecked")
         List<Map<String, String>> items = (List<Map<String, String>>) request.get("items");
+
+        if (items != null) {
+            for (Map<String, String> item : items) {
+                String nodeIdStr = item.get("nodeId");
+                if (nodeIdStr != null) {
+                    tenantResourceAccessService.requireNode(Long.parseLong(nodeIdStr));
+                }
+            }
+        }
 
         StreamingResponseBody body = outputStream -> {
             try (ZipOutputStream zos = new ZipOutputStream(outputStream)) {

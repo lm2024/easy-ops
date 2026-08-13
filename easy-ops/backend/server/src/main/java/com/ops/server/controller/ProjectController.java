@@ -29,6 +29,9 @@ public class ProjectController {
     @Autowired
     private UserProjectRelationMapper userProjectRelationMapper;
 
+    @Autowired
+    private com.ops.server.mapper.TenantMapper tenantMapper;
+
     /**
      * GET /api/projects - 项目列表 (SEC-004: 增加用户项目范围过滤)
      */
@@ -69,9 +72,13 @@ public class ProjectController {
      */
     @PostMapping
     public Result<?> createProject(@RequestBody ProjectModel project) {
-        if (securityContext.getCurrentTenantId() != null) {
-            project.setTenantId(securityContext.getCurrentTenantId());
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null) {
+            // 平台视图（super_admin 未切换）下创建 → 归默认租户
+            com.ops.common.model.TenantModel defaultTenant = tenantMapper.findDefault();
+            if (defaultTenant != null) tenantId = defaultTenant.getId();
         }
+        project.setTenantId(tenantId);
         if (projectService.findByName(project.getName()) != null) {
             return Result.paramError("项目名称已存在");
         }

@@ -2,10 +2,10 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ops.server.mapper.MonitorSnapshotMapper">
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO monitor_snapshot (project_id, node_id, health_status, health_detail, process_status,
+        INSERT INTO monitor_snapshot (project_id, tenant_id, node_id, health_status, health_detail, process_status,
             process_pid, cpu_percent, memory_mb, heap_used_mb, heap_max_mb, gc_count, gc_time_ms,
             response_ms, host_cpu_percent, host_memory_percent, disk_usage_percent, extra_json, collect_time)
-        VALUES (#{projectId}, #{nodeId}, #{healthStatus}, #{healthDetail}, #{processStatus},
+        VALUES (#{projectId}, #{tenantId}, #{nodeId}, #{healthStatus}, #{healthDetail}, #{processStatus},
             #{processPid}, #{cpuPercent}, #{memoryMb}, #{heapUsedMb}, #{heapMaxMb}, #{gcCount}, #{gcTimeMs},
             #{responseMs}, #{hostCpuPercent}, #{hostMemoryPercent}, #{diskUsagePercent}, #{extraJson}, #{collectTime})
     </insert>
@@ -17,6 +17,7 @@
             host_cpu_percent=#{hostCpuPercent}, host_memory_percent=#{hostMemoryPercent},
             disk_usage_percent=#{diskUsagePercent}, extra_json=#{extraJson}, collect_time=#{collectTime}
         WHERE id=#{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
     <select id="findLatest" resultType="com.ops.common.model.MonitorSnapshotModel">
         SELECT * FROM monitor_snapshot WHERE project_id = #{projectId} AND node_id = #{nodeId}

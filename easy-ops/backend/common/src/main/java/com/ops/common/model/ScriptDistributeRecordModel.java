@@ -22,4 +22,5 @@ public class ScriptDistributeRecordModel implements Serializable {
     private Integer status;         // 0-进行中 1-成功 2-部分失败 3-失败
     private String resultDetail;
     private Long createTime;
+    private Long tenantId;
 }

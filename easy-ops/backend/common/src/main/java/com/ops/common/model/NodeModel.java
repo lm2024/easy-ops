@@ -56,4 +56,10 @@ public class NodeModel implements Serializable {
 
     /** 主机磁盘使用率（心跳上报） */
     private Integer diskUsagePercent;
+
+    /** 是否为可认领池节点（default 租户归属、非当前租户，transient 列表标记） */
+    private Boolean claimable;
+
+    /** 所属租户名称（transient，列表展示） */
+    private String tenantName;
 }

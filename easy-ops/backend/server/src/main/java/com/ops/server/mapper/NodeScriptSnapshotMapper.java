@@ -24,9 +24,9 @@ public interface NodeScriptSnapshotMapper {
 
     int update(NodeScriptSnapshotModel model);
 
-    int deleteById(@Param("id") Long id);
+    int deleteById(@Param("id") Long id, @Param("tenantId") Long tenantId);
 
-    int deleteByScriptFileId(@Param("scriptFileId") Long scriptFileId);
+    int deleteByScriptFileId(@Param("scriptFileId") Long scriptFileId, @Param("tenantId") Long tenantId);
 
-    int deleteByProjectId(@Param("projectId") Long projectId);
+    int deleteByProjectId(@Param("projectId") Long projectId, @Param("tenantId") Long tenantId);
 }

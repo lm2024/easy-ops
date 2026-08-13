@@ -1,7 +1,8 @@
 package com.ops.server.controller;
 
 import com.ops.common.response.Result;
-import org.springframework.http.ResponseEntity;
+import com.ops.server.service.TenantResourceAccessService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
@@ -13,6 +14,9 @@ import java.util.*;
 @RequestMapping("/logs")
 public class LogController {
 
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
     /**
      * GET /api/logs/file - 分页读取项目日志
      */
@@ -23,6 +27,8 @@ public class LogController {
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "100") Integer pageSize,
             @RequestParam(required = false) String keyword) {
+
+        tenantResourceAccessService.requireNode(nodeId);
 
         List<String> lines = new ArrayList<>();
         int total = 0;
@@ -41,6 +47,8 @@ public class LogController {
     public Map<String, Object> getConsole(
             @RequestParam Long projectId,
             @RequestParam Long nodeId) {
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         Map<String, Object> data = new HashMap<>();
         data.put("message", "WebSocket连接请使用 /ws/console 端点");
         return data;

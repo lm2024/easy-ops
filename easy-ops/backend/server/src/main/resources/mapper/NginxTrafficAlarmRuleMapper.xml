@@ -18,10 +18,10 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO nginx_traffic_alarm_rule (
-            source_id, rule_type, enabled, window_minutes, threshold, level,
+            source_id, tenant_id, rule_type, enabled, window_minutes, threshold, level,
             cooldown_minutes, require_ack, create_time, update_time
         ) VALUES (
-            #{sourceId}, #{ruleType}, #{enabled}, #{windowMinutes}, #{threshold}, #{level},
+            #{sourceId}, #{tenantId}, #{ruleType}, #{enabled}, #{windowMinutes}, #{threshold}, #{level},
             #{cooldownMinutes}, #{requireAck}, #{createTime}, #{updateTime}
         )
     </insert>
@@ -35,10 +35,10 @@
             cooldown_minutes = #{cooldownMinutes},
             require_ack = #{requireAck},
             update_time = #{updateTime}
-        WHERE id = #{id}
+        WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
 
     <delete id="deleteBySourceId">
-        DELETE FROM nginx_traffic_alarm_rule WHERE source_id = #{sourceId}
+        DELETE FROM nginx_traffic_alarm_rule WHERE source_id = #{sourceId} AND tenant_id = #{tenantId}
     </delete>
 </mapper>

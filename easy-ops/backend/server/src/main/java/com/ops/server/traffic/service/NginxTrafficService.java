@@ -65,7 +65,14 @@ public class NginxTrafficService {
     }
 
     public NginxAccessSourceModel saveSource(NginxAccessSourceModel model) {
-        if (model.getId() != null) assertSourceAccess(sourceMapper.findById(model.getId()));
+        NginxAccessSourceModel existing = model.getId() != null ? sourceMapper.findById(model.getId()) : null;
+        if (model.getId() != null) {
+            assertSourceAccess(existing);
+            // 更新场景：物化 tenant_id，防止将跨租户 source 的归属覆盖为其他租户
+            if (model.getTenantId() == null && existing != null) {
+                model.setTenantId(existing.getTenantId() != null ? existing.getTenantId() : 0L);
+            }
+        }
         if (model.getNodeId() == null) throw new IllegalArgumentException("日志源必须绑定节点");
         assertNodeAccess(model.getNodeId());
         long now = System.currentTimeMillis();
@@ -82,6 +89,16 @@ public class NginxTrafficService {
             model.setMaxKeysPerMinute(500);
         }
         if (model.getId() == null) {
+            // 新日志源：tenant_id 由 controller 从当前租户或 node 设置；兜底从 node 推导，最终归 0（平台）
+            if (model.getTenantId() == null) {
+                com.ops.common.model.NodeModel node = nodeMapper.findById(model.getNodeId());
+                if (node != null) {
+                    model.setTenantId(node.getTenantId());
+                }
+            }
+            if (model.getTenantId() == null) {
+                model.setTenantId(0L);
+            }
             model.setCreateTime(now);
             model.setUpdateTime(now);
             sourceMapper.insert(model);
@@ -94,12 +111,14 @@ public class NginxTrafficService {
     }
 
     public void deleteSource(Long id) {
-        assertSourceAccess(sourceMapper.findById(id));
+        NginxAccessSourceModel source = sourceMapper.findById(id);
+        assertSourceAccess(source);
+        Long tenantId = source != null && source.getTenantId() != null ? source.getTenantId() : 0L;
         if (id != null) {
-            nginxTrafficAlarmService.deleteBySourceId(id);
-            whitelistService.deleteBySource(id);
+            nginxTrafficAlarmService.deleteBySourceId(id, tenantId);
+            whitelistService.deleteBySource(id, tenantId);
         }
-        sourceMapper.deleteById(id);
+        sourceMapper.deleteById(id, tenantId);
     }
 
     public List<NginxAccessSourceModel> listAgentSources(Long nodeId) {
@@ -485,9 +504,15 @@ public class NginxTrafficService {
     }
 
     private boolean isSourceAuthorized(NginxAccessSourceModel source) {
-        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return true;
+        if (source == null) return false;
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null || securityContext.isPlatformAdmin()) return true;
+        // 日志源物化 tenant_id；旧数据 tenant_id=0 时回退到 node 推导
+        if (source.getTenantId() != null && source.getTenantId() > 0) {
+            return tenantId.equals(source.getTenantId());
+        }
         com.ops.common.model.NodeModel node = nodeMapper.findById(source.getNodeId());
-        return node != null && securityContext.getCurrentTenantId().equals(node.getTenantId());
+        return node != null && (node.getTenantId() == null || tenantId.equals(node.getTenantId()));
     }
 
     private List<NginxAccessSourceModel> filterAuthorizedSources(List<NginxAccessSourceModel> sources) {
