@@ -159,3 +159,50 @@ nginx_traffic_alarm_rule
 - Phase 4：知识库、平台管理员租户切换、审计和多实例 Token 存储。
 
 本次实施先完成 Phase 0 和 Phase 1，并为后续阶段保留明确的授权入口和测试边界。
+
+---
+
+## 11. 落地修订记录（2026-08-13）
+
+### 11.1 关键决策（经用户确认）
+
+| 决策 | 结论 |
+|---|---|
+| 隔离深度 | **全量 34 表隔离**：每张业务表数据只能通过已校验入口访问；顶层资源表物化 `tenant_id`，纯子表经父资源 `requireXxx` 校验继承隔离 |
+| 角色体系 | **四级角色**：SUPER_ADMIN（`sys_user.role=admin`，平台级）/ TENANT_ADMIN / OPERATOR / VIEWER（`tenant_user.role`，租户级） |
+| 租户切换 | **需要**：SUPER_ADMIN 在 UI 切换当前生效租户视角（`POST /tenants/switch`，受控更新 token 缓存） |
+
+### 11.2 修复的设计缺陷
+
+- **D1 角色双轨**：`sys_user.role` 平台级，`tenant_user.role` 租户级，`SecurityContext` 新增 `isSuperAdmin()/isTenantAdmin()/isViewer()/getTenantRole()`；`AuthInterceptor` 把 `tenantRole` 写入请求属性与 token 缓存。
+- **D2 TENANT_ADMIN 零实现** → 用户/租户管理接口按"平台 or 租户管理员"门控。
+- **D3 无租户 UI/API** → 新增 `TenantController`（CRUD + 成员管理 + 统计 + 切换）+ 前端租户管理页。
+- **D4 用户-租户绑定不可控** → `createUser/updateUser` 支持 super_admin 指定 tenantId+tenantRole；tenant_admin 锁定本租户。
+- **D5 隔离未收口** → 全部 Controller 写操作接入 `TenantResourceAccessService.requireProject/requireNode/requireSource/requireDocument`；`IllegalArgumentException` → 403（GlobalExceptionHandler）。
+- **D6 Agent 注册无租户归属** → 心跳自动注册节点设置默认租户；Nginx ingest 校验 source 归属。
+- **D7 前端无租户上下文** → 登录返回 `tenantId/tenantRole/tenantName`；auth store 持久化；`X-Tenant-Id` 请求头；菜单/路由门控；租户切换器。
+
+### 11.3 物化 vs 继承边界
+
+**物化 `tenant_id`（22 表）**：`node_info`、`project_info`、`version_package`、`deploy_record`、`monitor_snapshot`、`alarm_record`、`self_heal_policy`、`self_heal_event`、`notification_record`、`agent_upgrade_record`、`ai_diagnosis_record`、`project_config_file`、`node_config_snapshot`、`config_distribute_record`、`project_log_profile`、`project_health_probe`、`project_script_file`、`script_distribute_record`、`node_script_snapshot`、`nginx_access_source`、`nginx_source_whitelist`、`nginx_traffic_alarm_rule`、`kb_document`、`kb_category`
+
+**继承隔离（不加列，靠父资源校验）**：知识库子表（kb_document_version/comment/lock/image/document_tag/permission/favorite/recent_access/share_link）、Nginx 聚合表（nginx_minute_stat/ua_stat/referer_stat/request_sample）、`user_notification_state`
+
+**平台级（不加 tenant）**：`sys_user`、`tenant`、`tenant_user`、`sys_config`、`alarm_config`、`scheduler_lock`、`global_script_*`、`operation_log`、`file_access_log`、`kb_tag`、`kb_template`、`user_project_relation`
+
+### 11.4 新增/补建
+
+- **新增表 DDL**：`project_script_file`、`script_distribute_record`、`node_script_snapshot`（原 schema 缺失但 Mapper 已引用，本次补建）
+- **`TenantController`**（`/api/tenants`）：租户 CRUD、成员管理、统计、`POST /tenants/switch`
+- **`GlobalExceptionHandler`**：`IllegalArgumentException` → 403（requireXxx 抛出的统一出口）
+- **`TenantResourceAccessService`**：新增 `requireSource()` / `requireDocument()`
+- **WebSocket**：`DeployHandler`/`ConsoleHandler` 连接时校验租户归属；`MonitorHandler`/`NotificationHandler` 广播已按租户过滤
+
+### 11.5 前端
+
+- 新增 `api/tenant.ts`、`views/TenantListView.vue`（租户列表 + 展开成员管理）
+- `stores/auth.ts`：租户上下文 + `switchTenant`；`utils/request.ts` 注入 `X-Tenant-Id`
+- `MainLayout.vue`：菜单门控（租户管理/H2 仅 super_admin）+ 头部租户切换器
+- `router/index.ts`：`/tenants` 路由 + `meta.roles` 角色守卫
+- `UserListView`/`UserFormView`：租户绑定列 + 租户/租户角色选择（super_admin）
+- 登录/类型：`LoginResult` 带 `id/tenantId/tenantRole/tenantName`
