@@ -50,12 +50,12 @@ public class KnowledgeBulkService {
     /**
      * 全量导出为 ZIP（含 manifest.json + 各分类下的 Markdown 文件）。
      */
-    public StreamingResponseBody exportAll(Long projectId) throws IOException {
+    public StreamingResponseBody exportAll(Long projectId, Long tenantId) throws IOException {
         List<KbCategoryModel> categories = categoryMapper.findAll(projectId);
         Map<Long, KbCategoryModel> categoryMap = toCategoryMap(categories);
         Map<Long, KbDocumentModel> allDocs = new LinkedHashMap<>();
         for (KbCategoryModel category : categories) {
-            List<KbDocumentModel> docs = documentMapper.findByCategory(category.getId(), 1, PAGE_SIZE);
+            List<KbDocumentModel> docs = documentMapper.findByCategory(category.getId(), tenantId, 1, PAGE_SIZE);
             for (KbDocumentModel doc : docs) {
                 allDocs.put(doc.getId(), doc);
             }
@@ -105,7 +105,7 @@ public class KnowledgeBulkService {
     /**
      * 全量导入 ZIP：同分类下同标题文档覆盖，否则新增。
      */
-    public Map<String, Object> importAll(MultipartFile file, Long projectId) throws IOException {
+    public Map<String, Object> importAll(MultipartFile file, Long projectId, Long tenantId) throws IOException {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(400, "请上传 ZIP 文件");
         }
@@ -127,13 +127,13 @@ public class KnowledgeBulkService {
 
         for (ImportItem item : uniqueItems.values()) {
             Long categoryId = resolveCategoryId(item.categoryPath, projectId);
-            KbDocumentModel existing = documentService.findByCategoryAndTitle(categoryId, item.title);
+            KbDocumentModel existing = documentService.findByCategoryAndTitle(categoryId, item.title, tenantId);
             if (existing != null) {
                 documentService.importOverwrite(existing.getId(), item.title, item.content, item.status);
                 updated++;
                 details.add(resultDetail(item, "updated", existing.getId()));
             } else {
-                KbDocumentModel createdDoc = createImportedDoc(categoryId, item, projectId);
+                KbDocumentModel createdDoc = createImportedDoc(categoryId, item, projectId, tenantId);
                 created++;
                 details.add(resultDetail(item, "created", createdDoc.getId()));
             }
@@ -147,9 +147,10 @@ public class KnowledgeBulkService {
         return result;
     }
 
-    private KbDocumentModel createImportedDoc(Long categoryId, ImportItem item, Long projectId) {
+    private KbDocumentModel createImportedDoc(Long categoryId, ImportItem item, Long projectId, Long tenantId) {
         KbDocumentModel doc = new KbDocumentModel();
         doc.setCategoryId(categoryId);
+        doc.setTenantId(tenantId);
         doc.setTitle(item.title);
         doc.setContent(item.content);
         doc.setStatus(item.status != null ? item.status : 1);

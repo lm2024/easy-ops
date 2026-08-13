@@ -43,6 +43,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'users', name: 'Users', component: () => import('../views/UserListView.vue') },
       { path: 'users/add', name: 'AddUser', component: () => import('../views/UserFormView.vue') },
       { path: 'users/:id/edit', name: 'EditUser', component: () => import('../views/UserFormView.vue') },
+      { path: 'tenants', name: 'Tenants', component: () => import('../views/TenantListView.vue'), meta: { roles: ['ADMIN'] } },
       { path: 'operations', name: 'Operations', component: () => import('../views/OperationLogView.vue') },
       { path: 'batch-download', name: 'BatchDownload', component: () => import('../views/BatchDownloadView.vue') },
       { path: 'ai-config', name: 'AIConfig', component: () => import('../views/AIConfigView.vue') }
@@ -61,9 +62,19 @@ router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('token')
   if (to.path !== '/login' && !to.path.startsWith('/knowledge/share') && !token) {
     next('/login')
-  } else {
-    next()
+    return
   }
+  // 角色守卫：meta.roles 声明了可访问的角色（ADMIN=平台管理员）
+  const roles = to.meta?.roles as string[] | undefined
+  if (roles && roles.length > 0) {
+    const role = localStorage.getItem('role') || ''
+    const normalized = role.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'OPERATOR'
+    if (!roles.includes(normalized)) {
+      next('/nodes')
+      return
+    }
+  }
+  next()
 })
 
 export default router

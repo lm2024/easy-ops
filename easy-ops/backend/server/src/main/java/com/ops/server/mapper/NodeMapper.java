@@ -20,9 +20,11 @@ public interface NodeMapper {
     List<NodeModel> findByStatusInTenant(@Param("status") String status, @Param("page") Integer page,
                                          @Param("pageSize") Integer pageSize, @Param("keyword") String keyword,
                                          @Param("sortField") String sortField, @Param("sortOrder") String sortOrder,
-                                         @Param("tenantId") Long tenantId, @Param("projectIds") List<Long> projectIds);
+                                         @Param("tenantId") Long tenantId, @Param("defaultTenantId") Long defaultTenantId,
+                                         @Param("projectIds") List<Long> projectIds);
     Long countByStatusInTenant(@Param("status") String status, @Param("keyword") String keyword,
-                               @Param("tenantId") Long tenantId, @Param("projectIds") List<Long> projectIds);
+                               @Param("tenantId") Long tenantId, @Param("defaultTenantId") Long defaultTenantId,
+                               @Param("projectIds") List<Long> projectIds);
     int insert(NodeModel node);
     int update(NodeModel node);
     int deleteById(@Param("id") Long id);
@@ -38,6 +40,7 @@ public interface NodeMapper {
     void updateStatusOffline(@Param("id") Long id);
     void updateTags(@Param("id") Long id, @Param("tags") String tags, @Param("updateTime") Long updateTime);
     void updatePort(@Param("id") Long id, @Param("port") Integer port, @Param("updateTime") Long updateTime);
+    void updateTenant(@Param("id") Long id, @Param("tenantId") Long tenantId, @Param("updateTime") Long updateTime);
     void updateDiskInfo(@Param("id") Long id, @Param("diskInfoJson") String diskInfoJson);
     void updateHostMetrics(@Param("id") Long id, @Param("cpuPercent") Double cpuPercent, @Param("memPercent") Integer memPercent, @Param("diskPercent") Integer diskPercent);
     List<NodeModel> getOfflineCandidates(@Param("cutoff") Long cutoff);

@@ -4,6 +4,7 @@ import com.ops.common.model.AlarmModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.AlarmRecordMapper;
 import com.ops.server.service.AuditLogService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -26,6 +27,9 @@ public class AlarmController {
     @Autowired
     private SecurityContext securityContext;
 
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
+
     /** 告警配置（内存存储，可通过接口修改） */
     private static final Map<String, Object> alarmConfig = new LinkedHashMap<>();
     static {
@@ -47,8 +51,19 @@ public class AlarmController {
             @RequestParam(required = false) String type,
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
-        List<AlarmModel> alarms = alarmRecordMapper.findByFilters(projectId, type, page, pageSize);
-        Long total = alarmRecordMapper.countByFilters(projectId, type);
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (projectId != null && tenantId != null && tenantId.longValue() > 0L) {
+            resourceAccess.requireProject(projectId);
+        }
+        List<AlarmModel> alarms;
+        Long total;
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            alarms = alarmRecordMapper.findByFiltersInTenant(projectId, type, tenantId, page, pageSize);
+            total = alarmRecordMapper.countByFiltersInTenant(projectId, type, tenantId);
+        } else {
+            alarms = alarmRecordMapper.findByFilters(projectId, type, page, pageSize);
+            total = alarmRecordMapper.countByFilters(projectId, type);
+        }
         Map<String, Object> data = new HashMap<>();
         data.put("list", alarms);
         data.put("total", total);
@@ -89,10 +104,11 @@ public class AlarmController {
      */
     @DeleteMapping
     public Result<?> clearAlarms() {
-        if (!securityContext.isAdmin()) {
+        if (!securityContext.isSuperAdmin()) {
             return Result.error(403, "仅管理员可以清空告警");
         }
-        int count = alarmRecordMapper.deleteAll();
+        Long tenantId = securityContext.getCurrentTenantId();
+        int count = alarmRecordMapper.deleteAll(tenantId);
         auditLog.log("ALARM", "CLEAR", "清空所有告警: " + count + " 条");
         return Result.success("已清空 " + count + " 条告警");
     }
@@ -102,12 +118,28 @@ public class AlarmController {
      */
     @PostMapping("/send")
     public Result<?> sendAlarm(@RequestBody Map<String, String> request) {
-        String nodeId = request.get("nodeId");
+        String nodeIdStr = request.get("nodeId");
         String content = request.get("content");
         String type = request.get("type");
 
+        if (nodeIdStr == null || nodeIdStr.trim().isEmpty()) {
+            return Result.paramError("nodeId 不能为空");
+        }
+        Long nodeId;
+        try {
+            nodeId = Long.parseLong(nodeIdStr.trim());
+        } catch (NumberFormatException e) {
+            return Result.paramError("nodeId 格式无效");
+        }
+
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            resourceAccess.requireNode(nodeId);
+        }
+
         AlarmModel alarm = new AlarmModel();
-        alarm.setNodeId(Long.parseLong(nodeId));
+        alarm.setNodeId(nodeId);
+        alarm.setTenantId(tenantId);
         alarm.setType(type);
         alarm.setContent(content);
         alarm.setSendResult(0);

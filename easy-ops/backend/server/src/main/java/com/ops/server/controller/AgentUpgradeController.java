@@ -7,6 +7,7 @@ import com.ops.common.response.Result;
 import com.ops.server.client.AgentClient;
 import com.ops.server.mapper.AgentUpgradeRecordMapper;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -46,7 +47,23 @@ public class AgentUpgradeController {
     private AgentClient agentClient;
 
     @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
+    @Autowired
     private SecurityContext securityContext;
+
+    @Autowired
+    private com.ops.server.mapper.TenantMapper tenantMapper;
+
+    /** 解析默认（池）租户 id，兜底返回 null */
+    private Long resolveDefaultTenantId() {
+        try {
+            com.ops.common.model.TenantModel def = tenantMapper.findDefault();
+            return def == null ? null : def.getId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     /** 正在进行的升级批次 */
     private final ConcurrentHashMap<String, Boolean> activeBatches = new ConcurrentHashMap<>();
@@ -154,7 +171,7 @@ public class AgentUpgradeController {
         List<NodeModel> allNodes = tenantId == null
                 ? nodeMapper.findByStatus(null, 1, 10000, null, null, null)
                 : nodeMapper.findByStatusInTenant(null, 1, 10000, null, null, null, tenantId,
-                securityContext.getAccessibleProjectIdsForQuery());
+                        resolveDefaultTenantId(), securityContext.getAccessibleProjectIdsForQuery());
         List<Map<String, Object>> nodeList = new ArrayList<>();
         if (allNodes != null) {
             for (NodeModel node : allNodes) {
@@ -187,7 +204,7 @@ public class AgentUpgradeController {
         }
         if (nodeIdsRaw != null) {
             for (Number raw : nodeIdsRaw) {
-                if (!canAccessNode(raw.longValue())) return Result.error(403, "包含无权操作的节点");
+                tenantResourceAccessService.requireNode(raw.longValue());
             }
         }
         if (nodeIdsRaw == null || nodeIdsRaw.isEmpty()) {
@@ -205,6 +222,7 @@ public class AgentUpgradeController {
         for (Number n : nodeIdsRaw) {
             nodeIds.add(n.longValue());
         }
+        Long tenantId = securityContext.getCurrentTenantId();
 
         log.info("[AgentUpgrade] 开始升级: batchId={}, version={}, nodes={}", batchId, version, nodeIds.size());
         activeBatches.put(batchId, true);
@@ -212,7 +230,7 @@ public class AgentUpgradeController {
         // 异步执行升级
         new Thread(() -> {
             try {
-                doUpgradeAsync(batchId, version, nodeIds, agentJar, sha256);
+                doUpgradeAsync(batchId, version, nodeIds, agentJar, sha256, tenantId);
             } catch (Exception e) {
                 log.error("[AgentUpgrade] 升级异常: batchId={}", batchId, e);
             } finally {
@@ -228,18 +246,12 @@ public class AgentUpgradeController {
         return Result.success(data);
     }
 
-    private boolean canAccessNode(Long nodeId) {
-        if (securityContext.getCurrentTenantId() == null || securityContext.isPlatformAdmin()) return true;
-        NodeModel node = nodeMapper.findById(nodeId);
-        return node != null && securityContext.getCurrentTenantId().equals(node.getTenantId());
-    }
-
     /**
      * GET /api/agent-upgrade/status/{batchId} - 查询升级状态
      */
     @GetMapping("/status/{batchId}")
     public Result<?> getStatus(@PathVariable String batchId) {
-        List<AgentUpgradeRecordModel> records = upgradeRecordMapper.findByBatchId(batchId);
+        List<AgentUpgradeRecordModel> records = upgradeRecordMapper.findByBatchId(batchId, securityContext.getCurrentTenantId());
         if (records == null || records.isEmpty()) {
             return Result.error(1004, "未找到升级记录");
         }
@@ -271,8 +283,9 @@ public class AgentUpgradeController {
     public Result<?> listRecords(
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "50") Integer pageSize) {
-        List<AgentUpgradeRecordModel> records = upgradeRecordMapper.findAll(page, pageSize);
-        Long total = upgradeRecordMapper.countAll();
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<AgentUpgradeRecordModel> records = upgradeRecordMapper.findAll(page, pageSize, tenantId);
+        Long total = upgradeRecordMapper.countAll(tenantId);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("list", records != null ? records : Collections.emptyList());
         data.put("total", total);
@@ -282,7 +295,7 @@ public class AgentUpgradeController {
     // ======================== 内部方法 ========================
 
     private void doUpgradeAsync(String batchId, String version, List<Long> nodeIds,
-                                File agentJar, String sha256) {
+                                File agentJar, String sha256, Long tenantId) {
         for (Long nodeId : nodeIds) {
             NodeModel node = nodeMapper.findById(nodeId);
             if (node == null) {
@@ -291,6 +304,7 @@ public class AgentUpgradeController {
 
             AgentUpgradeRecordModel record = new AgentUpgradeRecordModel();
             record.setUpgradeBatchId(batchId);
+            record.setTenantId(tenantId);
             record.setTargetVersion(version);
             record.setNodeId(nodeId);
             record.setNodeName(node.getName());
@@ -304,11 +318,11 @@ public class AgentUpgradeController {
                 log.info("[AgentUpgrade] 升级节点: nodeId={}, node={}, version={}", nodeId, node.getName(), version);
                 Map<String, Object> response = agentClient.postMultipart(node, "/system/upgrade", agentJar, sha256, version);
                 agentClient.ensureAgentSuccess(response);
-                upgradeRecordMapper.updateStatus(record.getId(), 2, null, System.currentTimeMillis());
+                upgradeRecordMapper.updateStatus(record.getId(), 2, null, System.currentTimeMillis(), tenantId);
                 log.info("[AgentUpgrade] 节点升级成功: nodeId={}", nodeId);
             } catch (Exception e) {
                 log.warn("[AgentUpgrade] 节点升级失败: nodeId={}, error={}", nodeId, e.getMessage());
-                upgradeRecordMapper.updateStatus(record.getId(), 3, e.getMessage(), System.currentTimeMillis());
+                upgradeRecordMapper.updateStatus(record.getId(), 3, e.getMessage(), System.currentTimeMillis(), tenantId);
             }
         }
     }

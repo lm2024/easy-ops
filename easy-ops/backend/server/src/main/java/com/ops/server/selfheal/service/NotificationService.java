@@ -4,6 +4,8 @@ import com.ops.common.model.NotificationRecordModel;
 import com.ops.common.model.UserNotificationStateModel;
 import com.ops.server.mapper.NotificationRecordMapper;
 import com.ops.server.mapper.UserNotificationStateMapper;
+import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.mapper.NodeMapper;
 import com.ops.server.selfheal.websocket.NotificationHandler;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,12 @@ public class NotificationService {
 
     @Autowired
     private NotificationHandler notificationHandler;
+
+    @Autowired
+    private ProjectMapper projectMapper;
+
+    @Autowired
+    private NodeMapper nodeMapper;
 
     /**
      * 创建广播通知（所有用户可见，不需要确认）
@@ -67,6 +75,17 @@ public class NotificationService {
         }
         if (record.getRequireAck() == null) {
             record.setRequireAck(0);
+        }
+        // 打 tenant 标（后台任务无用户上下文，从 project/node 推导）
+        if (record.getTenantId() == null || record.getTenantId() == 0) {
+            if (record.getProjectId() != null) {
+                com.ops.common.model.ProjectModel p = projectMapper.findById(record.getProjectId());
+                if (p != null) record.setTenantId(p.getTenantId());
+            }
+            if ((record.getTenantId() == null || record.getTenantId() == 0) && record.getNodeId() != null) {
+                com.ops.common.model.NodeModel n = nodeMapper.findById(record.getNodeId());
+                if (n != null) record.setTenantId(n.getTenantId());
+            }
         }
         notificationRecordMapper.insert(record);
 

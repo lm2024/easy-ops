@@ -25,16 +25,17 @@ public class NodeService {
     }
     public Long countByStatus(String status, String keyword) { return nodeMapper.countByStatus(status, keyword); }
     public List<NodeModel> findByStatusInTenant(String status, Integer page, Integer pageSize, String keyword,
-                                                String sortField, String sortOrder, Long tenantId, List<Long> projectIds) {
-        return nodeMapper.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder, tenantId, projectIds);
+                                                String sortField, String sortOrder, Long tenantId, Long defaultTenantId, List<Long> projectIds) {
+        return nodeMapper.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder, tenantId, defaultTenantId, projectIds);
     }
-    public Long countByStatusInTenant(String status, String keyword, Long tenantId, List<Long> projectIds) {
-        return nodeMapper.countByStatusInTenant(status, keyword, tenantId, projectIds);
+    public Long countByStatusInTenant(String status, String keyword, Long tenantId, Long defaultTenantId, List<Long> projectIds) {
+        return nodeMapper.countByStatusInTenant(status, keyword, tenantId, defaultTenantId, projectIds);
     }
     public int insert(NodeModel node) { return nodeMapper.insert(node); }
     public int update(NodeModel node) { return nodeMapper.update(node); }
     public int deleteById(Long id) { return nodeMapper.deleteById(id); }
     public int countByNodeId(Long nodeId) { return nodeMapper.countByNodeId(nodeId); }
+    public void updateTenant(Long id, Long tenantId) { nodeMapper.updateTenant(id, tenantId, System.currentTimeMillis()); }
     public void updateHeartbeat(Long id, Long lastHeartbeat, String ip, String osInfo, String javaVersion,
                                 Integer cpuCores, Integer totalMemoryMb, Long totalDiskMb, String osArch,
                                 String agentVersion, Long agentPid) {

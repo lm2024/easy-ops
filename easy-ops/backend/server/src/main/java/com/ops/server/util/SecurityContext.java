@@ -58,6 +58,39 @@ public class SecurityContext {
     }
 
     /**
+     * 获取当前用户在某租户内的角色（TENANT_ADMIN / OPERATOR / VIEWER）。
+     * 来自 tenant_user.role，由 AuthInterceptor 写入请求属性。
+     */
+    public String getTenantRole() {
+        return (String) request.getAttribute("currentTenantRole");
+    }
+
+    /**
+     * 判断当前用户是否为平台管理员（sys_user.role = admin / super_admin）。
+     * 平台管理员跨租户管理所有租户、用户、平台配置。
+     */
+    public boolean isSuperAdmin() {
+        String role = getCurrentRole();
+        return role != null && (role.equalsIgnoreCase("admin") || role.equalsIgnoreCase("super_admin"));
+    }
+
+    /**
+     * 判断当前用户在某租户内是否为租户管理员（tenant_user.role = TENANT_ADMIN）。
+     */
+    public boolean isTenantAdmin() {
+        String tenantRole = getTenantRole();
+        return tenantRole != null && tenantRole.equalsIgnoreCase("TENANT_ADMIN");
+    }
+
+    /**
+     * 判断当前用户在某租户内是否为只读 VIEWER。
+     */
+    public boolean isViewer() {
+        String tenantRole = getTenantRole();
+        return tenantRole != null && tenantRole.equalsIgnoreCase("VIEWER");
+    }
+
+    /**
      * 获取当前用户可访问的 projectIds 列表 (SEC-004)
      * 如果是 admin 角色，返回所有 projectIds
      */
@@ -84,9 +117,9 @@ public class SecurityContext {
         return role != null && role.equalsIgnoreCase("admin");
     }
 
+    /** 别名，与 isSuperAdmin() 等价。保留向后兼容。 */
     public boolean isPlatformAdmin() {
-        String role = getCurrentRole();
-        return role != null && (role.equalsIgnoreCase("super_admin") || role.equalsIgnoreCase("admin"));
+        return isSuperAdmin();
     }
 
     public List<Long> getAccessibleProjectIdsForQuery() {

@@ -12,6 +12,7 @@ import com.ops.server.monitorapp.service.HealthProbeService;
 import com.ops.server.monitorapp.service.MonitorCollectConfigService;
 import com.ops.server.monitorapp.service.MonitorCollectorService;
 import com.ops.server.service.NodeService;
+import com.ops.server.service.TenantResourceAccessService;
 
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,12 +44,17 @@ public class AppMonitorController {
     @Autowired
     private SecurityContext securityContext;
     @Autowired
+    private TenantResourceAccessService resourceAccess;
+    @Autowired
     private MonitorCollectorService collectorService;
     @Autowired
     private MonitorCollectConfigService collectConfigService;
 
     @Autowired
     private NodeService nodeService;
+
+    @Autowired(required = false)
+    private com.ops.server.mapper.TenantMapper tenantMapper;
 
 
 
@@ -91,11 +97,18 @@ public class AppMonitorController {
      */
     @GetMapping("/app/dashboard")
     public Result<?> dashboard() {
-        List<ProjectModel> projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<Long> accessibleList = securityContext.getAccessibleProjectIds();
+        List<ProjectModel> projects;
+        if (tenantId != null) {
+            List<Long> projectIds = accessibleList != null ? accessibleList : Collections.singletonList(-1L);
+            projects = projectMapper.findByFiltersInTenant(null, null, null, 1, 1000, tenantId, projectIds);
+        } else {
+            projects = projectMapper.findByFilters(null, null, null, 1, 1000);
+        }
         if (projects == null) projects = new ArrayList<>();
 
         // 预加载当前用户有权限的项目 ID 集合，后续只用内存 contains 判断（避免 N 次 DB 查询）
-        List<Long> accessibleList = securityContext.getAccessibleProjectIds();
         Set<Long> accessibleIds = (accessibleList != null) ? new HashSet<>(accessibleList) : Collections.emptySet();
 
         // 收集所有需要查询的节点ID
@@ -231,6 +244,20 @@ public class AppMonitorController {
         }
         if (body.containsKey("nodeIds") && body.get("nodeIds") != null) {
             nodeIds = toLongList(body.get("nodeIds"));
+        }
+        // 租户隔离：仅允许采集当前用户有权访问的项目/节点
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            if (projectIds != null) {
+                for (Long pid : projectIds) {
+                    if (pid != null) resourceAccess.requireProject(pid);
+                }
+            }
+            if (nodeIds != null) {
+                for (Long nid : nodeIds) {
+                    if (nid != null) resourceAccess.requireNode(nid);
+                }
+            }
         }
         String taskId = collectorService.collectFilteredAsync(projectIds, nodeIds);
         Map<String, Object> data = new HashMap<>();
@@ -488,8 +515,19 @@ public class AppMonitorController {
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize,
             @RequestParam(required = false) String keyword) {
-        List<NodeModel> nodes = nodeService.findByStatus(null, page, pageSize, keyword, null, null);
-        Long total = nodeService.countByStatus(null, keyword);
+        Long tenantId = securityContext.getCurrentTenantId();
+        List<NodeModel> nodes;
+        Long total;
+        if (tenantId != null) {
+            // Agent 状态页只显示当前租户的节点，不含默认租户池节点（那是节点管理"认领"用的）
+            nodes = nodeService.findByStatusInTenant(null, page, pageSize, keyword, null, null,
+                    tenantId, tenantId, null);
+            total = nodeService.countByStatusInTenant(null, keyword, tenantId, tenantId, null);
+        } else {
+            // 管理员平台视图（未切换租户）→ 看全部
+            nodes = nodeService.findByStatus(null, page, pageSize, keyword, null, null);
+            total = nodeService.countByStatus(null, keyword);
+        }
 
         // 批量查询所有节点的最新快照（Agent 主动上报数据）
         Map<Long, MonitorSnapshotModel> snapMap = new HashMap<>();

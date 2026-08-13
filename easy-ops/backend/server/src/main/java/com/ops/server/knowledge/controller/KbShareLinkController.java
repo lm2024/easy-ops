@@ -5,6 +5,8 @@ import com.ops.common.model.KbShareLinkModel;
 import com.ops.common.response.Result;
 import com.ops.server.knowledge.service.KbShareLinkService;
 import com.ops.server.knowledge.service.KnowledgeDocumentService;
+import com.ops.server.mapper.KbShareLinkMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -28,10 +30,17 @@ public class KbShareLinkController {
     @Autowired
     private SecurityContext securityContext;
 
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
+    @Autowired
+    private KbShareLinkMapper shareLinkMapper;
+
     /** 创建分享链接 */
     @PostMapping
     public Result<?> createShareLink(@RequestBody Map<String, Object> body) {
         Long documentId = Long.parseLong(body.get("documentId").toString());
+        tenantResourceAccessService.requireDocument(documentId);
         String password = body.get("password") != null ? body.get("password").toString() : "";
         Long expireTime = body.get("expireTime") != null ? Long.parseLong(body.get("expireTime").toString()) : 0L;
         Long createUserId = securityContext.getCurrentUserId();
@@ -42,12 +51,17 @@ public class KbShareLinkController {
     /** 获取分享链接 */
     @GetMapping("/{id}")
     public Result<?> getShareLink(@PathVariable Long id) {
+        tenantResourceAccessService.requireDocument(id);
         return Result.success(shareLinkService.getByDocumentId(id));
     }
 
     /** 删除分享链接 */
     @DeleteMapping("/{id}")
     public Result<?> deleteShareLink(@PathVariable Long id) {
+        KbShareLinkModel link = shareLinkMapper.selectById(id);
+        if (link != null && link.getDocumentId() != null) {
+            tenantResourceAccessService.requireDocument(link.getDocumentId());
+        }
         shareLinkService.deleteShareLink(id);
         return Result.success();
     }

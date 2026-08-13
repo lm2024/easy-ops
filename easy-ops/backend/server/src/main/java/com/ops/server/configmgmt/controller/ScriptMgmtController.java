@@ -4,6 +4,7 @@ import com.ops.common.model.ProjectScriptFileModel;
 import com.ops.common.response.Result;
 import com.ops.server.configmgmt.service.ScriptMgmtService;
 import com.ops.server.service.AuditLogService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -28,6 +29,9 @@ public class ScriptMgmtController {
     private SecurityContext securityContext;
 
     @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
+    @Autowired
     private AuditLogService auditLog;
 
     /**
@@ -35,9 +39,7 @@ public class ScriptMgmtController {
      */
     @GetMapping("/files")
     public Result<?> listFiles(@RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(scriptMgmtService.listFiles(projectId));
     }
 
@@ -46,9 +48,7 @@ public class ScriptMgmtController {
      */
     @PostMapping("/files")
     public Result<?> createFile(@RequestBody ProjectScriptFileModel model) {
-        if (!securityContext.hasProjectPermission(model.getProjectId())) {
-            return Result.error(403, "无权访问该项目");
-        }
+        model.setTenantId(tenantResourceAccessService.requireProject(model.getProjectId()).getTenantId());
         auditLog.log("SCRIPT", "CREATE", "新增脚本文件: " + model.getFilePath() + ", 项目ID=" + model.getProjectId());
         return Result.success(scriptMgmtService.createFile(model));
     }
@@ -59,9 +59,7 @@ public class ScriptMgmtController {
     @PutMapping("/files/{id}")
     public Result<?> updateFile(@PathVariable Long id, @RequestBody ProjectScriptFileModel model) {
         model.setId(id);
-        if (!securityContext.hasProjectPermission(model.getProjectId())) {
-            return Result.error(403, "无权访问该项目");
-        }
+        model.setTenantId(tenantResourceAccessService.requireProject(model.getProjectId()).getTenantId());
         auditLog.log("SCRIPT", "UPDATE", "修改脚本文件: " + model.getFilePath() + " (ID=" + id + ")");
         return Result.success(scriptMgmtService.updateFile(model));
     }
@@ -71,9 +69,7 @@ public class ScriptMgmtController {
      */
     @DeleteMapping("/files/{id}")
     public Result<?> deleteFile(@PathVariable Long id, @RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         scriptMgmtService.deleteFile(id);
         auditLog.log("SCRIPT", "DELETE", "删除脚本文件: ID=" + id + ", 项目ID=" + projectId);
         return Result.success();
@@ -84,9 +80,7 @@ public class ScriptMgmtController {
      */
     @PostMapping("/scan")
     public Result<?> scanScriptFiles(@RequestParam Long projectId, @RequestParam String scanDir) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         auditLog.log("SCRIPT", "SCAN", "扫描脚本文件: 项目ID=" + projectId + ", 目录=" + scanDir);
         return Result.success(scriptMgmtService.scanAndImport(projectId, scanDir));
     }
@@ -98,9 +92,8 @@ public class ScriptMgmtController {
     public Result<?> getContent(@RequestParam Long projectId,
                                 @RequestParam Long nodeId,
                                 @RequestParam Long scriptFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         return Result.success(scriptMgmtService.getContent(projectId, nodeId, scriptFileId));
     }
 
@@ -110,9 +103,7 @@ public class ScriptMgmtController {
     @GetMapping("/content/auto")
     public Result<?> getContentAuto(@RequestParam Long projectId,
                                     @RequestParam Long scriptFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(scriptMgmtService.getContentAuto(projectId, scriptFileId));
     }
 
@@ -121,9 +112,7 @@ public class ScriptMgmtController {
      */
     @GetMapping("/snapshot")
     public Result<?> getSnapshot(@RequestParam Long projectId, @RequestParam Long scriptFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(scriptMgmtService.getSnapshot(projectId, scriptFileId));
     }
 
@@ -133,12 +122,15 @@ public class ScriptMgmtController {
     @PostMapping("/distribute")
     public Result<?> distribute(@RequestBody Map<String, Object> body) {
         Long projectId = toLong(body.get("projectId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         Long scriptFileId = toLong(body.get("scriptFileId"));
         String content = body.get("content") != null ? body.get("content").toString() : "";
         List<Long> targetNodeIds = toLongList(body.get("targetNodeIds"));
+        if (targetNodeIds != null) {
+            for (Long targetNodeId : targetNodeIds) {
+                tenantResourceAccessService.requireNode(targetNodeId);
+            }
+        }
         boolean setExecutable = Boolean.TRUE.equals(body.get("setExecutable"));
         boolean autoBackup = !Boolean.FALSE.equals(body.get("autoBackup")); // 默认 true
 
@@ -154,9 +146,7 @@ public class ScriptMgmtController {
     public Result<?> refresh(@RequestBody Map<String, Object> body) {
         Long projectId = toLong(body.get("projectId"));
         Long scriptFileId = toLong(body.get("scriptFileId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(scriptMgmtService.refreshSnapshots(projectId, scriptFileId));
     }
 

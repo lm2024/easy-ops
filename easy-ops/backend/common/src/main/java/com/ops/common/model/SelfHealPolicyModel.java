@@ -15,6 +15,7 @@ public class SelfHealPolicyModel implements Serializable {
 
     private Long id;
     private Long projectId;
+    private Long tenantId;
     private Integer enabled;
     private Integer maxRetries;
     private Integer retryIntervalSec;

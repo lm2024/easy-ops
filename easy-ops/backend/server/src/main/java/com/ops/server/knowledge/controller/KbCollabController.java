@@ -4,6 +4,7 @@ import com.ops.common.model.KbDocumentModel;
 import com.ops.common.model.KbDocumentVersionModel;
 import com.ops.common.response.Result;
 import com.ops.server.knowledge.service.KnowledgeDocumentService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -26,12 +27,16 @@ public class KbCollabController {
     @Autowired
     private SecurityContext securityContext;
 
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
     /** 保存协作状态（Yjs→Markdown） */
     @PostMapping("/{documentId}/save")
     public Result<?> saveCollabState(@PathVariable Long documentId, @RequestBody Map<String, Object> body) {
+        KbDocumentModel doc = tenantResourceAccessService.requireDocument(documentId);
         String content = body.get("content") != null ? body.get("content").toString() : null;
         if (content != null) {
-            documentService.updateContentFromYjs(documentId, content);
+            documentService.updateContentFromYjs(documentId, content, resolveTenantId(doc));
         }
         // 如果 body 中包含 yjsState（byte[] 以 base64 传递），则也保存 Yjs 状态
         // 注意：前端传 base64 字符串，后端暂不处理 byte[] 的 JSON 序列化
@@ -42,6 +47,7 @@ public class KbCollabController {
     /** 获取在线用户列表（由 WebSocket session 管理） */
     @GetMapping("/{documentId}/online")
     public Result<?> getOnlineUsers(@PathVariable Long documentId) {
+        tenantResourceAccessService.requireDocument(documentId);
         // WebSocket Handler 不暴露给 Controller，此处返回占位
         // 实际在线用户列表由前端通过 Yjs Awareness 协议获取
         return Result.success(new java.util.ArrayList<>());
@@ -50,6 +56,7 @@ public class KbCollabController {
     /** 版本回滚 */
     @PostMapping("/{documentId}/rollback")
     public Result<?> rollbackVersion(@PathVariable Long documentId, @RequestBody Map<String, Object> body) {
+        KbDocumentModel existing = tenantResourceAccessService.requireDocument(documentId);
         Integer versionNo = body.get("versionNo") != null ? Integer.parseInt(body.get("versionNo").toString()) : null;
         if (versionNo == null) {
             return Result.paramError("versionNo 不能为空");
@@ -60,6 +67,7 @@ public class KbCollabController {
         }
         // 用版本内容回滚文档
         KbDocumentModel doc = new KbDocumentModel();
+        doc.setTenantId(resolveTenantId(existing));
         doc.setContent(version.getContent());
         doc.setTitle(version.getTitle());
         doc.setStatus(1);
@@ -76,6 +84,7 @@ public class KbCollabController {
     public Result<?> getVersionDiff(@PathVariable Long documentId,
                                     @RequestParam Integer fromVersion,
                                     @RequestParam Integer toVersion) {
+        tenantResourceAccessService.requireDocument(documentId);
         KbDocumentVersionModel fromVer = documentService.getVersion(documentId, fromVersion);
         KbDocumentVersionModel toVer = documentService.getVersion(documentId, toVersion);
         if (fromVer == null || toVer == null) {
@@ -87,5 +96,10 @@ public class KbCollabController {
         diff.put("fromContent", fromVer.getContent());
         diff.put("toContent", toVer.getContent());
         return Result.success(diff);
+    }
+
+    /** 文档 tenant_id 可能为 null（历史数据），统一归 0 以便 tenant 过滤命中 */
+    private Long resolveTenantId(KbDocumentModel doc) {
+        return doc != null && doc.getTenantId() != null ? doc.getTenantId() : 0L;
     }
 }

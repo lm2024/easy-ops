@@ -15,14 +15,40 @@
     <select id="countByProjectId" resultType="long">
         SELECT COUNT(*) FROM version_package WHERE project_id = #{projectId}
     </select>
+    <select id="findByProjectIds" resultType="com.ops.common.model.VersionModel">
+        SELECT v.* FROM version_package v JOIN project_info p ON p.id = v.project_id
+        WHERE p.tenant_id = #{tenantId}
+        <if test="projectIds != null and projectIds.size() > 0">
+            AND v.project_id IN <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">#{projectId}</foreach>
+        </if>
+        ORDER BY v.create_time DESC LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countByProjectIds" resultType="long">
+        SELECT COUNT(*) FROM version_package v JOIN project_info p ON p.id = v.project_id
+        WHERE p.tenant_id = #{tenantId}
+        <if test="projectIds != null and projectIds.size() > 0">
+            AND v.project_id IN <foreach collection="projectIds" item="projectId" open="(" separator="," close=")">#{projectId}</foreach>
+        </if>
+    </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO version_package (project_id, jar_name, file_path, file_size, version, sha256, remark, create_time)
-        VALUES (#{projectId}, #{jarName}, #{filePath}, #{fileSize}, #{version}, #{sha256}, #{remark}, #{createTime})
+        INSERT INTO version_package (project_id, tenant_id, jar_name, file_path, file_size, version, sha256, remark, package_type, create_time)
+        VALUES (#{projectId}, #{tenantId}, #{jarName}, #{filePath}, #{fileSize}, #{version}, #{sha256}, #{remark}, #{packageType}, #{createTime})
     </insert>
     <delete id="deleteById">
         DELETE FROM version_package WHERE id = #{id}
     </delete>
     <select id="getLastId" resultType="long">
         SELECT MAX(id) FROM version_package
+    </select>
+    <select id="findOldVersions" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package
+        WHERE project_id = #{projectId}
+        ORDER BY create_time DESC
+        OFFSET #{keepCount}
+    </select>
+    <select id="findByProjectIdAndVersion" resultType="com.ops.common.model.VersionModel">
+        SELECT * FROM version_package
+        WHERE project_id = #{projectId} AND version = #{version}
+        LIMIT 1
     </select>
 </mapper>

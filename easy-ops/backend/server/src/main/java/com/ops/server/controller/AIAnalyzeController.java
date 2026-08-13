@@ -5,6 +5,8 @@ import com.ops.common.model.NodeModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.SysConfigMapper;
+import com.ops.server.service.TenantResourceAccessService;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
@@ -29,6 +31,12 @@ public class AIAnalyzeController {
 
     @Autowired
     private SysConfigMapper sysConfigMapper;
+
+    @Autowired
+    private TenantResourceAccessService resourceAccess;
+
+    @Autowired
+    private SecurityContext securityContext;
 
     @Autowired
     private RestTemplate restTemplate;
@@ -85,6 +93,9 @@ public class AIAnalyzeController {
         // 1. 从节点读取日志
         NodeModel node = nodeMapper.findById(Long.parseLong(nodeId));
         if (node == null) return Result.error(1002, "节点不存在");
+        if (resourceAccess != null && securityContext != null && securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireNode(node.getId());
+        }
 
         String agentIp = node.getIp() != null ? node.getIp() : "127.0.0.1";
         int agentPort = node.getPort() != null ? node.getPort() : 2123;

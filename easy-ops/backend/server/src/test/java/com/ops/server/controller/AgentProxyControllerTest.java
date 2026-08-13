@@ -3,6 +3,7 @@ package com.ops.server.controller;
 import com.ops.common.model.NodeModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -24,6 +25,9 @@ class AgentProxyControllerTest {
     @Mock
     private RestTemplate restTemplate;
 
+    @Mock
+    private TenantResourceAccessService tenantResourceAccessService;
+
     @InjectMocks
     private AgentProxyController controller;
 
@@ -44,6 +48,7 @@ class AgentProxyControllerTest {
         node.setIp("127.0.0.1");
         node.setPort(2123);
         when(nodeMapper.findById(1L)).thenReturn(node);
+        when(tenantResourceAccessService.requireNode(1L)).thenReturn(node);
 
         Object result = controller.getSysInfo("1");
         assertNotNull(result);

@@ -66,8 +66,9 @@
             <bulb-outlined />
             <span>系统设置</span>
           </template>
-          <a-menu-item key="db-manage"><database-outlined /><span>H2 表结构维护</span></a-menu-item>
+          <a-menu-item key="db-manage" v-if="authStore.isSuperAdmin"><database-outlined /><span>H2 表结构维护</span></a-menu-item>
           <a-menu-item key="users"><team-outlined /><span>用户管理</span></a-menu-item>
+          <a-menu-item key="tenants" v-if="authStore.isSuperAdmin"><apartment-outlined /><span>租户管理</span></a-menu-item>
           <a-menu-item key="operations"><audit-outlined /><span>操作审计</span></a-menu-item>
         </a-sub-menu>
       </a-menu>
@@ -131,10 +132,49 @@
                   :aria-label="appStore.themeMode === 'dark' ? '切换为白天模式' : '切换为夜间模式'"
                   @click="appStore.toggleTheme()"
                 >
-                  <bulb-outlined v-if="appStore.themeMode === 'dark'" />
-                  <skin-outlined v-else />
+                  <template #icon>
+                    <svg v-if="appStore.themeMode === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                      <circle cx="12" cy="12" r="5" />
+                      <line x1="12" y1="1" x2="12" y2="3" />
+                      <line x1="12" y1="21" x2="12" y2="23" />
+                      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+                      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+                      <line x1="1" y1="12" x2="3" y2="12" />
+                      <line x1="21" y1="12" x2="23" y2="12" />
+                      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+                      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+                    </svg>
+                    <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18">
+                      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                    </svg>
+                  </template>
                 </a-button>
               </a-tooltip>
+              <!-- 平台管理员租户切换 -->
+              <a-dropdown v-if="authStore.isSuperAdmin" placement="bottomRight">
+                <a-button type="text" class="tenant-switch">
+                  <apartment-outlined />
+                  <span class="tenant-switch-name">{{ authStore.tenantName || '全部租户' }}</span>
+                  <down-outlined class="user-caret" />
+                </a-button>
+                <template #overlay>
+                  <a-menu @click="handleSwitchTenant">
+                    <a-menu-item key="0">
+                      <a-space>
+                        <apartment-outlined />
+                        <span>全部租户（平台视图）</span>
+                      </a-space>
+                    </a-menu-item>
+                    <a-menu-divider />
+                    <a-menu-item v-for="t in tenants" :key="t.id">
+                      <a-space>
+                        <span>{{ t.name }}</span>
+                        <a-tag :color="t.status === 1 ? 'green' : 'red'" style="margin:0">{{ t.status === 1 ? '启用' : '停用' }}</a-tag>
+                      </a-space>
+                    </a-menu-item>
+                  </a-menu>
+                </template>
+              </a-dropdown>
               <NotificationBell @unacked-alerts="onUnackedAlerts" />
               <AlertModal :alerts="unackedAlerts" />
             <a-dropdown>
@@ -170,13 +210,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAppStore } from '../stores/app'
 import { useAuthStore } from '../stores/auth'
+import { getTenants } from '../api/tenant'
 import NotificationBell from './NotificationBell.vue'
 import AlertModal from './AlertModal.vue'
-import type { NotificationRecordModel } from '../types'
+import type { NotificationRecordModel, TenantModel } from '../types'
 import {
   MenuUnfoldOutlined, MenuFoldOutlined, DownOutlined,
   UserOutlined, LogoutOutlined, CloudServerOutlined,
@@ -185,7 +226,7 @@ import {
   DashboardOutlined, AlertOutlined,
   DatabaseOutlined, BulbOutlined, TeamOutlined, AuditOutlined,
   FundOutlined, MedicineBoxOutlined,
-  SkinOutlined, LineChartOutlined
+  LineChartOutlined, ApartmentOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
@@ -201,7 +242,7 @@ const validMenuKeys = new Set([
   'nodes', 'projects', 'versions', 'deploy',
   'config-manage', 'log-manage',
   'monitor', 'app-monitor', 'agent-status', 'nginx-traffic', 'alarms', 'alarm-config', 'self-heal',
-  'db-manage', 'users', 'operations', 'batch-download'
+  'db-manage', 'users', 'tenants', 'operations', 'batch-download'
 ])
 
 const unackedAlerts = ref<NotificationRecordModel[]>([])
@@ -209,13 +250,35 @@ function onUnackedAlerts(alerts: NotificationRecordModel[]) {
   unackedAlerts.value = alerts
 }
 
+// 平台管理员可切换的租户列表
+const tenants = ref<TenantModel[]>([])
+async function loadTenants() {
+  if (!authStore.isSuperAdmin) return
+  try {
+    const res = await getTenants()
+    tenants.value = res.data.list || []
+  } catch { /* 静默：切换下拉加载失败不阻断页面 */ }
+}
+async function handleSwitchTenant(e: any) {
+  const tenantId = Number(e.key)
+  if (Number.isNaN(tenantId)) return
+  try {
+    await authStore.switchTenant(tenantId)
+    window.location.reload() // 重新加载让所有列表按新租户刷新
+  } catch (err: any) {
+    // request 拦截器已提示
+  }
+}
+
+onMounted(loadTenants)
+
 // 路由前缀 -> 菜单 key
 const pathPrefixMap: Record<string, string> = {
   'nodes': 'nodes', 'projects': 'projects', 'versions': 'versions', 'deploy': 'deploy',
   'config-manage': 'config-manage', 'log-manage': 'log-manage',
   'monitor': 'monitor', 'app-monitor': 'app-monitor', 'agent-status': 'agent-status', 'nginx-traffic': 'nginx-traffic', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
   'self-heal': 'self-heal',
-  'db-manage': 'db-manage', 'users': 'users', 'operations': 'operations',
+  'db-manage': 'db-manage', 'users': 'users', 'tenants': 'tenants', 'operations': 'operations',
   'batch-download': 'batch-download'
 }
 
@@ -225,7 +288,7 @@ const prefixToSub: Record<string, string> = {
   'config-manage': 'sub-tools', 'log-manage': 'sub-tools',
   monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', 'agent-status': 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
   'self-heal': 'sub-monitor',
-  'db-manage': 'sub-system', users: 'sub-system', operations: 'sub-system'
+  'db-manage': 'sub-system', users: 'sub-system', tenants: 'sub-system', operations: 'sub-system'
 }
 
 const selectedKeys = ref<string[]>([])
@@ -290,6 +353,7 @@ const monitorItems = [
 const systemItems = [
   { key: 'db-manage', title: 'H2 表结构维护', icon: DatabaseOutlined },
   { key: 'users', title: '用户管理', icon: TeamOutlined },
+  { key: 'tenants', title: '租户管理', icon: ApartmentOutlined },
   { key: 'operations', title: '操作审计', icon: AuditOutlined },
 ]
 

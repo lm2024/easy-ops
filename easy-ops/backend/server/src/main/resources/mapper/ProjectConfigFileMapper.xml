@@ -8,16 +8,18 @@
         SELECT * FROM project_config_file WHERE project_id = #{projectId} ORDER BY is_primary DESC, id ASC
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO project_config_file (project_id, file_name, relative_path, is_primary, remark, create_time, update_time)
-        VALUES (#{projectId}, #{fileName}, #{relativePath}, #{isPrimary}, #{remark}, #{createTime}, #{updateTime})
+        INSERT INTO project_config_file (project_id, file_name, relative_path, is_primary, remark, create_time, update_time, tenant_id)
+        VALUES (#{projectId}, #{fileName}, #{relativePath}, #{isPrimary}, #{remark}, #{createTime}, #{updateTime}, #{tenantId})
     </insert>
     <update id="update">
         UPDATE project_config_file
         SET file_name = #{fileName}, relative_path = #{relativePath}, is_primary = #{isPrimary},
             remark = #{remark}, update_time = #{updateTime}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
     <delete id="deleteById">
         DELETE FROM project_config_file WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
 </mapper>

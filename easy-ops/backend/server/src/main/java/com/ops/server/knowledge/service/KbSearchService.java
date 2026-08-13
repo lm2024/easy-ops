@@ -35,12 +35,12 @@ public class KbSearchService {
     /**
      * 全文搜索（LIKE 方式）
      */
-    public Map<String, Object> fullTextSearch(String query, Integer page, Integer pageSize) {
+    public Map<String, Object> fullTextSearch(String query, Long tenantId, Integer page, Integer pageSize) {
         if (page == null || page <= 0) page = 1;
         if (pageSize == null || pageSize <= 0) pageSize = 20;
 
-        List<KbDocumentModel> list = documentMapper.search(query, page, pageSize);
-        Long total = documentMapper.countSearch(query);
+        List<KbDocumentModel> list = documentMapper.search(query, tenantId, page, pageSize);
+        Long total = documentMapper.countSearch(query, tenantId);
 
         Map<String, Object> result = new HashMap<String, Object>();
         result.put("list", list);
@@ -53,12 +53,12 @@ public class KbSearchService {
     /**
      * 高级搜索（关键词+分类+标签）
      */
-    public Map<String, Object> advancedSearch(String query, Long categoryId, String tags, Integer page, Integer pageSize) {
+    public Map<String, Object> advancedSearch(String query, Long categoryId, String tags, Long tenantId, Integer page, Integer pageSize) {
         if (page == null || page <= 0) page = 1;
         if (pageSize == null || pageSize <= 0) pageSize = 20;
 
         // 1. 先按关键词搜索
-        List<KbDocumentModel> keywordResults = documentMapper.search(query, page, pageSize);
+        List<KbDocumentModel> keywordResults = documentMapper.search(query, tenantId, page, pageSize);
 
         // 2. 如果有分类筛选，过滤不属于该分类的文档
         List<KbDocumentModel> filtered = new ArrayList<KbDocumentModel>();
@@ -116,7 +116,7 @@ public class KbSearchService {
     /**
      * 按标签搜索文档
      */
-    public Map<String, Object> searchByTag(Long tagId, Integer page, Integer pageSize) {
+    public Map<String, Object> searchByTag(Long tagId, Long tenantId, Integer page, Integer pageSize) {
         if (page == null || page <= 0) page = 1;
         if (pageSize == null || pageSize <= 0) pageSize = 20;
 
@@ -132,11 +132,11 @@ public class KbSearchService {
             }
         }
 
-        // 查找文档详情
+        // 查找文档详情（仅保留当前租户可见的文档）
         List<KbDocumentModel> documents = new ArrayList<KbDocumentModel>();
         for (Long docId : docIds) {
             KbDocumentModel doc = documentMapper.findById(docId);
-            if (doc != null) {
+            if (doc != null && isDocInTenant(doc, tenantId)) {
                 documents.add(doc);
             }
         }
@@ -157,5 +157,16 @@ public class KbSearchService {
         result.put("page", page);
         result.put("pageSize", pageSize);
         return result;
+    }
+
+    /** 文档租户可见性：tenantId 为 null（平台视图）时全可见；否则要求文档归属当前租户 */
+    private boolean isDocInTenant(KbDocumentModel doc, Long tenantId) {
+        if (tenantId == null) return true;
+        if (doc.getTenantId() != null && doc.getTenantId() > 0) {
+            return tenantId.equals(doc.getTenantId());
+        }
+        // 旧数据无 tenant_id 时：由调用方（controller requireDocument/requireProject）兜底，
+        // 这里保守地放行，避免标签搜索对历史数据不可见
+        return true;
     }
 }

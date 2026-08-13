@@ -5,30 +5,36 @@
         SELECT * FROM kb_document WHERE id = #{id}
     </select>
     <select id="findByCategoryAndTitle" resultType="com.ops.common.model.KbDocumentModel">
-        SELECT * FROM kb_document WHERE category_id = #{categoryId} AND title = #{title} LIMIT 1
+        SELECT * FROM kb_document WHERE category_id = #{categoryId} AND title = #{title}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
+        LIMIT 1
     </select>
     <select id="findByCategory" resultType="com.ops.common.model.KbDocumentModel">
         SELECT * FROM kb_document WHERE category_id = #{categoryId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
         ORDER BY update_time DESC
         <if test="pageSize != null">LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}</if>
     </select>
     <select id="countByCategory" resultType="long">
         SELECT COUNT(*) FROM kb_document WHERE category_id = #{categoryId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </select>
     <select id="search" resultType="com.ops.common.model.KbDocumentModel">
         SELECT * FROM kb_document
-        WHERE title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')
+        WHERE (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%'))
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
         ORDER BY update_time DESC
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
     <select id="countSearch" resultType="long">
         SELECT COUNT(*) FROM kb_document
-        WHERE title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%')
+        WHERE (title LIKE CONCAT('%', #{keyword}, '%') OR content LIKE CONCAT('%', #{keyword}, '%'))
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO kb_document (category_id, title, summary, content, content_size, source_type,
+        INSERT INTO kb_document (category_id, tenant_id, title, summary, content, content_size, source_type,
             source_id, project_id, author_id, last_editor_id, version_no, status, view_count, create_time, update_time)
-        VALUES (#{categoryId}, #{title}, #{summary}, #{content}, #{contentSize}, #{sourceType},
+        VALUES (#{categoryId}, #{tenantId}, #{title}, #{summary}, #{content}, #{contentSize}, #{sourceType},
             #{sourceId}, #{projectId}, #{authorId}, #{lastEditorId}, #{versionNo}, #{status},
             #{viewCount}, #{createTime}, #{updateTime})
     </insert>
@@ -36,26 +42,27 @@
         UPDATE kb_document SET category_id = #{categoryId}, title = #{title}, summary = #{summary},
             content = #{content}, content_size = #{contentSize}, last_editor_id = #{lastEditorId},
             version_no = #{versionNo}, status = #{status}, update_time = #{updateTime}
-        WHERE id = #{id}
+        WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
     <update id="updateCategory">
-        UPDATE kb_document SET category_id = #{categoryId}, update_time = #{updateTime} WHERE id = #{id}
+        UPDATE kb_document SET category_id = #{categoryId}, update_time = #{updateTime}
+        WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
     <update id="incrementViewCount">
-        UPDATE kb_document SET view_count = view_count + 1 WHERE id = #{id}
+        UPDATE kb_document SET view_count = view_count + 1 WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
     <delete id="deleteById">
-        DELETE FROM kb_document WHERE id = #{id}
+        DELETE FROM kb_document WHERE id = #{id} AND tenant_id = #{tenantId}
     </delete>
     <!-- Yjs 状态存取 -->
     <update id="updateYjsState">
-        UPDATE kb_document SET yjs_state = #{yjsState} WHERE id = #{id}
+        UPDATE kb_document SET yjs_state = #{yjsState} WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
     <select id="selectYjsState" resultType="byte[]">
         SELECT yjs_state FROM kb_document WHERE id = #{id}
     </select>
     <update id="updateContentFromYjs">
         UPDATE kb_document SET content = #{content}, content_size = #{contentSize}, update_time = #{updateTime}
-        WHERE id = #{id}
+        WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
 </mapper>

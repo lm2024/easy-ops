@@ -21,4 +21,5 @@ public class ProjectScriptFileModel implements Serializable {
     private Integer autoBackup;     // 分发前是否自动备份：0-否 1-是
     private Long createTime;
     private Long updateTime;
+    private Long tenantId;
 }

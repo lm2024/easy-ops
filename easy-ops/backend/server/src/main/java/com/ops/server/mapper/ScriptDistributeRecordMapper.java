@@ -20,7 +20,7 @@ public interface ScriptDistributeRecordMapper {
 
     int insert(ScriptDistributeRecordModel model);
 
-    int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("resultDetail") String resultDetail);
+    int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("resultDetail") String resultDetail, @Param("tenantId") Long tenantId);
 
-    int deleteById(@Param("id") Long id);
+    int deleteById(@Param("id") Long id, @Param("tenantId") Long tenantId);
 }

@@ -53,6 +53,8 @@ public class ProcessController {
      */
     @PostMapping("/{projectId}/{nodeId}/start")
     public Result<?> start(@PathVariable Long projectId, @PathVariable Long nodeId) {
+        resourceAccess.requireProject(projectId);
+        resourceAccess.requireNode(nodeId);
         ProjectModel project = projectMapper.findById(projectId);
         if (project == null) {
             return Result.error(1005, "项目不存在");
@@ -110,6 +112,8 @@ public class ProcessController {
      */
     @PostMapping("/{projectId}/{nodeId}/stop")
     public Result<?> stop(@PathVariable Long projectId, @PathVariable Long nodeId) {
+        resourceAccess.requireProject(projectId);
+        resourceAccess.requireNode(nodeId);
         ProjectModel project = projectMapper.findById(projectId);
         if (project == null) {
             return Result.error(1005, "项目不存在");
@@ -163,6 +167,8 @@ public class ProcessController {
      */
     @PostMapping("/{projectId}/{nodeId}/restart")
     public Result<?> restart(@PathVariable Long projectId, @PathVariable Long nodeId) {
+        resourceAccess.requireProject(projectId);
+        resourceAccess.requireNode(nodeId);
         ProjectModel project = projectMapper.findById(projectId);
         if (project == null) {
             return Result.error(1005, "项目不存在");

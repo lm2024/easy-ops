@@ -3,6 +3,7 @@ package com.ops.server.controller;
 import com.ops.common.model.NodeModel;
 import com.ops.common.response.Result;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestTemplate;
@@ -20,6 +21,9 @@ public class AgentProxyController {
 
     @Autowired
     private NodeMapper nodeMapper;
+
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
 
     /**
      * 使用全局 RestTemplate Bean（连接池 + 10s/30s 超时），
@@ -77,7 +81,14 @@ public class AgentProxyController {
 
     @SuppressWarnings("unchecked")
     private Result<?> proxyGet(String nodeId, String path, Map<String, String> params) {
-        NodeModel node = nodeMapper.findById(Long.parseLong(nodeId));
+        Long nodeIdLong;
+        try {
+            nodeIdLong = Long.parseLong(nodeId);
+        } catch (NumberFormatException e) {
+            return Result.error(1002, "节点不存在");
+        }
+        tenantResourceAccessService.requireNode(nodeIdLong);
+        NodeModel node = nodeMapper.findById(nodeIdLong);
         if (node == null) {
             return Result.error(1002, "节点不存在");
         }

@@ -2,9 +2,9 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.ops.server.mapper.AIDiagnosisRecordMapper">
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO ai_diagnosis_record (project_id, node_id, trigger_type, question, context_summary,
+        INSERT INTO ai_diagnosis_record (project_id, tenant_id, node_id, trigger_type, question, context_summary,
             diagnosis, severity, saved_to_kb, kb_document_id, operator_id, token_used, create_time)
-        VALUES (#{projectId}, #{nodeId}, #{triggerType}, #{question}, #{contextSummary},
+        VALUES (#{projectId}, #{tenantId}, #{nodeId}, #{triggerType}, #{question}, #{contextSummary},
             #{diagnosis}, #{severity}, #{savedToKb}, #{kbDocumentId}, #{operatorId}, #{tokenUsed}, #{createTime})
     </insert>
     <select id="findById" resultType="com.ops.common.model.AIDiagnosisRecordModel">

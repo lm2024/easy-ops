@@ -20,8 +20,8 @@
         LIMIT 1
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO kb_category (parent_id, name, icon, color, sort_order, project_id, create_time, update_time)
-        VALUES (#{parentId}, #{name}, #{icon}, #{color}, #{sortOrder}, #{projectId}, #{createTime}, #{updateTime})
+        INSERT INTO kb_category (parent_id, tenant_id, name, icon, color, sort_order, project_id, create_time, update_time)
+        VALUES (#{parentId}, #{tenantId}, #{name}, #{icon}, #{color}, #{sortOrder}, #{projectId}, #{createTime}, #{updateTime})
     </insert>
     <update id="update">
         UPDATE kb_category SET parent_id = #{parentId}, name = #{name}, icon = #{icon}, color = #{color},

@@ -16,5 +16,5 @@ public interface ProjectLogProfileMapper {
 
     int update(ProjectLogProfileModel model);
 
-    int deleteByProjectId(@Param("projectId") Long projectId);
+    int deleteByProjectId(@Param("projectId") Long projectId, @Param("tenantId") Long tenantId);
 }

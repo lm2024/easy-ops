@@ -794,3 +794,113 @@ CREATE TABLE IF NOT EXISTS nginx_traffic_alarm_rule (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS uk_nginx_alarm_source_type ON nginx_traffic_alarm_rule(source_id, rule_type);
 CREATE INDEX IF NOT EXISTS idx_nginx_alarm_source ON nginx_traffic_alarm_rule(source_id);
+
+-- ========== 多租户数据隔离扩展 2026-08-13 ==========
+-- 顶层资源表统一物化 tenant_id（幂等 ALTER，兼容已有库与新库）。
+-- 子表（知识库子表/Nginx 聚合表/user_notification_state）经父资源归属校验隔离，不额外加列。
+
+-- 版本/部署/监控/告警/自愈/通知/AI —— 经 project_info 或 node_info 推导
+ALTER TABLE version_package ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE deploy_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE monitor_snapshot ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE alarm_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE self_heal_policy ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE self_heal_event ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE notification_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE agent_upgrade_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE ai_diagnosis_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+
+-- 配置/脚本/日志/探针 —— 经 project_id 推导
+ALTER TABLE project_config_file ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE node_config_snapshot ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE config_distribute_record ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE project_log_profile ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE project_health_probe ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+
+-- Nginx 日志源及白名单/告警规则 —— 经 node_id/source_id 推导
+ALTER TABLE nginx_access_source ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE nginx_source_whitelist ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE nginx_traffic_alarm_rule ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+
+-- 知识库 —— 文档/分类为隔离主键，子表继承
+ALTER TABLE kb_document ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+ALTER TABLE kb_category ADD COLUMN IF NOT EXISTS tenant_id BIGINT DEFAULT 0;
+
+-- 高基表复合索引（tenant 维度加速隔离查询）
+CREATE INDEX IF NOT EXISTS idx_version_tenant ON version_package(tenant_id, project_id, version);
+CREATE INDEX IF NOT EXISTS idx_deploy_tenant ON deploy_record(tenant_id, project_id, status);
+CREATE INDEX IF NOT EXISTS idx_alarm_tenant ON alarm_record(tenant_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_notify_tenant ON notification_record(tenant_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_upgrade_tenant ON agent_upgrade_record(tenant_id, create_time);
+CREATE INDEX IF NOT EXISTS idx_nginx_source_tenant ON nginx_access_source(tenant_id, node_id);
+
+-- 补建缺失 DDL：项目脚本文件 / 脚本分发记录 / 节点脚本快照（此前 schema 缺失，Mapper 已引用）
+CREATE TABLE IF NOT EXISTS project_script_file (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    project_id BIGINT NOT NULL,
+    file_name VARCHAR(200) NOT NULL,
+    file_path VARCHAR(500) NOT NULL,
+    file_type VARCHAR(50) DEFAULT '' COMMENT '文件类型：sh/conf/cron/service/other',
+    description VARCHAR(500) DEFAULT '',
+    is_executable TINYINT DEFAULT 0,
+    auto_backup TINYINT DEFAULT 1,
+    create_time BIGINT,
+    update_time BIGINT,
+    tenant_id BIGINT DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_script_project_path ON project_script_file(project_id, file_path);
+
+CREATE TABLE IF NOT EXISTS script_distribute_record (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    project_id BIGINT NOT NULL,
+    script_file_id BIGINT NOT NULL,
+    operator_id BIGINT NOT NULL,
+    target_node_ids VARCHAR(2000) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    set_executable TINYINT DEFAULT 0,
+    auto_backup TINYINT DEFAULT 1,
+    status TINYINT DEFAULT 0 COMMENT '0-进行中 1-成功 2-部分失败 3-失败',
+    result_detail TEXT,
+    create_time BIGINT,
+    tenant_id BIGINT DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_script_dist_project_time ON script_distribute_record(project_id, create_time);
+
+CREATE TABLE IF NOT EXISTS node_script_snapshot (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    project_id BIGINT NOT NULL,
+    node_id BIGINT NOT NULL,
+    script_file_id BIGINT NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    content_size INT DEFAULT 0,
+    file_mode INT DEFAULT 0,
+    sync_status TINYINT DEFAULT 0 COMMENT '0-未知 1-一致 2-差异 3-定制',
+    last_sync_time BIGINT,
+    update_time BIGINT,
+    tenant_id BIGINT DEFAULT 0
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uk_node_script_file ON node_script_snapshot(node_id, script_file_id);
+
+-- ========== 节点认领/转移工作流 2026-08-13 ==========
+-- 租户从节点池（default 租户）申请节点管理权，平台管理员审批后节点转移归属。
+CREATE TABLE IF NOT EXISTS node_transfer_application (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    node_id BIGINT NOT NULL,
+    node_name VARCHAR(100),
+    applicant_id BIGINT NOT NULL,
+    applicant_username VARCHAR(50),
+    target_tenant_id BIGINT NOT NULL,
+    target_tenant_name VARCHAR(200),
+    source_tenant_id BIGINT,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    remark VARCHAR(500),
+    create_time BIGINT,
+    update_time BIGINT,
+    approve_time BIGINT,
+    approver_id BIGINT,
+    approver_username VARCHAR(50)
+);
+CREATE INDEX IF NOT EXISTS idx_transfer_node ON node_transfer_application(node_id);
+CREATE INDEX IF NOT EXISTS idx_transfer_status ON node_transfer_application(status);
+
+

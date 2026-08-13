@@ -20,11 +20,11 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO nginx_access_source (
-            node_id, name, log_path, log_format, enabled, slow_threshold_sec,
+            node_id, tenant_id, name, log_path, log_format, enabled, slow_threshold_sec,
             max_keys_per_minute, last_offset, last_inode, last_report_time, last_error,
             create_time, update_time
         ) VALUES (
-            #{nodeId}, #{name}, #{logPath}, #{logFormat}, #{enabled}, #{slowThresholdSec},
+            #{nodeId}, #{tenantId}, #{name}, #{logPath}, #{logFormat}, #{enabled}, #{slowThresholdSec},
             #{maxKeysPerMinute}, #{lastOffset}, #{lastInode}, #{lastReportTime}, #{lastError},
             #{createTime}, #{updateTime}
         )
@@ -40,11 +40,11 @@
             slow_threshold_sec = #{slowThresholdSec},
             max_keys_per_minute = #{maxKeysPerMinute},
             update_time = #{updateTime}
-        WHERE id = #{id}
+        WHERE id = #{id} AND tenant_id = #{tenantId}
     </update>
 
     <delete id="deleteById">
-        DELETE FROM nginx_access_source WHERE id = #{id}
+        DELETE FROM nginx_access_source WHERE id = #{id} AND tenant_id = #{tenantId}
     </delete>
 
     <update id="updateReportStatus">

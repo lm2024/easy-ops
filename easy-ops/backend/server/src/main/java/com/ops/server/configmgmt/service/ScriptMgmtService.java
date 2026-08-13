@@ -13,6 +13,7 @@ import com.ops.server.mapper.NodeScriptSnapshotMapper;
 import com.ops.server.mapper.ProjectMapper;
 import com.ops.server.mapper.ProjectScriptFileMapper;
 import com.ops.server.mapper.ScriptDistributeRecordMapper;
+import com.ops.server.util.SecurityContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +63,9 @@ public class ScriptMgmtService {
     @Autowired
     private ScriptDistributeRecordMapper distributeRecordMapper;
 
+    @Autowired
+    private SecurityContext securityContext;
+
     /**
      * 查询项目脚本文件列表
      */
@@ -105,8 +109,8 @@ public class ScriptMgmtService {
      */
     public void deleteFile(Long id) {
         // 同时删除快照记录
-        snapshotMapper.deleteByScriptFileId(id);
-        scriptFileMapper.deleteById(id);
+        snapshotMapper.deleteByScriptFileId(id, securityContext.getCurrentTenantId());
+        scriptFileMapper.deleteById(id, securityContext.getCurrentTenantId());
     }
 
     /**
@@ -188,6 +192,7 @@ public class ScriptMgmtService {
                                 if (!discovered.containsKey(fileKey)) {
                                     ProjectScriptFileModel model = new ProjectScriptFileModel();
                                     model.setProjectId(projectId);
+                                    model.setTenantId(project.getTenantId());
                                     model.setFileName(f.get("fileName") != null ? f.get("fileName").toString() : "");
                                     model.setFilePath(filePath);
                                     model.setFileType(detectFileType(model.getFileName()));
@@ -335,6 +340,7 @@ public class ScriptMgmtService {
         // 创建分发记录
         ScriptDistributeRecordModel record = new ScriptDistributeRecordModel();
         record.setProjectId(projectId);
+        record.setTenantId(securityContext.getCurrentTenantId());
         record.setScriptFileId(scriptFileId);
         record.setOperatorId(operatorId);
         record.setTargetNodeIds(joinIds(targetNodeIds));
@@ -365,7 +371,7 @@ public class ScriptMgmtService {
                         successCount++;
                         // 更新快照
                         Long nodeId = (Long) nodeResult.get("nodeId");
-                        upsertSnapshot(projectId, nodeId, scriptFileId, hash, content.length(), setExecutable ? 755 : 644, 1, now);
+                        upsertSnapshot(projectId, nodeId, scriptFileId, hash, content.length(), setExecutable ? 755 : 644, 1, now, securityContext.getCurrentTenantId());
                     } else {
                         failCount++;
                     }
@@ -381,7 +387,7 @@ public class ScriptMgmtService {
 
         // 更新分发记录状态
         int status = failCount == 0 ? 1 : (successCount == 0 ? 3 : 2);
-        distributeRecordMapper.updateStatus(record.getId(), status, "成功=" + successCount + ", 失败=" + failCount);
+        distributeRecordMapper.updateStatus(record.getId(), status, "成功=" + successCount + ", 失败=" + failCount, securityContext.getCurrentTenantId());
 
         Map<String, Object> data = new HashMap<>();
         data.put("recordId", record.getId());
@@ -417,7 +423,7 @@ public class ScriptMgmtService {
             String hash = nodeHashes.get(nodeId);
             if (hash == null) continue;
             int syncStatus = allSame ? 1 : 2;
-            upsertSnapshot(projectId, nodeId, scriptFileId, hash, 0, 0, syncStatus, now);
+            upsertSnapshot(projectId, nodeId, scriptFileId, hash, 0, 0, syncStatus, now, securityContext.getCurrentTenantId());
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -447,11 +453,12 @@ public class ScriptMgmtService {
     }
 
     private void upsertSnapshot(Long projectId, Long nodeId, Long scriptFileId,
-                                String hash, int contentSize, int fileMode, int syncStatus, long now) {
+                                String hash, int contentSize, int fileMode, int syncStatus, long now, Long tenantId) {
         NodeScriptSnapshotModel existing = snapshotMapper.findByNodeAndFile(nodeId, scriptFileId);
         if (existing == null) {
             NodeScriptSnapshotModel snap = new NodeScriptSnapshotModel();
             snap.setProjectId(projectId);
+            snap.setTenantId(tenantId);
             snap.setNodeId(nodeId);
             snap.setScriptFileId(scriptFileId);
             snap.setContentHash(hash);

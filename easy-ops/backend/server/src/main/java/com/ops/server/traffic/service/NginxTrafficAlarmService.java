@@ -58,14 +58,14 @@ public class NginxTrafficAlarmService {
     }
 
     @Transactional
-    public void deleteBySourceId(Long sourceId) {
+    public void deleteBySourceId(Long sourceId, Long tenantId) {
         if (sourceId != null) {
-            ruleMapper.deleteBySourceId(sourceId);
+            ruleMapper.deleteBySourceId(sourceId, tenantId);
         }
     }
 
     @Transactional
-    public List<NginxTrafficAlarmRuleModel> saveRules(Long sourceId, List<NginxTrafficAlarmRuleModel> rules) {
+    public List<NginxTrafficAlarmRuleModel> saveRules(Long sourceId, Long tenantId, List<NginxTrafficAlarmRuleModel> rules) {
         if (sourceId == null) {
             throw new IllegalArgumentException("sourceId 不能为空");
         }
@@ -74,7 +74,7 @@ public class NginxTrafficAlarmService {
         }
         long now = System.currentTimeMillis();
         for (NginxTrafficAlarmRuleModel rule : rules) {
-            normalizeRule(rule, sourceId, now);
+            normalizeRule(rule, sourceId, tenantId, now);
             if (rule.getId() == null) {
                 NginxTrafficAlarmRuleModel existing = ruleMapper.findBySourceIdAndType(sourceId, rule.getRuleType());
                 if (existing != null) {
@@ -92,12 +92,17 @@ public class NginxTrafficAlarmService {
 
     @Transactional
     public void ensureDefaultRules(Long sourceId) {
+        if (sourceId == null) {
+            return;
+        }
+        NginxAccessSourceModel source = sourceMapper.findById(sourceId);
+        Long tenantId = source != null ? source.getTenantId() : null;
         long now = System.currentTimeMillis();
-        createDefaultIfMissing(sourceId, NginxTrafficAlarmType.IP_FREQ, 500L, 10, "WARNING", 15, now);
-        createDefaultIfMissing(sourceId, NginxTrafficAlarmType.URI_FREQ, 1000L, 10, "WARNING", 15, now);
-        createDefaultIfMissing(sourceId, NginxTrafficAlarmType.STATUS_4XX, 100L, 10, "WARNING", 15, now);
-        createDefaultIfMissing(sourceId, NginxTrafficAlarmType.STATUS_5XX, 10L, 10, "CRITICAL", 15, now);
-        createDefaultIfMissing(sourceId, NginxTrafficAlarmType.SLOW, 50L, 10, "WARNING", 15, now);
+        createDefaultIfMissing(sourceId, tenantId, NginxTrafficAlarmType.IP_FREQ, 500L, 10, "WARNING", 15, now);
+        createDefaultIfMissing(sourceId, tenantId, NginxTrafficAlarmType.URI_FREQ, 1000L, 10, "WARNING", 15, now);
+        createDefaultIfMissing(sourceId, tenantId, NginxTrafficAlarmType.STATUS_4XX, 100L, 10, "WARNING", 15, now);
+        createDefaultIfMissing(sourceId, tenantId, NginxTrafficAlarmType.STATUS_5XX, 10L, 10, "CRITICAL", 15, now);
+        createDefaultIfMissing(sourceId, tenantId, NginxTrafficAlarmType.SLOW, 50L, 10, "WARNING", 15, now);
     }
 
     /**
@@ -269,13 +274,14 @@ public class NginxTrafficAlarmService {
         return param;
     }
 
-    private void createDefaultIfMissing(Long sourceId, String type, long threshold,
+    private void createDefaultIfMissing(Long sourceId, Long tenantId, String type, long threshold,
                                         int windowMinutes, String level, int cooldownMin, long now) {
         if (ruleMapper.findBySourceIdAndType(sourceId, type) != null) {
             return;
         }
         NginxTrafficAlarmRuleModel rule = new NginxTrafficAlarmRuleModel();
         rule.setSourceId(sourceId);
+        rule.setTenantId(tenantId);
         rule.setRuleType(type);
         rule.setEnabled(0);
         rule.setThreshold(threshold);
@@ -288,8 +294,9 @@ public class NginxTrafficAlarmService {
         ruleMapper.insert(rule);
     }
 
-    private void normalizeRule(NginxTrafficAlarmRuleModel rule, Long sourceId, long now) {
+    private void normalizeRule(NginxTrafficAlarmRuleModel rule, Long sourceId, Long tenantId, long now) {
         rule.setSourceId(sourceId);
+        rule.setTenantId(tenantId);
         if (rule.getEnabled() == null) {
             rule.setEnabled(0);
         }

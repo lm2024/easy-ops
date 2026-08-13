@@ -5,4 +5,8 @@
         INSERT INTO file_access_log (user_id, node_id, file_type, file_path, action, content_summary, ip, create_time)
         VALUES (#{userId}, #{nodeId}, #{fileType}, #{filePath}, #{action}, #{contentSummary}, #{ip}, #{createTime})
     </insert>
+
+    <delete id="deleteBefore">
+        DELETE FROM file_access_log WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

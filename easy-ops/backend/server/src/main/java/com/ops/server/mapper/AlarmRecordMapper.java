@@ -11,8 +11,13 @@ public interface AlarmRecordMapper {
     List<AlarmModel> findByFilters(@Param("projectId") Long projectId, @Param("type") String type,
                                    @Param("page") Integer page, @Param("pageSize") Integer pageSize);
     Long countByFilters(@Param("projectId") Long projectId, @Param("type") String type);
+    List<AlarmModel> findByFiltersInTenant(@Param("projectId") Long projectId, @Param("type") String type,
+                                           @Param("tenantId") Long tenantId,
+                                           @Param("page") Integer page, @Param("pageSize") Integer pageSize);
+    Long countByFiltersInTenant(@Param("projectId") Long projectId, @Param("type") String type,
+                                @Param("tenantId") Long tenantId);
     int insert(AlarmModel alarm);
-    int deleteAll();
+    int deleteAll(@Param("tenantId") Long tenantId);
 
     int deleteBefore(@Param("cutoff") Long cutoff);
 }

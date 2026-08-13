@@ -12,6 +12,7 @@ public class VersionModel implements Serializable {
 
     private Long id;
     private Long projectId;
+    private Long tenantId;
     private String jarName;
     private String filePath;
     private Long fileSize;

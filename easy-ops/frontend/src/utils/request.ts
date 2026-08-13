@@ -17,6 +17,11 @@ service.interceptors.request.use(
     if (token && !isAuthApi) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    // 租户上下文（平台管理员切换租户视角时生效；后端从 token 解析为主，此头仅辅助）
+    const tenantId = localStorage.getItem('tenantId')
+    if (tenantId && !isAuthApi && url !== '/tenants/switch') {
+      config.headers['X-Tenant-Id'] = tenantId
+    }
     return config
   },
   (error) => {
@@ -52,17 +57,23 @@ service.interceptors.response.use(
     }
     // 后端未启动或代理失败时，Vite 常返回 500/502
     if (error.response && (error.response.status === 500 || error.response.status === 502 || error.response.status === 503)) {
-      const isProxyDown = !error.response.data || typeof error.response.data !== 'object' || !('code' in (error.response.data || {}))
-      if (isProxyDown) {
-        message.error('后端服务未启动或不可用，请在 backend 目录执行 ./start.sh')
+      const body = error.response.data
+      const hasStructuredResponse = body && typeof body === 'object' && 'code' in (body || {})
+      if (hasStructuredResponse) {
+        // 后端返回了结构化错误响应，提取友好消息
+        const bizMsg = body?.message || '系统内部异常，请联系管理员'
+        message.error(bizMsg)
+        error.message = bizMsg
         return Promise.reject(error)
       }
+      // 后端未启动或代理失败（无结构化响应）
+      message.error('后端服务未启动或不可用，请在 backend 目录执行 ./start.sh')
+      return Promise.reject(error)
     }
     // 400 是业务异常，由调用方自行处理提示（如 displayMessage: false 则静默）
     if (error.response && error.response.status === 400) {
       const body = error.response.data
       const bizMsg = body?.message || error.message
-      // 用更友好的业务消息替换 axios 的原始错误消息
       error.message = bizMsg
       return Promise.reject(error)
     }

@@ -6,8 +6,10 @@ import com.ops.common.model.NginxTrafficAlarmRuleModel;
 import com.ops.common.response.Result;
 import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.traffic.service.NginxTrafficAlarmService;
 import com.ops.server.traffic.service.NginxTrafficService;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
@@ -30,6 +32,10 @@ public class NginxTrafficController {
     private com.ops.server.traffic.service.NginxSourceWhitelistService whitelistService;
     @Autowired
     private NodeMapper nodeMapper;
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+    @Autowired
+    private SecurityContext securityContext;
 
     @GetMapping("/sources")
     public Result<?> listSources() {
@@ -38,39 +44,48 @@ public class NginxTrafficController {
 
     @PostMapping("/sources")
     public Result<?> saveSource(@RequestBody NginxAccessSourceModel model) {
+        if (model.getId() != null) {
+            NginxAccessSourceModel existing = tenantResourceAccessService.requireSource(model.getId());
+            model.setTenantId(existing.getTenantId());
+        } else {
+            // 创建日志源：先校验节点归属，再物化当前租户（null 时服务层回退到 node 租户）
+            tenantResourceAccessService.requireNode(model.getNodeId());
+            model.setTenantId(securityContext.getCurrentTenantId());
+        }
         return Result.success(nginxTrafficService.saveSource(model));
     }
 
     @DeleteMapping("/sources/{id}")
     public Result<?> deleteSource(@PathVariable Long id) {
+        tenantResourceAccessService.requireSource(id);
         nginxTrafficService.deleteSource(id);
         return Result.success(null);
     }
 
     @GetMapping("/sources/{id}/alarm-rules")
     public Result<?> listAlarmRules(@PathVariable Long id) {
-        nginxTrafficService.assertSourceAccess(id);
+        tenantResourceAccessService.requireSource(id);
         return Result.success(nginxTrafficAlarmService.listBySourceId(id));
     }
 
     @PutMapping("/sources/{id}/alarm-rules")
     public Result<?> saveAlarmRules(@PathVariable Long id,
                                     @RequestBody List<NginxTrafficAlarmRuleModel> rules) {
-        nginxTrafficService.assertSourceAccess(id);
-        return Result.success(nginxTrafficAlarmService.saveRules(id, rules));
+        NginxAccessSourceModel source = tenantResourceAccessService.requireSource(id);
+        return Result.success(nginxTrafficAlarmService.saveRules(id, resolveTenantId(source), rules));
     }
 
     @GetMapping("/sources/{id}/whitelist")
     public Result<?> listWhitelist(@PathVariable Long id) {
-        nginxTrafficService.assertSourceAccess(id);
+        tenantResourceAccessService.requireSource(id);
         return Result.success(whitelistService.listBySource(id));
     }
 
     @PutMapping("/sources/{id}/whitelist")
     public Result<?> saveWhitelist(@PathVariable Long id,
                                    @RequestBody List<NginxSourceWhitelistModel> items) {
-        nginxTrafficService.assertSourceAccess(id);
-        return Result.success(whitelistService.saveAll(id, items));
+        NginxAccessSourceModel source = tenantResourceAccessService.requireSource(id);
+        return Result.success(whitelistService.saveAll(id, resolveTenantId(source), items));
     }
 
     /**
@@ -98,6 +113,8 @@ public class NginxTrafficController {
         if (sourceId == null) {
             return Result.error(400, "sourceId 不能为空");
         }
+        // 防 Agent 伪造/越权 ingest：先校验 source 归属；服务层再校验 source 必须属于当前节点
+        tenantResourceAccessService.requireSource(sourceId);
         nginxTrafficService.ingest(nodeId, sourceId, body);
         return Result.success(null);
     }
@@ -107,11 +124,13 @@ public class NginxTrafficController {
                               @RequestParam(defaultValue = "60") Integer windowMinutes,
                               @RequestParam(required = false) Long startTime,
                               @RequestParam(required = false) Long endTime) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.overview(sourceIds, windowMinutes, startTime, endTime));
     }
 
     @GetMapping("/overview/today")
     public Result<?> todayOverview(@RequestParam(required = false) List<Long> sourceIds) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.todayOverview(sourceIds));
     }
 
@@ -124,6 +143,7 @@ public class NginxTrafficController {
                             @RequestParam(defaultValue = "1") Integer page,
                             @RequestParam(defaultValue = "20") Integer pageSize,
                             @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankIp(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
@@ -136,6 +156,7 @@ public class NginxTrafficController {
                              @RequestParam(defaultValue = "1") Integer page,
                              @RequestParam(defaultValue = "20") Integer pageSize,
                              @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankUri(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
@@ -149,6 +170,7 @@ public class NginxTrafficController {
                                @RequestParam(defaultValue = "1") Integer page,
                                @RequestParam(defaultValue = "20") Integer pageSize,
                                @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankIpUri(sourceIds, windowMinutes, startTime, endTime, clientIp, uri, page, pageSize, sort));
     }
 
@@ -160,6 +182,7 @@ public class NginxTrafficController {
                               @RequestParam(defaultValue = "1") Integer page,
                               @RequestParam(defaultValue = "20") Integer pageSize,
                               @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankSlow(sourceIds, windowMinutes, startTime, endTime, page, pageSize, sort));
     }
 
@@ -171,6 +194,7 @@ public class NginxTrafficController {
                                 @RequestParam(defaultValue = "1") Integer page,
                                 @RequestParam(defaultValue = "20") Integer pageSize,
                                 @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankMethod(sourceIds, windowMinutes, startTime, endTime, page, pageSize, sort));
     }
 
@@ -183,6 +207,7 @@ public class NginxTrafficController {
                             @RequestParam(defaultValue = "1") Integer page,
                             @RequestParam(defaultValue = "20") Integer pageSize,
                             @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankUa(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
@@ -195,6 +220,7 @@ public class NginxTrafficController {
                                  @RequestParam(defaultValue = "1") Integer page,
                                  @RequestParam(defaultValue = "20") Integer pageSize,
                                  @RequestParam(required = false) String sort) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.rankReferer(sourceIds, windowMinutes, startTime, endTime, keyword, page, pageSize, sort));
     }
 
@@ -205,6 +231,7 @@ public class NginxTrafficController {
                                     @RequestParam(required = false) Long endTime,
                                     @RequestParam(defaultValue = "1") Integer page,
                                     @RequestParam(defaultValue = "50") Integer pageSize) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.latencySamples(sourceIds, windowMinutes, startTime, endTime, page, pageSize));
     }
 
@@ -213,7 +240,25 @@ public class NginxTrafficController {
                            @RequestParam(defaultValue = "60") Integer windowMinutes,
                            @RequestParam(required = false) Long startTime,
                            @RequestParam(required = false) Long endTime) {
+        requireSources(sourceIds);
         return Result.success(nginxTrafficService.trend(sourceIds, windowMinutes, startTime, endTime));
+    }
+
+    /** 校验统计/查询入参中的每个 sourceId 均为当前租户可访问的日志源 */
+    private void requireSources(List<Long> sourceIds) {
+        if (sourceIds == null || sourceIds.isEmpty()) {
+            return;
+        }
+        for (Long sourceId : sourceIds) {
+            if (sourceId != null) {
+                tenantResourceAccessService.requireSource(sourceId);
+            }
+        }
+    }
+
+    /** 日志源 tenant_id 可能为 null（历史数据/平台源），统一归 0 以便 tenant 过滤命中 */
+    private Long resolveTenantId(NginxAccessSourceModel source) {
+        return source != null && source.getTenantId() != null ? source.getTenantId() : 0L;
     }
 
     private Long resolveNodeId(HttpServletRequest request) {

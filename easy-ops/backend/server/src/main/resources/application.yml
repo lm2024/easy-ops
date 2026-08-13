@@ -62,7 +62,7 @@ jwt:
 # 优先级：YML 配置 > 用户自己设置的密码（每次启动都会用 YML 密码覆盖）
 app:
   admin:
-    default-password: Admin111!
+    default-password: Password01!
 
 
 mybatis:

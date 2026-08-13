@@ -306,6 +306,7 @@ public class MonitorCollectorService {
         snap.setId(null); // 复制后作为新行插入，避免主键冲突
         snap.setProjectId(project.getId());
         snap.setNodeId(node.getId());
+        snap.setTenantId(project.getTenantId()); // 从项目推导租户（后台采集无用户上下文）
         snap.setCollectTime(System.currentTimeMillis());
 
         boolean isFrontendApp = "frontend".equalsIgnoreCase(project.getProjectType());

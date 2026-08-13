@@ -16,7 +16,8 @@ public interface ConfigDistributeRecordMapper {
 
     int updateStatus(@Param("id") Long id,
                      @Param("status") Integer status,
-                     @Param("resultDetail") String resultDetail);
+                     @Param("resultDetail") String resultDetail,
+                     @Param("tenantId") Long tenantId);
 
     int deleteBefore(@Param("cutoff") Long cutoff);
 }

@@ -53,6 +53,15 @@ public class AIDiagnosisService {
         AIDiagnosisRecordModel record = new AIDiagnosisRecordModel();
         record.setProjectId(projectId);
         record.setNodeId(nodeId);
+        // 打 tenant 标：优先项目推导，其次当前用户上下文
+        Long aiTenantId = securityContext.getCurrentTenantId();
+        if (projectId != null) {
+            com.ops.common.model.ProjectModel aiProject = projectMapper.findById(projectId);
+            if (aiProject != null && aiProject.getTenantId() != null && aiProject.getTenantId() > 0) {
+                aiTenantId = aiProject.getTenantId();
+            }
+        }
+        record.setTenantId(aiTenantId);
         record.setTriggerType(triggerType != null ? triggerType : "MANUAL");
         record.setQuestion(q);
         record.setContextSummary(context.length() > 5000 ? context.substring(0, 5000) : context);

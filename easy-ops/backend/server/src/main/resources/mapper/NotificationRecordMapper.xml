@@ -43,9 +43,9 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO notification_record (type, level, title, content, project_id, node_id,
+        INSERT INTO notification_record (type, level, title, content, tenant_id, project_id, node_id,
             source_type, source_id, require_ack, broadcast, create_time, expire_time)
-        VALUES (#{type}, #{level}, #{title}, #{content}, #{projectId}, #{nodeId},
+        VALUES (#{type}, #{level}, #{title}, #{content}, #{tenantId}, #{projectId}, #{nodeId},
             #{sourceType}, #{sourceId}, #{requireAck}, #{broadcast}, #{createTime}, #{expireTime})
     </insert>
 

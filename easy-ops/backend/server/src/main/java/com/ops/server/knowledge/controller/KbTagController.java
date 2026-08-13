@@ -3,6 +3,7 @@ package com.ops.server.knowledge.controller;
 import com.ops.common.model.KbTagModel;
 import com.ops.common.response.Result;
 import com.ops.server.knowledge.service.KbTagService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -22,6 +23,9 @@ public class KbTagController {
 
     @Autowired
     private SecurityContext securityContext;
+
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
 
     /** 标签列表 */
     @GetMapping
@@ -65,6 +69,7 @@ public class KbTagController {
         if (tagId == null) {
             return Result.paramError("tagId 不能为空");
         }
+        tenantResourceAccessService.requireDocument(documentId);
         tagService.addTagToDocument(documentId, tagId);
         return Result.success();
     }
@@ -72,6 +77,7 @@ public class KbTagController {
     /** 文档移除标签 */
     @DeleteMapping("/documents/{documentId}/{tagId}")
     public Result<?> removeDocumentTag(@PathVariable Long documentId, @PathVariable Long tagId) {
+        tenantResourceAccessService.requireDocument(documentId);
         tagService.removeTagFromDocument(documentId, tagId);
         return Result.success();
     }
@@ -79,6 +85,7 @@ public class KbTagController {
     /** 获取文档标签 */
     @GetMapping("/documents/{documentId}")
     public Result<?> getDocumentTags(@PathVariable Long documentId) {
+        tenantResourceAccessService.requireDocument(documentId);
         List<KbTagModel> tags = tagService.getDocumentTags(documentId);
         return Result.success(tags);
     }

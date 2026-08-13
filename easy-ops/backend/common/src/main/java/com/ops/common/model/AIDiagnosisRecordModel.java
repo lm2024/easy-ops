@@ -12,6 +12,7 @@ public class AIDiagnosisRecordModel implements Serializable {
 
     private Long id;
     private Long projectId;
+    private Long tenantId;
     private Long nodeId;
     private String triggerType;
     private String question;

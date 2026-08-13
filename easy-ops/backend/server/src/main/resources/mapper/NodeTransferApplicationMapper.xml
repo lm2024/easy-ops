@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.NodeTransferApplicationMapper">
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO node_transfer_application (node_id, node_name, applicant_id, applicant_username,
+            target_tenant_id, target_tenant_name, source_tenant_id, status, remark, create_time, update_time)
+        VALUES (#{nodeId}, #{nodeName}, #{applicantId}, #{applicantUsername},
+            #{targetTenantId}, #{targetTenantName}, #{sourceTenantId}, #{status}, #{remark}, #{createTime}, #{updateTime})
+    </insert>
+
+    <select id="findById" resultType="com.ops.common.model.NodeTransferApplicationModel">
+        SELECT * FROM node_transfer_application WHERE id = #{id}
+    </select>
+
+    <select id="findByNodeIdAndStatus" resultType="com.ops.common.model.NodeTransferApplicationModel">
+        SELECT * FROM node_transfer_application WHERE node_id = #{nodeId} AND status = #{status} LIMIT 1
+    </select>
+
+    <select id="listAll" resultType="com.ops.common.model.NodeTransferApplicationModel">
+        SELECT * FROM node_transfer_application
+        <where>
+            <if test="status != null and status != ''">status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+
+    <select id="listByTenant" resultType="com.ops.common.model.NodeTransferApplicationModel">
+        SELECT * FROM node_transfer_application
+        WHERE target_tenant_id = #{tenantId}
+        <if test="status != null and status != ''">AND status = #{status}</if>
+        ORDER BY create_time DESC
+    </select>
+
+    <update id="updateStatus">
+        UPDATE node_transfer_application SET status = #{status},
+            approve_time = #{approveTime}, approver_id = #{approverId},
+            approver_username = #{approverUsername}, update_time = #{updateTime}
+        WHERE id = #{id}
+    </update>
+
+    <select id="countPending" resultType="long">
+        SELECT COUNT(*) FROM node_transfer_application WHERE status = 'PENDING'
+    </select>
+</mapper>
