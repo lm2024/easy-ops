@@ -13,6 +13,8 @@ public class NginxAccessSourceModel implements Serializable {
 
     private Long id;
     private Long nodeId;
+    /** 所属租户（经 node 推导物化） */
+    private Long tenantId;
     private String name;
     private String logPath;
     /** 日志格式：main / combined */

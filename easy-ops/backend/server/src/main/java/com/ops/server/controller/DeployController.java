@@ -12,6 +12,7 @@ import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.websocket.DeployHandler;
 import com.ops.server.service.AuditLogService;
 import com.ops.server.service.TenantResourceAccessService;
+import com.ops.server.util.SecurityContext;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,6 +57,9 @@ public class DeployController {
 
     @Autowired
     private TenantResourceAccessService resourceAccess;
+
+    @Autowired
+    private SecurityContext securityContext;
 
     @Value("${server.path:./data}")
     private String serverPath;
@@ -136,6 +140,7 @@ public class DeployController {
             for (Long nid : targetNodeIds) {
                 DeployModel scheduledDeploy = new DeployModel();
                 scheduledDeploy.setProjectId(projectId);
+                scheduledDeploy.setTenantId(project.getTenantId());
                 scheduledDeploy.setVersionId(versionId);
                 scheduledDeploy.setNodeId(nid);
                 scheduledDeploy.setStatus(DeployStatus.SCHEDULED.getCode());
@@ -269,6 +274,7 @@ public class DeployController {
             // 创建部署记录
             DeployModel deploy = new DeployModel();
             deploy.setProjectId(projectId);
+            deploy.setTenantId(project.getTenantId());
             deploy.setVersionId(versionId);
             deploy.setNodeId(nid);
             deploy.setStatus(DeployStatus.PROCESSING.getCode());
@@ -602,8 +608,19 @@ public class DeployController {
             @RequestParam(required = false, defaultValue = "1") Integer page,
             @RequestParam(required = false, defaultValue = "20") Integer pageSize) {
         log.info("[Deploy] 查询历史: projectId={}, page={}, pageSize={}", projectId, page, pageSize);
-        List<DeployModel> records = deployRecordMapper.findByProjectId(projectId, page, pageSize);
-        Long total = deployRecordMapper.countByProjectId(projectId);
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (projectId != null && tenantId != null && tenantId.longValue() > 0L) {
+            resourceAccess.requireProject(projectId);
+        }
+        List<DeployModel> records;
+        Long total;
+        if (tenantId != null && tenantId.longValue() > 0L) {
+            records = deployRecordMapper.findByProjectIdInTenant(projectId, tenantId, page, pageSize);
+            total = deployRecordMapper.countByProjectIdInTenant(projectId, tenantId);
+        } else {
+            records = deployRecordMapper.findByProjectId(projectId, page, pageSize);
+            total = deployRecordMapper.countByProjectId(projectId);
+        }
         log.info("[Deploy] 查询结果: total={}, records={}", total, records != null ? records.size() : 0);
         Map<String, Object> data = new HashMap<>();
         data.put("list", records);
@@ -618,6 +635,9 @@ public class DeployController {
      */
     @PostMapping("/unlock/{projectId}")
     public Result<?> forceUnlock(@PathVariable Long projectId) {
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(projectId);
+        }
         ReentrantLock oldLock = deployLocks.remove(projectId);
         deployLockTimestamps.remove(projectId);
         if (oldLock != null && oldLock.isLocked()) {
@@ -631,6 +651,9 @@ public class DeployController {
     public Result<?> getDetail(@PathVariable Long id) {
         DeployModel record = deployRecordMapper.findById(id);
         if (record == null) return Result.error(500, "部署记录不存在");
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(record.getProjectId());
+        }
         return Result.success(record);
     }
 
@@ -638,6 +661,9 @@ public class DeployController {
     public Result<?> rollback(@PathVariable Long id) {
         DeployModel record = deployRecordMapper.findById(id);
         if (record == null) return Result.error(500, "部署记录不存在");
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(record.getProjectId());
+        }
         auditLog.log("DEPLOY", "ROLLBACK", "回滚部署: 记录ID=" + id + ", 项目ID=" + record.getProjectId());
         return doRollback(id, record);
     }
@@ -664,6 +690,7 @@ public class DeployController {
 
         DeployModel rollbackRecord = new DeployModel();
         rollbackRecord.setProjectId(record.getProjectId());
+        rollbackRecord.setTenantId(project.getTenantId());
         rollbackRecord.setVersionId(previousVersion.getId());
         rollbackRecord.setNodeId(record.getNodeId());
         rollbackRecord.setStatus(DeployStatus.PROCESSING.getCode());
@@ -825,6 +852,9 @@ public class DeployController {
     public Result<?> cancel(@PathVariable Long id) {
         DeployModel record = deployRecordMapper.findById(id);
         if (record == null) return Result.error(500, "部署记录不存在");
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(record.getProjectId());
+        }
         if (record.getStatus() != 5) return Result.paramError("只有待部署状态的记录才能取消");
         deployRecordMapper.updateStatus(id, 3, "⛔ 已手动取消定时部署", System.currentTimeMillis());
         auditLog.log("DEPLOY", "CANCEL", "取消定时部署: 记录ID=" + id);

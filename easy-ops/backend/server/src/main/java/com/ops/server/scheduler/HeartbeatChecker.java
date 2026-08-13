@@ -77,6 +77,7 @@ public class HeartbeatChecker {
             String content = "节点[" + (nodeName != null ? nodeName : "?" ) + "] " + (nodeIp != null ? nodeIp : "?") + " 心跳超时，状态变更为离线";
             AlarmModel alarm = new AlarmModel();
             alarm.setNodeId(nodeId);
+            alarm.setTenantId(node.getTenantId()); // 从节点推导租户
             alarm.setType("OFFLINE");
             alarm.setContent(content);
             alarm.setSendResult(0); // PENDING

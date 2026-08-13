@@ -34,5 +34,7 @@ public abstract class BaseControllerTest {
         when(securityContext.hasProjectPermission(any())).thenReturn(true);
         when(securityContext.hasProjectPermission((Long) any())).thenReturn(true);
         when(securityContext.getAccessibleProjectIds()).thenReturn(Collections.emptyList());
+        // Mockito 默认对 Long 返回 0L（非 null），会导致租户守卫误判。显式置 null = 平台视图（super_admin）
+        when(securityContext.getCurrentTenantId()).thenReturn(null);
     }
 }

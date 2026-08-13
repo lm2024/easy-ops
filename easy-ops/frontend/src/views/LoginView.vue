@@ -6,6 +6,24 @@
       <div class="login-bg__grid" />
     </div>
 
+    <!-- 主题切换（固定右上角，独立于布局） -->
+    <button class="login-theme-btn" @click="toggleTheme" :title="themeMode === 'dark' ? '切换白天模式' : '切换夜间模式'">
+      <svg v-if="themeMode === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="5" />
+        <line x1="12" y1="1" x2="12" y2="3" />
+        <line x1="12" y1="21" x2="12" y2="23" />
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
+        <line x1="1" y1="12" x2="3" y2="12" />
+        <line x1="21" y1="12" x2="23" y2="12" />
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+      </svg>
+      <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+      </svg>
+    </button>
+
     <!-- 主容器 -->
     <div class="login-container">
       <!-- 左侧品牌 -->
@@ -59,24 +77,6 @@
             </div>
           </div>
         </div>
-
-        <!-- 主题切换 -->
-        <button class="login-theme-btn" @click="toggleTheme" :title="themeMode === 'dark' ? '切换白天模式' : '切换夜间模式'">
-          <svg v-if="themeMode === 'dark'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="5" />
-            <line x1="12" y1="1" x2="12" y2="3" />
-            <line x1="12" y1="21" x2="12" y2="23" />
-            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-            <line x1="1" y1="12" x2="3" y2="12" />
-            <line x1="21" y1="12" x2="23" y2="12" />
-            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-          </svg>
-        </button>
       </div>
 
       <!-- 右侧登录表单 -->
@@ -249,11 +249,16 @@ async function handleLogin() {
     loading.value = true
     const res = await login(formState.username, formState.password, captchaId.value, formState.captchaCode)
     authStore.setToken(res.data.token)
-    authStore.setUser({
-      id: 0,
-      username: res.data.username,
-      role: res.data.role?.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
-      status: 1
+    authStore.setAuth({
+      user: {
+        id: res.data.id ?? 0,
+        username: res.data.username,
+        role: res.data.role?.toUpperCase() === 'ADMIN' ? 'ADMIN' : 'OPERATOR',
+        status: 1
+      },
+      tenantId: res.data.tenantId,
+      tenantRole: res.data.tenantRole,
+      tenantName: res.data.tenantName
     })
     await router.push('/')
   } catch (err: unknown) {
@@ -461,8 +466,8 @@ onUnmounted(() => {
 /* 主题切换按钮 */
 .login-theme-btn {
   position: absolute;
-  bottom: 2rem;
-  left: 3rem;
+  top: 2rem;
+  right: 2rem;
   width: 44px;
   height: 44px;
   display: flex;
@@ -536,6 +541,17 @@ onUnmounted(() => {
   margin-bottom: 1.25rem;
 }
 
+/* 统一验证反馈区高度，避免有/无错误时表单项高度不一致导致错位 */
+.login-form :deep(.ant-form-item-explain) {
+  min-height: 0;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.login-form :deep(.ant-form-item-with-help) {
+  margin-bottom: 1.25rem;
+}
+
 .login-form :deep(.ant-input),
 .login-form :deep(.ant-input-affix-wrapper) {
   height: 48px;
@@ -571,12 +587,17 @@ onUnmounted(() => {
 .login-captcha {
   display: flex;
   gap: 12px;
-  align-items: stretch;
+  align-items: center;
 }
 
 .login-captcha__input {
   flex: 1;
   min-width: 0;
+}
+
+.login-captcha__input :deep(.ant-input-affix-wrapper),
+.login-captcha__input :deep(.ant-input) {
+  height: 48px;
 }
 
 .login-captcha__input :deep(.ant-input-affix-wrapper) {
@@ -743,10 +764,9 @@ onUnmounted(() => {
   }
 
   .login-theme-btn {
-    position: relative;
-    bottom: auto;
-    left: auto;
-    margin: 2rem auto 0;
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
   }
 
   .login-form-wrapper {

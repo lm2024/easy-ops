@@ -11,6 +11,7 @@ import com.ops.server.mapper.NodeConfigSnapshotMapper;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectConfigFileMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +63,9 @@ public class ConfigMgmtService {
     @Autowired
     private ConfigDistributeService distributeService;
 
+    @Autowired
+    private SecurityContext securityContext;
+
     public List<ProjectConfigFileModel> listFiles(Long projectId) {
         return configFileMapper.findByProjectId(projectId);
     }
@@ -84,7 +88,7 @@ public class ConfigMgmtService {
     }
 
     public void deleteFile(Long id) {
-        configFileMapper.deleteById(id);
+        configFileMapper.deleteById(id, securityContext.getCurrentTenantId());
     }
 
     public ProjectConfigFileModel getFile(Long id) {
@@ -234,7 +238,7 @@ public class ConfigMgmtService {
                 continue;
             }
             int syncStatus = allSame ? 1 : 2;
-            upsertSnapshot(projectId, nodeId, configFileId, hash, 0, syncStatus, now);
+            upsertSnapshot(projectId, nodeId, configFileId, hash, 0, syncStatus, now, project.getTenantId());
         }
 
         Map<String, Object> data = new HashMap<>();
@@ -334,6 +338,7 @@ public class ConfigMgmtService {
                                 if (!discovered.containsKey(fileKey)) {
                                     ProjectConfigFileModel model = new ProjectConfigFileModel();
                                     model.setProjectId(projectId);
+                                    model.setTenantId(project.getTenantId());
                                     model.setFileName(f.get("fileName") != null ? f.get("fileName").toString() : "");
                                     model.setRelativePath(relativePath);
                                     model.setIsPrimary(0);
@@ -506,11 +511,12 @@ public class ConfigMgmtService {
     }
 
     private void upsertSnapshot(Long projectId, Long nodeId, Long configFileId,
-                                String hash, int contentSize, int syncStatus, long now) {
+                                String hash, int contentSize, int syncStatus, long now, Long tenantId) {
         NodeConfigSnapshotModel existing = snapshotMapper.findByNodeAndFile(nodeId, configFileId);
         if (existing == null) {
             NodeConfigSnapshotModel snap = new NodeConfigSnapshotModel();
             snap.setProjectId(projectId);
+            snap.setTenantId(tenantId);
             snap.setNodeId(nodeId);
             snap.setConfigFileId(configFileId);
             snap.setContentHash(hash);

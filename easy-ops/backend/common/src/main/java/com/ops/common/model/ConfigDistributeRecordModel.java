@@ -23,4 +23,5 @@ public class ConfigDistributeRecordModel implements Serializable {
     private Integer status;
     private String resultDetail;
     private Long createTime;
+    private Long tenantId;
 }

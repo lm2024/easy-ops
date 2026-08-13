@@ -14,9 +14,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 监控数据 WebSocket 处理器。
- * 
- * 所有连接的客户端都收到广播消息（消息内携带 nodeId，前端自行过滤）。
- * 内部运维场景，不做租户隔离。
+ * 按租户隔离：非平台管理员只接收本租户节点的实时指标。
+ * 平台管理员（sys_user.role=admin）接收所有租户数据。
  */
 @Component
 public class MonitorHandler extends TextWebSocketHandler {
@@ -63,12 +62,24 @@ public class MonitorHandler extends TextWebSocketHandler {
                 return true;
             }
             Object sessionTenant = session.getAttributes().get("tenantId");
-            if (tenantId != null && sessionTenant != null
-                    && !tenantId.toString().equals(String.valueOf(sessionTenant))) {
-                return false;
-            }
-            if (tenantId != null && sessionTenant == null) {
-                return false;
+            Object role = session.getAttributes().get("role");
+            // 平台管理员（sys_user.role=admin）接收所有租户的实时指标（平台视图）
+            boolean platform = role != null && ("admin".equalsIgnoreCase(String.valueOf(role))
+                    || "super_admin".equalsIgnoreCase(String.valueOf(role)));
+            if (tenantId != null) {
+                // 按节点/资源租户过滤；平台管理员放行
+                if (platform) {
+                    try {
+                        session.sendMessage(new org.springframework.web.socket.TextMessage(message));
+                    } catch (IOException e) {
+                        log.warn("Monitor broadcast failed for session {}, removing", session.getId());
+                        return true;
+                    }
+                    return false;
+                }
+                if (sessionTenant == null || !tenantId.toString().equals(String.valueOf(sessionTenant))) {
+                    return false;
+                }
             }
             try {
                 session.sendMessage(new org.springframework.web.socket.TextMessage(message));

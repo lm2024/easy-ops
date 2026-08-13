@@ -119,6 +119,7 @@ class NodeControllerTest extends BaseControllerTest {
     void updateNode() throws Exception {
         when(nodeMapper.findById(1L)).thenReturn(mockNode());
         when(nodeMapper.update(any(NodeModel.class))).thenReturn(1);
+        when(securityContext.isSuperAdmin()).thenReturn(true); // 平台管理员可改任意节点
 
         NodeModel node = new NodeModel();
         node.setName("updated");
@@ -132,8 +133,10 @@ class NodeControllerTest extends BaseControllerTest {
 
     @Test
     void deleteNode_success() throws Exception {
+        when(nodeMapper.findById(1L)).thenReturn(mockNode());
         when(nodeMapper.countByNodeId(1L)).thenReturn(0);
         when(nodeMapper.deleteById(1L)).thenReturn(1);
+        when(securityContext.isSuperAdmin()).thenReturn(true); // 平台管理员可删任意节点
 
         mockMvc.perform(delete("/nodes/1"))
                 .andExpect(status().isOk())
@@ -141,8 +144,19 @@ class NodeControllerTest extends BaseControllerTest {
     }
 
     @Test
+    void deleteNode_tenantForbidden() throws Exception {
+        when(securityContext.isSuperAdmin()).thenReturn(false); // 租户无权删除节点，接口直接拒绝
+
+        mockMvc.perform(delete("/nodes/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(403));
+    }
+
+    @Test
     void deleteNode_hasProjects() throws Exception {
+        when(nodeMapper.findById(1L)).thenReturn(mockNode());
         when(nodeMapper.countByNodeId(1L)).thenReturn(2);
+        when(securityContext.isSuperAdmin()).thenReturn(true); // 平台管理员可删任意节点
 
         mockMvc.perform(delete("/nodes/1"))
                 .andExpect(status().isOk())

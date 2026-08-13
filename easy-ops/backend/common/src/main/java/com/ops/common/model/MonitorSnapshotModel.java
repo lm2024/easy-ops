@@ -13,6 +13,7 @@ public class MonitorSnapshotModel implements Serializable {
 
     private Long id;
     private Long projectId;
+    private Long tenantId;
     private Long nodeId;
     private String healthStatus;
     private String healthDetail;

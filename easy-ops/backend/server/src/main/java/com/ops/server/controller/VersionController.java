@@ -80,7 +80,14 @@ public class VersionController {
     @GetMapping("/{id}")
     public Result<?> getVersion(@PathVariable Long id) {
         VersionModel version = versionPackageMapper.findById(id);
-        return version != null ? Result.success(version) : Result.error(1004, "版本不存在");
+        if (version == null) {
+            return Result.error(1004, "版本不存在");
+        }
+        if (securityContext.getCurrentTenantId() != null
+                && !resourceAccess.canAccessProject(projectMapper.findById(version.getProjectId()))) {
+            return Result.error(403, "无权访问该版本");
+        }
+        return Result.success(version);
     }
 
     /**
@@ -105,7 +112,9 @@ public class VersionController {
         if (project == null) {
             return Result.error(1005, "项目不存在");
         }
-        if (!resourceAccess.canAccessProject(project)) return Result.error(403, "无权访问该项目");
+        if (securityContext.getCurrentTenantId() != null) {
+            resourceAccess.requireProject(projectId);
+        }
 
         boolean isFrontend = "frontend".equalsIgnoreCase(packageType)
                 || originalFilename.toLowerCase().endsWith(".zip");
@@ -151,6 +160,7 @@ public class VersionController {
         // Create version record
         VersionModel version = new VersionModel();
         version.setProjectId(projectId);
+        version.setTenantId(project.getTenantId());
         version.setJarName(originalFilename);
         version.setFilePath(filePath);
         version.setFileSize((long) fileBytes.length);
@@ -184,7 +194,8 @@ public class VersionController {
         try {
             VersionModel version = versionPackageMapper.findById(id);
             if (version == null) return Result.error(1004, "版本不存在");
-            if (!resourceAccess.canAccessProject(projectMapper.findById(version.getProjectId()))) {
+            if (securityContext.getCurrentTenantId() != null
+                    && !resourceAccess.canAccessProject(projectMapper.findById(version.getProjectId()))) {
                 return Result.error(403, "无权删除该版本");
             }
             versionCleanupService.deleteVersion(id);

@@ -12,6 +12,9 @@ public interface DeployRecordMapper {
     List<DeployModel> findByProjectId(@Param("projectId") Long projectId, @Param("page") Integer page,
                                       @Param("pageSize") Integer pageSize);
     Long countByProjectId(@Param("projectId") Long projectId);
+    List<DeployModel> findByProjectIdInTenant(@Param("projectId") Long projectId, @Param("tenantId") Long tenantId,
+                                              @Param("page") Integer page, @Param("pageSize") Integer pageSize);
+    Long countByProjectIdInTenant(@Param("projectId") Long projectId, @Param("tenantId") Long tenantId);
     int insert(DeployModel deploy);
     void updateStatus(@Param("id") Long id, @Param("status") int status, @Param("log") String log,
                       @Param("endTime") Long endTime);

@@ -137,7 +137,7 @@ class DeployControllerTest extends BaseControllerTest {
         DeployModel original = new DeployModel();
         original.setId(1L);
         original.setProjectId(1L);
-        original.setVersionId(1L);
+        original.setVersionId(2L);
         original.setNodeId(1L);
         when(deployRecordMapper.findById(1L)).thenReturn(original);
 
@@ -145,6 +145,8 @@ class DeployControllerTest extends BaseControllerTest {
         version.setId(1L);
         version.setJarName("app.jar");
         when(versionPackageMapper.findById(1L)).thenReturn(version);
+        // 回滚需要找到「上一个版本」（id 小于当前版本）
+        when(versionPackageMapper.findByProjectId(1L, 1, 100)).thenReturn(Arrays.asList(version));
 
         ProjectModel project = new ProjectModel();
         project.setId(1L);

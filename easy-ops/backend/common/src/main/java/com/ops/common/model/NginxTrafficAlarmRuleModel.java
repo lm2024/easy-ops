@@ -13,6 +13,8 @@ public class NginxTrafficAlarmRuleModel implements Serializable {
 
     private Long id;
     private Long sourceId;
+    /** 所属租户（来源=所属日志源的租户） */
+    private Long tenantId;
     /** IP_FREQ / URI_FREQ / STATUS_4XX / STATUS_5XX / SLOW */
     private String ruleType;
     /** 1=启用 0=停用 */

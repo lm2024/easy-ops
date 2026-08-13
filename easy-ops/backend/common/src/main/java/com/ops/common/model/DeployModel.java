@@ -12,6 +12,7 @@ public class DeployModel implements Serializable {
 
     private Long id;
     private Long projectId;
+    private Long tenantId;
     private Long versionId;
     private Long nodeId;
     private Integer status;

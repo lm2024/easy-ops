@@ -10,6 +10,7 @@ import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectLogProfileMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -53,6 +54,9 @@ public class LogMgmtService {
     @Autowired
     private GlobalPathProperties globalPathProperties;
 
+    @Autowired
+    private SecurityContext securityContext;
+
     public ProjectLogProfileModel getProfile(Long projectId) {
         ProjectLogProfileModel profile = logProfileMapper.findByProjectId(projectId);
         ProjectModel project = projectMapper.findById(projectId);
@@ -70,6 +74,9 @@ public class LogMgmtService {
         long now = System.currentTimeMillis();
         ProjectLogProfileModel existing = logProfileMapper.findByProjectId(profile.getProjectId());
         if (existing == null) {
+            if (profile.getTenantId() == null) {
+                profile.setTenantId(securityContext.getCurrentTenantId());
+            }
             profile.setCreateTime(now);
             profile.setUpdateTime(now);
             if (profile.getMaxLineLength() == null) {
@@ -282,6 +289,7 @@ public class LogMgmtService {
         long now = System.currentTimeMillis();
         ProjectLogProfileModel profile = new ProjectLogProfileModel();
         profile.setProjectId(projectId);
+        profile.setTenantId(project != null ? project.getTenantId() : securityContext.getCurrentTenantId());
         profile.setLogDir(defaultLogDir);
         profile.setMainLogFile("");
         profile.setRollingPattern(DEFAULT_ROLLING_PATTERN);

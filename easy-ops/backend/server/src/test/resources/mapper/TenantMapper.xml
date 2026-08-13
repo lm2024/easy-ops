@@ -14,17 +14,65 @@
         INSERT INTO tenant (code, name, status, create_time, update_time)
         VALUES (#{code}, #{name}, #{status}, #{createTime}, #{updateTime})
     </insert>
+    <update id="update">
+        UPDATE tenant SET name = #{name}, status = #{status}, update_time = #{updateTime} WHERE id = #{id}
+    </update>
+    <delete id="deleteById">
+        DELETE FROM tenant WHERE id = #{id}
+    </delete>
+    <select id="findAll" resultType="com.ops.common.model.TenantModel">
+        SELECT * FROM tenant
+        <where>
+            <if test="status != null">status = #{status}</if>
+        </where>
+        ORDER BY create_time DESC
+    </select>
+    <select id="countAll" resultType="long">
+        SELECT COUNT(*) FROM tenant
+    </select>
     <insert id="insertMember" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO tenant_user (tenant_id, user_id, role, status, create_time, update_time)
         VALUES (#{tenantId}, #{userId}, #{role}, #{status}, #{createTime}, #{updateTime})
     </insert>
     <select id="findMember" resultType="com.ops.common.model.TenantUserModel">
-        SELECT * FROM tenant_user WHERE tenant_id = #{tenantId} AND user_id = #{userId} AND status = 1 LIMIT 1
+        SELECT * FROM tenant_user
+        WHERE tenant_id = #{tenantId} AND user_id = #{userId} AND status = 1 LIMIT 1
     </select>
     <select id="findFirstActiveMember" resultType="com.ops.common.model.TenantUserModel">
-        SELECT * FROM tenant_user WHERE user_id = #{userId} AND status = 1 ORDER BY id ASC LIMIT 1
+        SELECT * FROM tenant_user WHERE user_id = #{userId} AND status = 1
+        ORDER BY id ASC LIMIT 1
     </select>
     <select id="findTenantIdsByUserId" resultType="long">
         SELECT tenant_id FROM tenant_user WHERE user_id = #{userId} AND status = 1 ORDER BY id ASC
+    </select>
+    <select id="listMembers" resultType="com.ops.common.model.TenantUserModel">
+        SELECT tu.id AS id, tu.tenant_id AS tenantId, tu.user_id AS userId, tu.role, tu.status,
+               tu.create_time AS createTime, tu.update_time AS updateTime,
+               u.username
+        FROM tenant_user tu JOIN sys_user u ON u.id = tu.user_id
+        WHERE tu.tenant_id = #{tenantId}
+        ORDER BY tu.id ASC
+    </select>
+    <update id="updateMember">
+        UPDATE tenant_user SET role = #{role}, status = #{status}, update_time = #{updateTime}
+        WHERE tenant_id = #{tenantId} AND user_id = #{userId}
+    </update>
+    <delete id="deleteMember">
+        DELETE FROM tenant_user WHERE tenant_id = #{tenantId} AND user_id = #{userId}
+    </delete>
+    <delete id="deleteMembersByTenant">
+        DELETE FROM tenant_user WHERE tenant_id = #{tenantId}
+    </delete>
+    <delete id="deleteMembersByUser">
+        DELETE FROM tenant_user WHERE user_id = #{userId}
+    </delete>
+    <select id="countMembers" resultType="int">
+        SELECT COUNT(*) FROM tenant_user WHERE tenant_id = #{tenantId} AND status = 1
+    </select>
+    <select id="countNodes" resultType="long">
+        SELECT COUNT(*) FROM node_info WHERE tenant_id = #{tenantId}
+    </select>
+    <select id="countProjects" resultType="long">
+        SELECT COUNT(*) FROM project_info WHERE tenant_id = #{tenantId}
     </select>
 </mapper>

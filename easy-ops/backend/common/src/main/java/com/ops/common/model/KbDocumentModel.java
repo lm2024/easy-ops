@@ -12,6 +12,8 @@ public class KbDocumentModel implements Serializable {
 
     private Long id;
     private Long categoryId;
+    /** 所属租户（隔离主键） */
+    private Long tenantId;
     private String title;
     private String summary;
     private String content;

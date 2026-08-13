@@ -9,6 +9,7 @@ import com.ops.server.interceptor.AuthInterceptor;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.OperationLogMapper;
 import com.ops.server.mapper.MonitorSnapshotMapper;
+import com.ops.server.mapper.TenantMapper;
 import com.ops.server.config.GlobalPathProperties;
 import com.ops.server.service.AlarmService;
 import com.ops.server.service.AgentUpgradeService;
@@ -72,6 +73,12 @@ public class NodeController {
     @Autowired
     private GlobalPathProperties globalPathProperties;
 
+    @Autowired
+    private TenantMapper tenantMapper;
+
+    @Autowired
+    private com.ops.server.mapper.NodeTransferApplicationMapper nodeTransferApplicationMapper;
+
     /**
      * GET /api/nodes - 节点列表 (支持分页和状态筛选)
      */
@@ -85,15 +92,83 @@ public class NodeController {
             @RequestParam(required = false) String sortOrder) {
         Long tenantId = securityContext.getCurrentTenantId();
         List<Long> projectIds = securityContext.getAccessibleProjectIdsForQuery();
-        List<NodeModel> nodes = tenantId == null
-                ? nodeService.findByStatus(status, page, pageSize, keyword, sortField, sortOrder)
-                : nodeService.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder, tenantId, projectIds);
-        Long total = tenantId == null ? nodeService.countByStatus(status, keyword)
-                : nodeService.countByStatusInTenant(status, keyword, tenantId, projectIds);
+        List<NodeModel> nodes;
+        Long total;
+        if (tenantId == null) {
+            nodes = nodeService.findByStatus(status, page, pageSize, keyword, sortField, sortOrder);
+            total = nodeService.countByStatus(status, keyword);
+            // admin 平台视图：池节点标记可认领（便于识别）
+            Long defId = resolveDefaultTenantId();
+            for (NodeModel n : nodes) {
+                n.setClaimable(n.getTenantId() != null && defId != null
+                        && n.getTenantId().longValue() == defId.longValue());
+            }
+        } else {
+            // 本租户节点 + default 池节点（可认领）
+            Long defaultTenantId = resolveDefaultTenantId();
+            nodes = nodeService.findByStatusInTenant(status, page, pageSize, keyword, sortField, sortOrder,
+                    tenantId, defaultTenantId, projectIds);
+            total = nodeService.countByStatusInTenant(status, keyword, tenantId, defaultTenantId, projectIds);
+            for (NodeModel n : nodes) {
+                n.setClaimable(n.getTenantId() != null && defaultTenantId != null
+                        && n.getTenantId().longValue() == defaultTenantId.longValue()
+                        && n.getTenantId().longValue() != tenantId.longValue());
+            }
+        }
+        fillTenantNames(nodes);
         Map<String, Object> data = new HashMap<>();
         data.put("list", nodes);
         data.put("total", total);
         return Result.success(data);
+    }
+
+    /** 批量填充节点所属租户名称（避免 N+1 查询） */
+    private void fillTenantNames(List<NodeModel> nodes) {
+        if (nodes == null || nodes.isEmpty()) return;
+        java.util.Set<Long> ids = new java.util.HashSet<>();
+        for (NodeModel n : nodes) {
+            if (n.getTenantId() != null) ids.add(n.getTenantId());
+        }
+        if (ids.isEmpty()) return;
+        try {
+            List<com.ops.common.model.TenantModel> tenants = tenantMapper.findByIds(new java.util.ArrayList<>(ids));
+            Map<Long, String> nameMap = new HashMap<>();
+            for (com.ops.common.model.TenantModel t : tenants) {
+                if (t.getId() != null) nameMap.put(t.getId(), t.getName());
+            }
+            for (NodeModel n : nodes) {
+                if (n.getTenantId() != null) {
+                    n.setTenantName(nameMap.get(n.getTenantId()));
+                }
+            }
+        } catch (Exception e) {
+            log.warn("填充节点租户名称失败", e);
+        }
+    }
+
+    /** 解析默认（池）租户 id，兜底返回 null */
+    private Long resolveDefaultTenantId() {
+        try {
+            com.ops.common.model.TenantModel def = tenantMapper.findDefault();
+            return def == null ? null : def.getId();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * 节点归属校验：非平台管理员只能操作自己租户的节点（池节点/他人节点不可改删）。
+     * 返回 null 表示通过；否则返回错误 Result。
+     */
+    private Result<?> requireNodeOwner(NodeModel node) {
+        if (node == null) return Result.error(1002, "节点不存在");
+        if (securityContext.isSuperAdmin()) return null;
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null || node.getTenantId() == null
+                || node.getTenantId().longValue() != tenantId.longValue()) {
+            return Result.error(403, "无权操作该节点（仅归属租户或平台管理员可操作）");
+        }
+        return null;
     }
 
     /**
@@ -106,7 +181,8 @@ public class NodeController {
             List<Long> projectIds = securityContext.getAccessibleProjectIdsForQuery();
             List<NodeModel> nodes = tenantId == null
                     ? nodeService.findByStatus(null, 1, Integer.MAX_VALUE, null, null, null)
-                    : nodeService.findByStatusInTenant(null, 1, Integer.MAX_VALUE, null, null, null, tenantId, projectIds);
+                    : nodeService.findByStatusInTenant(null, 1, Integer.MAX_VALUE, null, null, null,
+                            tenantId, resolveDefaultTenantId(), projectIds);
             response.setContentType("text/csv;charset=UTF-8");
             response.setHeader("Content-Disposition", "attachment;filename=nodes.csv");
             response.getWriter().write("名称,IP,端口,Token,状态,系统信息,创建时间\n");
@@ -129,6 +205,12 @@ public class NodeController {
      */
     @PostMapping("/import")
     public Result<?> importNodes(@RequestParam("file") MultipartFile file) {
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null) {
+            com.ops.common.model.TenantModel defaultTenant = tenantMapper.findDefault();
+            if (defaultTenant != null) tenantId = defaultTenant.getId();
+        }
+        final Long resolvedTenantId = tenantId;
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(file.getInputStream(), "UTF-8"))) {
             String line;
             int count = 0;
@@ -143,6 +225,7 @@ public class NodeController {
                 node.setPort(fields.length > 2 && !fields[2].trim().isEmpty() ? Integer.parseInt(fields[2].trim()) : 2123);
                 node.setToken(fields.length > 3 ? fields[3].trim() : "");
                 node.setStatus(NodeStatus.ONLINE.getCode());
+                node.setTenantId(resolvedTenantId);
                 node.setCreateTime(System.currentTimeMillis());
                 node.setUpdateTime(System.currentTimeMillis());
 
@@ -249,9 +332,13 @@ public class NodeController {
      */
     @PostMapping
     public Result<?> addNode(@RequestBody NodeModel node, HttpServletRequest httpRequest) {
-        if (securityContext.getCurrentTenantId() != null) {
-            node.setTenantId(securityContext.getCurrentTenantId());
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null) {
+            // 平台视图（super_admin 未切换）下创建 → 归默认租户，避免 NULL 无法被租户列表查到
+            com.ops.common.model.TenantModel defaultTenant = tenantMapper.findDefault();
+            if (defaultTenant != null) tenantId = defaultTenant.getId();
         }
+        node.setTenantId(tenantId);
         if (nodeService.findByName(node.getName()) != null) {
             return Result.paramError("节点名称已存在");
         }
@@ -274,6 +361,8 @@ public class NodeController {
         if (existing == null) {
             return Result.error(1002, "节点不存在");
         }
+        Result<?> guard = requireNodeOwner(existing);
+        if (guard != null) return guard;
         node.setId(id);
         if (securityContext.getCurrentTenantId() != null) {
             node.setTenantId(existing.getTenantId());
@@ -289,6 +378,15 @@ public class NodeController {
      */
     @DeleteMapping("/{id}")
     public Result<?> deleteNode(@PathVariable Long id) {
+        if (!securityContext.isSuperAdmin()) {
+            return Result.error(403, "仅平台管理员可删除节点");
+        }
+        NodeModel existing = nodeService.findById(id);
+        if (existing == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        Result<?> guard = requireNodeOwner(existing);
+        if (guard != null) return guard;
         if (nodeService.countByNodeId(id) > 0) {
             return Result.error(1003, "该节点下有项目绑定，无法删除");
         }
@@ -301,9 +399,205 @@ public class NodeController {
      */
     @PutMapping("/{id}/tags")
     public Result<?> updateTags(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        NodeModel existing = nodeService.findById(id);
+        Result<?> guard = requireNodeOwner(existing);
+        if (guard != null) return guard;
         String tags = body.get("tags");
         if (tags == null) tags = "";
         nodeService.updateTags(id, tags);
+        return Result.success();
+    }
+
+    // ==================== 节点认领 / 转移工作流 ====================
+
+    /**
+     * POST /api/nodes/{id}/claim - 租户用户申请认领池节点（default 租户归属）
+     */
+    @PostMapping("/{id}/claim")
+    public Result<?> claimNode(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> body,
+                               HttpServletRequest httpRequest) {
+        Long currentTenantId = securityContext.getCurrentTenantId();
+        if (securityContext.isSuperAdmin() || currentTenantId == null || currentTenantId <= 0) {
+            return Result.error(403, "仅租户用户可申请认领节点");
+        }
+        NodeModel node = nodeService.findById(id);
+        if (node == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        Long defaultTenantId = resolveDefaultTenantId();
+        if (defaultTenantId == null || node.getTenantId() == null
+                || node.getTenantId().longValue() != defaultTenantId.longValue()) {
+            return Result.error(403, "该节点不是可认领的池节点");
+        }
+        // 防重复申请：同一节点只允许一个待审批申请
+        if (nodeTransferApplicationMapper.findByNodeIdAndStatus(id, "PENDING") != null) {
+            return Result.paramError("该节点已有待审批的认领申请");
+        }
+        com.ops.common.model.TenantModel tenant = tenantMapper.findById(currentTenantId);
+        com.ops.common.model.NodeTransferApplicationModel app = new com.ops.common.model.NodeTransferApplicationModel();
+        app.setNodeId(id);
+        app.setNodeName(node.getName());
+        app.setApplicantId(securityContext.getCurrentUserId());
+        app.setApplicantUsername(securityContext.getCurrentUsername());
+        app.setTargetTenantId(currentTenantId);
+        app.setTargetTenantName(tenant == null ? null : tenant.getName());
+        app.setSourceTenantId(defaultTenantId);
+        app.setStatus("PENDING");
+        app.setRemark(body != null && body.get("remark") != null ? String.valueOf(body.get("remark")) : null);
+        long now = System.currentTimeMillis();
+        app.setCreateTime(now);
+        app.setUpdateTime(now);
+        nodeTransferApplicationMapper.insert(app);
+        logOperation(id, "NODE", "CLAIM", "节点认领申请: " + node.getName() + " → 租户[" + app.getTargetTenantName() + "]",
+                httpRequest.getRemoteAddr());
+        return Result.success();
+    }
+
+    /**
+     * GET /api/nodes/node-transfers - 认领申请列表（平台管理员全量，租户看本租户）
+     */
+    @GetMapping("/node-transfers")
+    public Result<?> listTransfers(@RequestParam(required = false) String status) {
+        if (securityContext.isSuperAdmin()) {
+            return Result.success(nodeTransferApplicationMapper.listAll(status));
+        }
+        Long tenantId = securityContext.getCurrentTenantId();
+        if (tenantId == null || tenantId <= 0) {
+            return Result.error(403, "无权限查看");
+        }
+        return Result.success(nodeTransferApplicationMapper.listByTenant(tenantId, status));
+    }
+
+    /**
+     * POST /api/nodes/node-transfers/{id}/approve - 平台管理员批准认领申请 → 节点转移归属
+     */
+    @PostMapping("/node-transfers/{id}/approve")
+    public Result<?> approveTransfer(@PathVariable Long id, HttpServletRequest httpRequest) {
+        if (!securityContext.isSuperAdmin()) {
+            return Result.error(403, "仅平台管理员可审批");
+        }
+        com.ops.common.model.NodeTransferApplicationModel app = nodeTransferApplicationMapper.findById(id);
+        if (app == null || !"PENDING".equals(app.getStatus())) {
+            return Result.paramError("申请不存在或已处理");
+        }
+        NodeModel node = nodeService.findById(app.getNodeId());
+        if (node == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        // 节点当前归属须仍等于申请时的来源租户（池节点），防止批准时把已直接分配的节点再次转移
+        if (app.getSourceTenantId() == null || node.getTenantId() == null
+                || node.getTenantId().longValue() != app.getSourceTenantId().longValue()) {
+            return Result.paramError("节点归属已变更，申请失效（可撤销后重新申请）");
+        }
+        if (nodeService.countByNodeId(app.getNodeId()) > 0) {
+            return Result.error(1003, "节点下有项目绑定，请先解绑再转移");
+        }
+        long now = System.currentTimeMillis();
+        nodeService.updateTenant(app.getNodeId(), app.getTargetTenantId());
+        nodeTransferApplicationMapper.updateStatus(id, "APPROVED", now,
+                securityContext.getCurrentUserId(), securityContext.getCurrentUsername(), now);
+        logOperation(app.getNodeId(), "NODE", "TRANSFER",
+                "节点 " + app.getNodeName() + " 批准转移 → 租户[" + app.getTargetTenantName() + "]", httpRequest.getRemoteAddr());
+        return Result.success();
+    }
+
+    /**
+     * POST /api/nodes/node-transfers/{id}/reject - 平台管理员拒绝认领申请
+     */
+    @PostMapping("/node-transfers/{id}/reject")
+    public Result<?> rejectTransfer(@PathVariable Long id, HttpServletRequest httpRequest) {
+        if (!securityContext.isSuperAdmin()) {
+            return Result.error(403, "仅平台管理员可审批");
+        }
+        com.ops.common.model.NodeTransferApplicationModel app = nodeTransferApplicationMapper.findById(id);
+        if (app == null || !"PENDING".equals(app.getStatus())) {
+            return Result.paramError("申请不存在或已处理");
+        }
+        long now = System.currentTimeMillis();
+        nodeTransferApplicationMapper.updateStatus(id, "REJECTED", now,
+                securityContext.getCurrentUserId(), securityContext.getCurrentUsername(), now);
+        logOperation(app.getNodeId(), "NODE", "REJECT",
+                "拒绝节点认领申请: " + app.getNodeName(), httpRequest.getRemoteAddr());
+        return Result.success();
+    }
+
+    /**
+     * POST /api/nodes/node-transfers/{id}/cancel - 申请人取消待审批申请
+     */
+    @PostMapping("/node-transfers/{id}/cancel")
+    public Result<?> cancelTransfer(@PathVariable Long id) {
+        com.ops.common.model.NodeTransferApplicationModel app = nodeTransferApplicationMapper.findById(id);
+        if (app == null || !"PENDING".equals(app.getStatus())) {
+            return Result.paramError("申请不存在或已处理");
+        }
+        Long uid = securityContext.getCurrentUserId();
+        if (uid == null || !uid.equals(app.getApplicantId())) {
+            return Result.error(403, "只能取消自己的申请");
+        }
+        nodeTransferApplicationMapper.updateStatus(id, "CANCELED", null, null, null, System.currentTimeMillis());
+        return Result.success();
+    }
+
+    /**
+     * POST /api/nodes/{id}/assign - 平台管理员直接分配节点给任意租户（不经过申请）
+     */
+    @PostMapping("/{id}/assign")
+    public Result<?> assignNode(@PathVariable Long id, @RequestBody Map<String, Object> body,
+                                HttpServletRequest httpRequest) {
+        if (!securityContext.isSuperAdmin()) {
+            return Result.error(403, "仅平台管理员可分配节点");
+        }
+        Long targetTenantId = body.get("targetTenantId") instanceof Number
+                ? ((Number) body.get("targetTenantId")).longValue() : null;
+        if (targetTenantId == null || targetTenantId <= 0) {
+            return Result.paramError("缺少目标租户");
+        }
+        NodeModel node = nodeService.findById(id);
+        if (node == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        if (tenantMapper.findById(targetTenantId) == null) {
+            return Result.paramError("目标租户不存在");
+        }
+        if (nodeService.countByNodeId(id) > 0) {
+            return Result.error(1003, "节点下有项目绑定，请先解绑再分配");
+        }
+        com.ops.common.model.TenantModel target = tenantMapper.findById(targetTenantId);
+        nodeService.updateTenant(id, targetTenantId);
+        // 直接分配后，该节点的 PENDING 认领申请全部作废
+        com.ops.common.model.NodeTransferApplicationModel pendingApp =
+                nodeTransferApplicationMapper.findByNodeIdAndStatus(id, "PENDING");
+        if (pendingApp != null) {
+            nodeTransferApplicationMapper.updateStatus(pendingApp.getId(), "CANCELED", null, null, null, System.currentTimeMillis());
+        }
+        logOperation(id, "NODE", "ASSIGN",
+                "管理员分配节点 " + node.getName() + " → 租户[" + (target == null ? targetTenantId : target.getName()) + "]",
+                httpRequest.getRemoteAddr());
+        return Result.success();
+    }
+
+    /**
+     * POST /api/nodes/{id}/release - 平台管理员收回节点（回到 default 池）
+     */
+    @PostMapping("/{id}/release")
+    public Result<?> releaseNode(@PathVariable Long id, HttpServletRequest httpRequest) {
+        if (!securityContext.isSuperAdmin()) {
+            return Result.error(403, "仅平台管理员可收回节点");
+        }
+        NodeModel node = nodeService.findById(id);
+        if (node == null) {
+            return Result.error(1002, "节点不存在");
+        }
+        Long defaultTenantId = resolveDefaultTenantId();
+        if (defaultTenantId == null || node.getTenantId() != null
+                && node.getTenantId().longValue() == defaultTenantId.longValue()) {
+            return Result.paramError("该节点已在默认池中，无需收回");
+        }
+        if (nodeService.countByNodeId(id) > 0) {
+            return Result.error(1003, "节点下有项目绑定，请先解绑再收回");
+        }
+        nodeService.updateTenant(id, defaultTenantId);
+        logOperation(id, "NODE", "RELEASE", "管理员收回节点 " + node.getName() + " → 默认池", httpRequest.getRemoteAddr());
         return Result.success();
     }
 
@@ -338,6 +632,11 @@ public class NodeController {
             node.setStatus(NodeStatus.ONLINE.getCode());
             node.setCreateTime(System.currentTimeMillis());
             node.setUpdateTime(System.currentTimeMillis());
+            // 设置默认租户ID，避免 tenant 隔离查询时漏掉自动注册的节点
+            com.ops.common.model.TenantModel defaultTenant = tenantMapper.findDefault();
+            if (defaultTenant != null) {
+                node.setTenantId(defaultTenant.getId());
+            }
             nodeService.insert(node);
 
             nodeId = String.valueOf(node.getId());
@@ -469,6 +768,11 @@ public class NodeController {
                 snap = new com.ops.common.model.MonitorSnapshotModel();
                 snap.setProjectId(projectId);
                 snap.setNodeId(nodeId);
+            }
+            // 打 tenant 标（从项目推导，心跳请求无用户上下文）
+            com.ops.common.model.ProjectModel proj = getProject(projectId);
+            if (proj != null && proj.getTenantId() != null && (snap.getTenantId() == null || snap.getTenantId() == 0)) {
+                snap.setTenantId(proj.getTenantId());
             }
             snap.setCollectTime(System.currentTimeMillis());
 
@@ -653,7 +957,14 @@ public class NodeController {
             }
 
             String json = com.alibaba.fastjson2.JSON.toJSONString(message);
-            monitorHandler.broadcast("monitor", json, securityContext.getCurrentTenantId());
+            // 心跳请求无用户上下文，租户须从节点推导（防跨租户实时泄漏）
+            Long tenantId = null;
+            try {
+                com.ops.common.model.NodeModel node = nodeMapper.findById(nodeId);
+                if (node != null) tenantId = node.getTenantId();
+            } catch (Exception ignored) {
+            }
+            monitorHandler.broadcast("monitor", json, tenantId);
         } catch (Exception e) {
             log.warn("监控广播失败 节点={}", nodeId, e);
         }

@@ -42,6 +42,12 @@ public class ConsoleHandler extends TextWebSocketHandler {
     @Autowired
     private ConsoleAgentClient agentClient;
 
+    @Autowired
+    private com.ops.server.mapper.ProjectMapper projectMapper;
+
+    @Autowired
+    private com.ops.server.mapper.NodeMapper nodeMapper;
+
     @Override
     public void afterConnectionEstablished(@NotNull WebSocketSession session) {
         URI uri = session.getUri();
@@ -70,6 +76,15 @@ public class ConsoleHandler extends TextWebSocketHandler {
             closeQuietly(session, CloseStatus.BAD_DATA);
             return;
         }
+
+        // 租户归属校验：非平台用户只能进入本租户的项目/节点控制台
+        if (!canAccess(session, projectId, nodeId)) {
+            log.warn("Console WS rejected: session={} project={} node={} (tenant mismatch)", session.getId(), projectId, nodeId);
+            sendJson(session, event("error", "text", "无权访问该项目/节点"));
+            closeQuietly(session, CloseStatus.POLICY_VIOLATION);
+            return;
+        }
+
         final String nid = nodeId;
 
         NodeModel node = agentClient.findNode(nid);
@@ -105,6 +120,36 @@ public class ConsoleHandler extends TextWebSocketHandler {
                 "nodeId", nodeId,
                 "nodeName", nodeName,
                 "cwd", cwd));
+    }
+
+    /** 校验会话租户与项目/节点租户一致（平台管理员放行；旧数据不阻断） */
+    private boolean canAccess(WebSocketSession session, String projectId, String nodeId) {
+        try {
+            Object role = session.getAttributes().get("role");
+            boolean platform = role != null && ("admin".equalsIgnoreCase(String.valueOf(role))
+                    || "super_admin".equalsIgnoreCase(String.valueOf(role)));
+            if (platform) return true;
+            Object sessionTenant = session.getAttributes().get("tenantId");
+            if (sessionTenant == null) return true;
+            Long projectTenant = null;
+            com.ops.common.model.ProjectModel project = projectMapper.findById(Long.parseLong(projectId));
+            if (project != null) projectTenant = project.getTenantId();
+            if (projectTenant != null && projectTenant > 0
+                    && !projectTenant.toString().equals(String.valueOf(sessionTenant))) {
+                return false;
+            }
+            Long nodeTenant = null;
+            com.ops.common.model.NodeModel node = nodeMapper.findById(Long.parseLong(nodeId));
+            if (node != null) nodeTenant = node.getTenantId();
+            if (nodeTenant != null && nodeTenant > 0
+                    && !nodeTenant.toString().equals(String.valueOf(sessionTenant))) {
+                return false;
+            }
+            return true;
+        } catch (Exception e) {
+            log.warn("Console WS ownership check failed: {}", e.getMessage());
+            return true; // 校验异常时放行，避免阻断控制台
+        }
     }
 
     @Override

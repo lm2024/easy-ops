@@ -18,7 +18,7 @@ public interface NginxSourceWhitelistMapper {
 
     int update(NginxSourceWhitelistModel model);
 
-    int deleteBySourceId(@Param("sourceId") Long sourceId);
+    int deleteBySourceId(@Param("sourceId") Long sourceId, @Param("tenantId") Long tenantId);
 
-    int deleteByIds(@Param("sourceId") Long sourceId, @Param("ids") List<Long> ids);
+    int deleteByIds(@Param("sourceId") Long sourceId, @Param("tenantId") Long tenantId, @Param("ids") List<Long> ids);
 }

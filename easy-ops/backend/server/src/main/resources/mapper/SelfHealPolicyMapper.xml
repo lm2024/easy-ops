@@ -6,6 +6,14 @@
         SELECT * FROM self_heal_policy ORDER BY project_id
     </select>
 
+    <select id="findAllInTenant" resultType="com.ops.common.model.SelfHealPolicyModel">
+        SELECT * FROM self_heal_policy
+        <where>
+            <if test="tenantId != null">tenant_id = #{tenantId}</if>
+        </where>
+        ORDER BY project_id
+    </select>
+
     <select id="findEnabled" resultType="com.ops.common.model.SelfHealPolicyModel">
         SELECT * FROM self_heal_policy WHERE enabled = 1 ORDER BY project_id
     </select>
@@ -15,10 +23,10 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO self_heal_policy (project_id, enabled, max_retries, retry_interval_sec,
+        INSERT INTO self_heal_policy (project_id, tenant_id, enabled, max_retries, retry_interval_sec,
             check_interval_sec, circuit_breaker, circuit_break_time, notify_email, notify_popup,
             auto_ai_diagnose, create_time, update_time)
-        VALUES (#{projectId}, #{enabled}, #{maxRetries}, #{retryIntervalSec},
+        VALUES (#{projectId}, #{tenantId}, #{enabled}, #{maxRetries}, #{retryIntervalSec},
             #{checkIntervalSec}, #{circuitBreaker}, #{circuitBreakTime}, #{notifyEmail}, #{notifyPopup},
             #{autoAiDiagnose}, #{createTime}, #{updateTime})
     </insert>
@@ -34,6 +42,7 @@
             auto_ai_diagnose = #{autoAiDiagnose},
             update_time = #{updateTime}
         WHERE project_id = #{projectId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
 
     <update id="updateCircuitBreaker">

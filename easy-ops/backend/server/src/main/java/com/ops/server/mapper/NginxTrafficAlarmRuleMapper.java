@@ -20,5 +20,5 @@ public interface NginxTrafficAlarmRuleMapper {
 
     int update(NginxTrafficAlarmRuleModel model);
 
-    int deleteBySourceId(@Param("sourceId") Long sourceId);
+    int deleteBySourceId(@Param("sourceId") Long sourceId, @Param("tenantId") Long tenantId);
 }

@@ -20,5 +20,5 @@ public interface ProjectConfigFileMapper {
 
     int update(ProjectConfigFileModel model);
 
-    int deleteById(@Param("id") Long id);
+    int deleteById(@Param("id") Long id, @Param("tenantId") Long tenantId);
 }

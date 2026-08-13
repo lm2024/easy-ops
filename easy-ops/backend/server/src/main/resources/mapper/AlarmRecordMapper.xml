@@ -25,12 +25,45 @@
             </if>
         </where>
     </select>
+    <select id="findByFiltersInTenant" resultType="com.ops.common.model.AlarmModel">
+        SELECT * FROM alarm_record
+        <where>
+            <if test="projectId != null">
+                AND (project_id = #{projectId} OR node_id = #{projectId})
+            </if>
+            <if test="type != null and type != ''">
+                AND type = #{type}
+            </if>
+            <if test="tenantId != null">
+                AND tenant_id = #{tenantId}
+            </if>
+        </where>
+        ORDER BY create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+    <select id="countByFiltersInTenant" resultType="long">
+        SELECT COUNT(*) FROM alarm_record
+        <where>
+            <if test="projectId != null">
+                AND (project_id = #{projectId} OR node_id = #{projectId})
+            </if>
+            <if test="type != null and type != ''">
+                AND type = #{type}
+            </if>
+            <if test="tenantId != null">
+                AND tenant_id = #{tenantId}
+            </if>
+        </where>
+    </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO alarm_record (project_id, node_id, type, content, send_result, send_time, create_time)
-        VALUES (#{projectId}, #{nodeId}, #{type}, #{content}, #{sendResult}, #{sendTime}, #{createTime})
+        INSERT INTO alarm_record (project_id, tenant_id, node_id, type, content, send_result, send_time, create_time)
+        VALUES (#{projectId}, #{tenantId}, #{nodeId}, #{type}, #{content}, #{sendResult}, #{sendTime}, #{createTime})
     </insert>
     <delete id="deleteAll">
         DELETE FROM alarm_record
+        <where>
+            <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
+        </where>
     </delete>
 
     <delete id="deleteBefore">

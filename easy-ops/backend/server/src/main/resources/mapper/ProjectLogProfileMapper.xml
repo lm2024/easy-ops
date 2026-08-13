@@ -6,9 +6,9 @@
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO project_log_profile (project_id, log_dir, main_log_file, rolling_pattern,
-            timestamp_regex, timestamp_format, max_line_length, create_time, update_time)
+            timestamp_regex, timestamp_format, max_line_length, create_time, update_time, tenant_id)
         VALUES (#{projectId}, #{logDir}, #{mainLogFile}, #{rollingPattern},
-            #{timestampRegex}, #{timestampFormat}, #{maxLineLength}, #{createTime}, #{updateTime})
+            #{timestampRegex}, #{timestampFormat}, #{maxLineLength}, #{createTime}, #{updateTime}, #{tenantId})
     </insert>
     <update id="update">
         UPDATE project_log_profile
@@ -16,8 +16,10 @@
             timestamp_regex = #{timestampRegex}, timestamp_format = #{timestampFormat},
             max_line_length = #{maxLineLength}, update_time = #{updateTime}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
     <delete id="deleteByProjectId">
         DELETE FROM project_log_profile WHERE project_id = #{projectId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
 </mapper>

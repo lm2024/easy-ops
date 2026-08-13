@@ -21,4 +21,5 @@ public class ProjectLogProfileModel implements Serializable {
     private Integer maxLineLength;
     private Long createTime;
     private Long updateTime;
+    private Long tenantId;
 }

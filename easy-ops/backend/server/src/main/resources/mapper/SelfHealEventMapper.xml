@@ -25,6 +25,35 @@
         </where>
     </select>
 
+    <select id="findByFiltersInTenant" resultType="com.ops.common.model.SelfHealEventModel">
+        SELECT e.*, n.name AS node_name, p.name AS project_name
+        FROM self_heal_event e
+        LEFT JOIN node_info n ON e.node_id = n.id
+        LEFT JOIN project_info p ON e.project_id = p.id
+        <where>
+            <if test="projectId != null">
+                AND e.project_id = #{projectId}
+            </if>
+            <if test="tenantId != null">
+                AND e.tenant_id = #{tenantId}
+            </if>
+        </where>
+        ORDER BY e.create_time DESC
+        LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
+    </select>
+
+    <select id="countByFiltersInTenant" resultType="long">
+        SELECT COUNT(*) FROM self_heal_event
+        <where>
+            <if test="projectId != null">
+                AND project_id = #{projectId}
+            </if>
+            <if test="tenantId != null">
+                AND tenant_id = #{tenantId}
+            </if>
+        </where>
+    </select>
+
     <select id="findLatest" resultType="com.ops.common.model.SelfHealEventModel">
         SELECT * FROM self_heal_event
         WHERE project_id = #{projectId} AND node_id = #{nodeId}
@@ -33,9 +62,9 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO self_heal_event (project_id, node_id, event_type, retry_count, max_retries,
+        INSERT INTO self_heal_event (project_id, tenant_id, node_id, event_type, retry_count, max_retries,
             detail, process_pid, create_time)
-        VALUES (#{projectId}, #{nodeId}, #{eventType}, #{retryCount}, #{maxRetries},
+        VALUES (#{projectId}, #{tenantId}, #{nodeId}, #{eventType}, #{retryCount}, #{maxRetries},
             #{detail}, #{processPid}, #{createTime})
     </insert>
 

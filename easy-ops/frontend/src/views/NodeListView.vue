@@ -30,6 +30,13 @@
             <a-select-option value="0">🔴 离线</a-select-option>
           </a-select>
           <a-button @click="fetchNodes"><search-outlined /> 搜索</a-button>
+          <a-tooltip v-if="authStore.isSuperAdmin" title="审批各租户的节点认领申请">
+            <a-badge :count="pendingCount">
+              <a-button @click="openTransfers">
+                <audit-outlined /> 节点申请
+              </a-button>
+            </a-badge>
+          </a-tooltip>
           <a-tooltip title="升级 Agent 版本（支持灰度部署）">
             <a-button type="primary" @click="showUpgradeModal = true">
               <rocket-outlined /> Agent 升级
@@ -48,6 +55,10 @@
               <a style="font-weight:600">{{ record.name }}</a>
               <a-tag color="blue" v-if="record.lastHeartbeat" style="font-size:11px">🤖 自动识别</a-tag>
             </a-space>
+          </template>
+          <template v-if="column.key === 'tenantName'">
+            <a-tag v-if="record.claimable" color="orange" style="font-size:12px">待认领池</a-tag>
+            <a-tag v-else color="blue" style="font-size:12px">{{ record.tenantName || '默认租户' }}</a-tag>
           </template>
           <template v-if="column.key === 'tags'">
             <a-space wrap>
@@ -142,17 +153,37 @@
           </template>
           <template v-if="column.key === 'action'">
             <a-space>
-              <a-tooltip title="编辑节点名称、IP、端口等基本信息">
-                <a-button type="link" size="small" @click="editNode(record)"><edit-outlined /> 编辑</a-button>
-              </a-tooltip>
-              <a-tooltip title="展开查看节点完整系统信息（CPU / 内存 / 磁盘 / 系统环境）">
-                <a-button type="link" size="small" @click="toggleExpand(record)"><eye-outlined /> 详情</a-button>
-              </a-tooltip>
-              <a-popconfirm title="确定删除此节点?" ok-text="确定" cancel-text="取消" @confirm="deleteNodeAction(record.id)">
-                <a-tooltip title="删除后 Agent 重新注册时会自动添加回来">
-                  <a-button type="link" size="small" danger><delete-outlined /> 删除</a-button>
+              <!-- 池节点：租户用户申请认领 -->
+              <template v-if="record.claimable && !authStore.isSuperAdmin">
+                <a-popconfirm title="申请认领该节点，提交后由平台管理员审批？" ok-text="申请" cancel-text="取消" @confirm="claimNodeAction(record)">
+                  <a-button type="link" size="small" style="color:#fa8c16"><audit-outlined /> 申请认领</a-button>
+                </a-popconfirm>
+              </template>
+              <!-- 已归属节点：高频「编辑」直接展示，其余（详情/分配/收回/删除）收进「更多」下拉 -->
+              <template v-else>
+                <a-tooltip title="编辑节点名称、IP、端口等基本信息">
+                  <a-button type="link" size="small" @click="editNode(record)"><edit-outlined /> 编辑</a-button>
                 </a-tooltip>
-              </a-popconfirm>
+                <a-dropdown :trigger="['click']">
+                  <a-button type="link" size="small"><more-outlined /> 更多</a-button>
+                  <template #overlay>
+                    <a-menu>
+                      <a-menu-item @click="toggleExpand(record)">
+                        <eye-outlined /> 查看详情
+                      </a-menu-item>
+                      <a-menu-item v-if="authStore.isSuperAdmin" @click="openAssign(record)">
+                        <swap-outlined /> 分配
+                      </a-menu-item>
+                      <a-menu-item v-if="authStore.isSuperAdmin && !record.claimable" @click="confirmRelease(record)">
+                        <rollback-outlined /> 收回
+                      </a-menu-item>
+                      <a-menu-item v-if="authStore.isSuperAdmin" @click="confirmDelete(record)">
+                        <delete-outlined /> 删除
+                      </a-menu-item>
+                    </a-menu>
+                  </template>
+                </a-dropdown>
+              </template>
             </a-space>
           </template>
         </template>
@@ -319,26 +350,60 @@
 
     <!-- Agent 升级弹窗 -->
     <AgentUpgradeModal v-model:open="showUpgradeModal" @upgraded="fetchNodes" />
+
+    <!-- 节点认领申请审批弹窗（平台管理员） -->
+    <a-modal v-model:open="transfersVisible" title="节点认领申请" :footer="null" width="720px">
+      <a-table :columns="transferColumns" :data-source="transfers" :loading="transfersLoading" :pagination="false" row-key="id" size="small">
+        <template #bodyCell="{ column, record }">
+          <template v-if="column.key === 'status'">
+            <a-tag :color="record.status === 'PENDING' ? 'orange' : record.status === 'APPROVED' ? 'green' : 'default'">
+              {{ ({ PENDING: '待审批', APPROVED: '已批准', REJECTED: '已拒绝', CANCELED: '已取消' } as Record<string, string>)[record.status] || record.status }}
+            </a-tag>
+          </template>
+          <template v-if="column.key === 'action'">
+            <a-space v-if="record.status === 'PENDING'">
+              <a-button type="link" size="small" style="color:#52c41a" @click="approveTransferAction(record)">
+                <check-outlined /> 批准
+              </a-button>
+              <a-button type="link" size="small" danger @click="rejectTransferAction(record)">
+                <close-outlined /> 拒绝
+              </a-button>
+            </a-space>
+          </template>
+        </template>
+      </a-table>
+    </a-modal>
+
+    <!-- 平台管理员直接分配节点弹窗 -->
+    <a-modal v-model:open="assignVisible" title="分配节点" :confirm-loading="assigning" @ok="doAssign">
+      <p>节点 <b>{{ assigningNode?.name }}</b> → 分配给租户：</p>
+      <a-select v-model:value="assignTargetTenantId" style="width: 100%" placeholder="选择目标租户" :options="tenantOptions" />
+      <p style="color:#999;font-size:12px;margin-top:8px">分配后节点归该租户管理；有项目绑定的节点不可分配。</p>
+    </a-modal>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { message } from 'ant-design-vue'
-import type { NodeModel } from '../types'
-import { getNodes, deleteNode, updateNodeTags } from '../api/node'
+import { message, Modal } from 'ant-design-vue'
+import type { NodeModel, NodeTransferApplicationModel, TenantModel } from '../types'
+import { getNodes, deleteNode, updateNodeTags, claimNode, listNodeTransfers,
+         approveTransfer, rejectTransfer, assignNode, releaseNode } from '../api/node'
 import { getNodeSysInfo } from '../api/agent'
+import { getTenants } from '../api/tenant'
+import { useAuthStore } from '../stores/auth'
 import AgentUpgradeModal from './AgentUpgradeModal.vue'
 import {
   SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, ClusterOutlined,
-  EyeOutlined, InfoCircleOutlined, CloseOutlined, RocketOutlined
+  EyeOutlined, InfoCircleOutlined, CloseOutlined, RocketOutlined,
+  AuditOutlined, SwapOutlined, RollbackOutlined, CheckOutlined, MoreOutlined
 } from '@ant-design/icons-vue'
+
+const authStore = useAuthStore()
 
 /** Agent 向 Server 上报心跳间隔（秒），与 backend agent.check-interval 一致 */
 const AGENT_HEARTBEAT_SEC = 60
-/** 磁盘信息同步间隔（次心跳），与 backend DISK_REPORT_INTERVAL 一致 */
-const DISK_SYNC_INTERVAL = 1 // 保留常量但不再用于倒计时
 /** 节点详情 CPU/内存 等指标的前端自动刷新间隔（秒），仅影响展示，不增加 Agent 心跳频率 */
 const DETAIL_REFRESH_SEC = 10
 const DETAIL_REFRESH_MS = DETAIL_REFRESH_SEC * 1000
@@ -386,6 +451,7 @@ const columns = [
   { title: '节点名称', dataIndex: 'name', key: 'name', width: 200, sorter: (a: any, b: any) => (a.name || '').localeCompare(b.name || '') },
   { title: '标签', dataIndex: 'tags', key: 'tags', width: 200, sorter: (a: any, b: any) => (a.tags || '').localeCompare(b.tags || '') },
   { title: 'IP', dataIndex: 'ip', key: 'ip', width: 130, sorter: (a: any, b: any) => (a.ip || '').localeCompare(b.ip || '') },
+  { title: '所属租户', dataIndex: 'tenantName', key: 'tenantName', width: 130, sorter: (a: any, b: any) => (a.tenantName || '').localeCompare(b.tenantName || '') },
   { title: '磁盘', key: 'diskInfo', width: 300 },
   { title: '状态', dataIndex: 'status', key: 'status', width: 80, sorter: (a: any, b: any) => (a.status || 0) - (b.status || 0) },
   { title: 'Agent版本', dataIndex: 'agentVersion', key: 'agentVersion', width: 110, sorter: (a: any, b: any) => (a.agentVersion || '').localeCompare(b.agentVersion || '') },
@@ -569,8 +635,124 @@ function handleTableChange(pag: any, _filters: any, sorter: any) {
 function editNode(r: NodeModel) { router.push(`/nodes/${r.id}/edit`) }
 async function deleteNodeAction(id: string) { await deleteNode(id); fetchNodes(); message.success('节点已删除') }
 
+/** 「更多」下拉：删除（危险操作，二次确认） */
+function confirmDelete(record: NodeModel) {
+  Modal.confirm({
+    title: '确定删除此节点?',
+    content: '删除后 Agent 重新注册时会自动添加回来',
+    okText: '确定',
+    cancelText: '取消',
+    okType: 'danger',
+    onOk: () => deleteNodeAction(record.id)
+  })
+}
+
+/** 「更多」下拉：收回节点到默认池（平台管理员，二次确认） */
+function confirmRelease(record: NodeModel) {
+  Modal.confirm({
+    title: '收回节点',
+    content: `确定将节点「${record.name}」收回默认池，供其他租户申请？`,
+    okText: '收回',
+    cancelText: '取消',
+    onOk: () => releaseNodeAction(record)
+  })
+}
+
+// ==================== 节点认领 / 转移 ====================
+const transfersVisible = ref(false)
+const transfersLoading = ref(false)
+const transfers = ref<NodeTransferApplicationModel[]>([])
+const pendingCount = ref(0)
+
+const transferColumns = [
+  { title: '节点', dataIndex: 'nodeName', key: 'nodeName' },
+  { title: '申请租户', dataIndex: 'targetTenantName', key: 'targetTenantName', width: 130 },
+  { title: '申请人', dataIndex: 'applicantUsername', key: 'applicantUsername', width: 110 },
+  { title: '时间', dataIndex: 'createTime', key: 'createTime', width: 160, customRender: ({ text }: any) => text ? new Date(text).toLocaleString() : '-' },
+  { title: '状态', key: 'status', width: 90 },
+  { title: '操作', key: 'action', width: 140 }
+]
+
+async function loadTransfers() {
+  try {
+    const res = await listNodeTransfers()
+    transfers.value = res.data || []
+    pendingCount.value = transfers.value.filter((t: any) => t.status === 'PENDING').length
+  } catch { /* 静默 */ }
+}
+
+function openTransfers() {
+  transfersVisible.value = true
+  loadTransfers()
+}
+
+async function approveTransferAction(record: NodeTransferApplicationModel) {
+  await approveTransfer(record.id)
+  message.success(`节点「${record.nodeName}」已转移给 ${record.targetTenantName}`)
+  loadTransfers()
+  fetchNodes()
+}
+
+async function rejectTransferAction(record: NodeTransferApplicationModel) {
+  await rejectTransfer(record.id)
+  message.success('已拒绝')
+  loadTransfers()
+}
+
+async function claimNodeAction(record: NodeModel) {
+  await claimNode(String(record.id))
+  message.success(`已提交「${record.name}」认领申请，等待平台管理员审批`)
+  fetchNodes()
+}
+
+const assignVisible = ref(false)
+const assigning = ref(false)
+const assigningNode = ref<NodeModel | null>(null)
+const assignTargetTenantId = ref<number | undefined>(undefined)
+const tenantOptions = ref<any[]>([])
+let tenantsLoaded = false
+
+async function ensureTenants() {
+  if (tenantsLoaded) return
+  try {
+    const res = await getTenants()
+    tenantOptions.value = (res.data.list || []).map((t: TenantModel) => ({ label: t.name, value: t.id }))
+    tenantsLoaded = true
+  } catch { /* 静默 */ }
+}
+
+function openAssign(record: NodeModel) {
+  assigningNode.value = record
+  assignTargetTenantId.value = undefined
+  ensureTenants()
+  assignVisible.value = true
+}
+
+async function doAssign() {
+  if (!assigningNode.value || !assignTargetTenantId.value) {
+    message.warning('请选择目标租户')
+    return
+  }
+  assigning.value = true
+  try {
+    await assignNode(String(assigningNode.value.id), assignTargetTenantId.value)
+    message.success(`节点「${assigningNode.value.name}」已分配给租户`)
+    assignVisible.value = false
+    fetchNodes()
+  } finally {
+    assigning.value = false
+  }
+}
+
+async function releaseNodeAction(record: NodeModel) {
+  await releaseNode(String(record.id))
+  message.success(`节点「${record.name}」已收回默认池`)
+  fetchNodes()
+}
+
 onMounted(() => {
   fetchNodes()
+  if (authStore.isSuperAdmin) loadTransfers()
 })
 
 watch(expandRowKeys, (keys) => {

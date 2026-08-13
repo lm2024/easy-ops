@@ -225,6 +225,7 @@ public class SelfHealService {
         SelfHealEventModel event = new SelfHealEventModel();
         event.setProjectId(projectId);
         event.setNodeId(nodeId);
+        event.setTenantId(policy.getTenantId()); // 从策略继承租户
         event.setEventType(eventType);
         event.setRetryCount(retryCount);
         event.setMaxRetries(policy.getMaxRetries());

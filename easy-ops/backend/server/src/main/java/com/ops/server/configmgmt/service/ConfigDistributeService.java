@@ -13,6 +13,7 @@ import com.ops.server.mapper.ConfigDistributeRecordMapper;
 import com.ops.server.mapper.NodeConfigSnapshotMapper;
 import com.ops.server.mapper.NodeMapper;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -55,6 +56,9 @@ public class ConfigDistributeService {
     @Autowired
     private RestTemplate restTemplate;
 
+    @Autowired
+    private SecurityContext securityContext;
+
     /**
      * 配置分发线程池，避免串行分发导致长时间阻塞
      */
@@ -70,9 +74,11 @@ public class ConfigDistributeService {
                                           ProjectConfigFileModel configFile) {
         String hash = configDiffService.sha256(content);
         String configPath = resolveConfigPath(projectMapper.findById(projectId), configFile);
+        Long tenantId = securityContext.getCurrentTenantId();
 
         ConfigDistributeRecordModel record = new ConfigDistributeRecordModel();
         record.setProjectId(projectId);
+        record.setTenantId(tenantId);
         record.setConfigFileId(configFileId);
         record.setOperatorId(operatorId != null ? operatorId : 0L);
         record.setTargetNodeIds(joinIds(targetNodeIds));
@@ -105,7 +111,7 @@ public class ConfigDistributeService {
                     body.put("content", content);
                     body.put("backup", true);
                     agentClient.postForMap(node, "/file/config", body);
-                    upsertSnapshot(projectId, nodeId, configFileId, content, hash, 1);
+                    upsertSnapshot(projectId, nodeId, configFileId, content, hash, 1, tenantId);
                     item.put("restarted", restartAfter);
                     if (restartAfter) {
                         try {
@@ -136,7 +142,7 @@ public class ConfigDistributeService {
         int status = successCount.get() == targetNodeIds.size() ? 1
                 : successCount.get() == 0 ? 3 : 2;
         String detail = JSON.toJSONString(results);
-        distributeRecordMapper.updateStatus(record.getId(), status, detail);
+        distributeRecordMapper.updateStatus(record.getId(), status, detail, tenantId);
 
         Map<String, Object> data = new HashMap<>();
         data.put("recordId", record.getId());
@@ -146,12 +152,13 @@ public class ConfigDistributeService {
     }
 
     private void upsertSnapshot(Long projectId, Long nodeId, Long configFileId,
-                                String content, String hash, int syncStatus) {
+                                String content, String hash, int syncStatus, Long tenantId) {
         long now = System.currentTimeMillis();
         NodeConfigSnapshotModel existing = snapshotMapper.findByNodeAndFile(nodeId, configFileId);
         if (existing == null) {
             NodeConfigSnapshotModel snap = new NodeConfigSnapshotModel();
             snap.setProjectId(projectId);
+            snap.setTenantId(tenantId);
             snap.setNodeId(nodeId);
             snap.setConfigFileId(configFileId);
             snap.setContentHash(hash);

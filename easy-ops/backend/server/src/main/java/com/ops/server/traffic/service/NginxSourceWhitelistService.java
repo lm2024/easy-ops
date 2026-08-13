@@ -27,7 +27,7 @@ public class NginxSourceWhitelistService {
     /**
      * 全量保存：以传入列表为准——新增/更新其中项，删除库中存在但本次未传的项。
      */
-    public List<NginxSourceWhitelistModel> saveAll(Long sourceId, List<NginxSourceWhitelistModel> items) {
+    public List<NginxSourceWhitelistModel> saveAll(Long sourceId, Long tenantId, List<NginxSourceWhitelistModel> items) {
         if (sourceId == null) {
             return new ArrayList<NginxSourceWhitelistModel>();
         }
@@ -36,6 +36,7 @@ public class NginxSourceWhitelistService {
         if (items != null) {
             for (NginxSourceWhitelistModel m : items) {
                 m.setSourceId(sourceId);
+                m.setTenantId(tenantId);
                 m.setUpdateTime(now);
                 if (m.getId() == null) {
                     m.setCreateTime(now);
@@ -48,13 +49,13 @@ public class NginxSourceWhitelistService {
                 }
             }
         }
-        whitelistMapper.deleteByIds(sourceId, keptIds);
+        whitelistMapper.deleteByIds(sourceId, tenantId, keptIds);
         return listBySource(sourceId);
     }
 
-    public void deleteBySource(Long sourceId) {
+    public void deleteBySource(Long sourceId, Long tenantId) {
         if (sourceId != null) {
-            whitelistMapper.deleteBySourceId(sourceId);
+            whitelistMapper.deleteBySourceId(sourceId, tenantId);
         }
     }
 }

@@ -14,6 +14,8 @@ public interface SelfHealPolicyMapper {
 
     List<SelfHealPolicyModel> findAll();
 
+    List<SelfHealPolicyModel> findAllInTenant(@Param("tenantId") Long tenantId);
+
     List<SelfHealPolicyModel> findEnabled();
 
     SelfHealPolicyModel findByProjectId(@Param("projectId") Long projectId);

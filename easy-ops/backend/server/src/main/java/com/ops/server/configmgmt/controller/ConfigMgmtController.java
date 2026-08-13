@@ -4,6 +4,7 @@ import com.ops.common.model.ProjectConfigFileModel;
 import com.ops.common.response.Result;
 import com.ops.server.configmgmt.service.ConfigMgmtService;
 import com.ops.server.service.AuditLogService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -33,6 +34,9 @@ public class ConfigMgmtController {
     private SecurityContext securityContext;
 
     @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
+    @Autowired
     private AuditLogService auditLog;
 
     /**
@@ -40,9 +44,7 @@ public class ConfigMgmtController {
      */
     @GetMapping("/files")
     public Result<?> listFiles(@RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(configMgmtService.listFiles(projectId));
     }
 
@@ -51,9 +53,7 @@ public class ConfigMgmtController {
      */
     @PostMapping("/files")
     public Result<?> createFile(@RequestBody ProjectConfigFileModel model) {
-        if (!securityContext.hasProjectPermission(model.getProjectId())) {
-            return Result.error(403, "无权访问该项目");
-        }
+        model.setTenantId(tenantResourceAccessService.requireProject(model.getProjectId()).getTenantId());
         auditLog.log("CONFIG", "CREATE", "新增配置文件: " + model.getRelativePath() + ", 项目ID=" + model.getProjectId());
         return Result.success(configMgmtService.createFile(model));
     }
@@ -64,9 +64,7 @@ public class ConfigMgmtController {
     @PutMapping("/files/{id}")
     public Result<?> updateFile(@PathVariable Long id, @RequestBody ProjectConfigFileModel model) {
         model.setId(id);
-        if (!securityContext.hasProjectPermission(model.getProjectId())) {
-            return Result.error(403, "无权访问该项目");
-        }
+        model.setTenantId(tenantResourceAccessService.requireProject(model.getProjectId()).getTenantId());
         auditLog.log("CONFIG", "UPDATE", "修改配置文件: " + model.getRelativePath() + " (ID=" + id + ")");
         return Result.success(configMgmtService.updateFile(model));
     }
@@ -76,9 +74,7 @@ public class ConfigMgmtController {
      */
     @DeleteMapping("/files/{id}")
     public Result<?> deleteFile(@PathVariable Long id, @RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         configMgmtService.deleteFile(id);
         auditLog.log("CONFIG", "DELETE", "删除配置文件: ID=" + id + ", 项目ID=" + projectId);
         return Result.success();
@@ -89,9 +85,7 @@ public class ConfigMgmtController {
      */
     @GetMapping("/snapshot")
     public Result<?> getSnapshot(@RequestParam Long projectId, @RequestParam Long configFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(configMgmtService.getSnapshot(projectId, configFileId));
     }
 
@@ -102,9 +96,8 @@ public class ConfigMgmtController {
     public Result<?> getContent(@RequestParam Long projectId,
                                 @RequestParam Long nodeId,
                                 @RequestParam Long configFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         return Result.success(configMgmtService.getContent(projectId, nodeId, configFileId));
     }
 
@@ -115,9 +108,7 @@ public class ConfigMgmtController {
     @GetMapping("/content/auto")
     public Result<?> getContentAuto(@RequestParam Long projectId,
                                     @RequestParam Long configFileId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(configMgmtService.getContentAuto(projectId, configFileId));
     }
 
@@ -130,8 +121,14 @@ public class ConfigMgmtController {
         Long configFileId = toLong(body.get("configFileId"));
         Long baseNodeId = toLong(body.get("baseNodeId"));
         List<Long> targetNodeIds = toLongList(body.get("targetNodeIds"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
+        tenantResourceAccessService.requireProject(projectId);
+        if (baseNodeId != null) {
+            tenantResourceAccessService.requireNode(baseNodeId);
+        }
+        if (targetNodeIds != null) {
+            for (Long targetNodeId : targetNodeIds) {
+                tenantResourceAccessService.requireNode(targetNodeId);
+            }
         }
         return Result.success(configMgmtService.compare(projectId, configFileId, baseNodeId, targetNodeIds));
     }
@@ -142,12 +139,15 @@ public class ConfigMgmtController {
     @PostMapping("/distribute")
     public Result<?> distribute(@RequestBody Map<String, Object> body) {
         Long projectId = toLong(body.get("projectId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         Long configFileId = toLong(body.get("configFileId"));
         String content = body.get("content") != null ? body.get("content").toString() : "";
         List<Long> targetNodeIds = toLongList(body.get("targetNodeIds"));
+        if (targetNodeIds != null) {
+            for (Long targetNodeId : targetNodeIds) {
+                tenantResourceAccessService.requireNode(targetNodeId);
+            }
+        }
         String distributeType = body.get("distributeType") != null
                 ? body.get("distributeType").toString() : "BATCH";
         boolean restartAfter = Boolean.TRUE.equals(body.get("restartAfter"));
@@ -163,9 +163,7 @@ public class ConfigMgmtController {
     public Result<?> refresh(@RequestBody Map<String, Object> body) {
         Long projectId = toLong(body.get("projectId"));
         Long configFileId = toLong(body.get("configFileId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(configMgmtService.refreshSnapshots(projectId, configFileId));
     }
 
@@ -176,9 +174,7 @@ public class ConfigMgmtController {
      */
     @PostMapping("/scan")
     public Result<?> scanConfigFiles(@RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(configMgmtService.scanAndImport(projectId));
     }
 
@@ -190,10 +186,8 @@ public class ConfigMgmtController {
                                @RequestParam Long nodeId,
                                @RequestParam Long configFileId,
                                HttpServletResponse response) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            setErrorResponse(response, 403, "无权访问该项目");
-            return;
-        }
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         try {
             String content = configMgmtService.getContent(projectId, nodeId, configFileId);
             ProjectConfigFileModel file = configMgmtService.listFiles(projectId).stream()
@@ -217,11 +211,9 @@ public class ConfigMgmtController {
     public void downloadBatch(@RequestBody Map<String, Object> body,
                                HttpServletResponse response) {
         Long projectId = toLong(body.get("projectId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            setErrorResponse(response, 403, "无权访问该项目");
-            return;
-        }
+        tenantResourceAccessService.requireProject(projectId);
         Long nodeId = toLong(body.get("nodeId"));
+        tenantResourceAccessService.requireNode(nodeId);
         List<Long> configFileIds = toLongList(body.get("configFileIds"));
         if (configFileIds.isEmpty()) {
             setErrorResponse(response, 400, "未选择配置文件");

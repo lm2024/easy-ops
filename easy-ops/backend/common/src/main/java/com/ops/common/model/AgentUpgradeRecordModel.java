@@ -22,4 +22,5 @@ public class AgentUpgradeRecordModel implements Serializable {
     private Long startTime;
     private Long endTime;
     private Long createTime;
+    private Long tenantId;
 }

@@ -3,6 +3,7 @@ package com.ops.server.logmgmt.controller;
 import com.ops.common.model.ProjectLogProfileModel;
 import com.ops.common.response.Result;
 import com.ops.server.logmgmt.service.LogMgmtService;
+import com.ops.server.service.TenantResourceAccessService;
 import com.ops.server.util.SecurityContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
@@ -26,14 +27,15 @@ public class LogMgmtController {
     @Autowired
     private SecurityContext securityContext;
 
+    @Autowired
+    private TenantResourceAccessService tenantResourceAccessService;
+
     /**
      * GET /api/logs/profile - 获取项目日志配置
      */
     @GetMapping("/profile")
     public Result<?> getProfile(@RequestParam Long projectId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         return Result.success(logMgmtService.getProfile(projectId));
     }
 
@@ -42,9 +44,7 @@ public class LogMgmtController {
      */
     @PostMapping("/profile")
     public Result<?> saveProfile(@RequestBody ProjectLogProfileModel profile) {
-        if (!securityContext.hasProjectPermission(profile.getProjectId())) {
-            return Result.error(403, "无权访问该项目");
-        }
+        profile.setTenantId(tenantResourceAccessService.requireProject(profile.getProjectId()).getTenantId());
         return Result.success(logMgmtService.saveProfile(profile));
     }
 
@@ -53,9 +53,8 @@ public class LogMgmtController {
      */
         @GetMapping("/files")
     public Result<?> listFiles(@RequestParam Long projectId, @RequestParam Long nodeId) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         return Result.success(logMgmtService.discoverLogFiles(projectId, nodeId));
     }
 
@@ -70,9 +69,8 @@ public class LogMgmtController {
                              @RequestParam(defaultValue = "200") Integer lines,
                              @RequestParam(required = false) String level,
                              @RequestParam(defaultValue = "tail") String mode) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
+        tenantResourceAccessService.requireNode(nodeId);
         return Result.success(logMgmtService.viewLog(projectId, nodeId, fileName, offset, lines, level, mode));
     }
 
@@ -86,8 +84,11 @@ public class LogMgmtController {
                                @RequestParam(defaultValue = "100") Integer pageSize,
                                @RequestParam(required = false) Long since,
                                @RequestParam(required = false) String level) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
+        tenantResourceAccessService.requireProject(projectId);
+        if (nodeIds != null) {
+            for (Long nodeId : nodeIds) {
+                tenantResourceAccessService.requireNode(nodeId);
+            }
         }
         return Result.success(logMgmtService.aggregate(projectId, nodeIds, page, pageSize, since, level));
     }
@@ -98,12 +99,15 @@ public class LogMgmtController {
     @PostMapping("/search")
     public Result<?> search(@RequestBody Map<String, Object> body) {
         Long projectId = toLong(body.get("projectId"));
-        if (!securityContext.hasProjectPermission(projectId)) {
-            return Result.error(403, "无权访问该项目");
-        }
+        tenantResourceAccessService.requireProject(projectId);
         String keyword = body.get("keyword") != null ? body.get("keyword").toString() : "";
         String scope = body.get("scope") != null ? body.get("scope").toString() : "AGGREGATE";
         List<Long> nodeIds = toLongList(body.get("nodeIds"));
+        if (nodeIds != null) {
+            for (Long nodeId : nodeIds) {
+                tenantResourceAccessService.requireNode(nodeId);
+            }
+        }
         int contextLines = body.get("contextLines") != null
                 ? Integer.parseInt(body.get("contextLines").toString()) : 3;
         int maxResults = body.get("maxResults") != null
@@ -125,9 +129,9 @@ public class LogMgmtController {
                             @RequestParam(required = false) String level,
                             @RequestParam(defaultValue = "aggregate") String mode,
                             HttpServletResponse response) {
-        if (!securityContext.hasProjectPermission(projectId)) {
-            writeError(response, 403, "无权访问该项目");
-            return;
+        tenantResourceAccessService.requireProject(projectId);
+        if (nodeId != null) {
+            tenantResourceAccessService.requireNode(nodeId);
         }
         try {
             String content = logMgmtService.downloadLog(projectId, nodeId, filePath, lines, level, mode);

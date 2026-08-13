@@ -3,6 +3,7 @@ package com.ops.server.websocket;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
@@ -24,6 +25,12 @@ public class DeployHandler extends TextWebSocketHandler {
 
     private static final Logger log = LoggerFactory.getLogger(DeployHandler.class);
 
+    @Autowired
+    private com.ops.server.mapper.DeployRecordMapper deployRecordMapper;
+
+    @Autowired
+    private com.ops.server.mapper.ProjectMapper projectMapper;
+
     // deployId -> 订阅了该部署的 WebSocket 会话集合
     private final ConcurrentHashMap<String, Set<WebSocketSession>> deploySessions = new ConcurrentHashMap<>();
 
@@ -41,10 +48,43 @@ public class DeployHandler extends TextWebSocketHandler {
             }
         }
         if (deployId != null && !deployId.isEmpty()) {
+            // 租户归属校验：非平台用户只能订阅本租户的部署
+            if (!canAccessDeploy(session, deployId)) {
+                log.warn("Deploy WS rejected: session={} deployId={} (tenant mismatch)", session.getId(), deployId);
+                try {
+                    session.close(CloseStatus.POLICY_VIOLATION);
+                } catch (IOException ignored) {
+                }
+                return;
+            }
             subscribe(deployId, session);
             log.info("Deploy WebSocket connected: session={}, deployId={}", session.getId(), deployId);
         } else {
             log.warn("Deploy WebSocket connected without deployId: {}", session.getId());
+        }
+    }
+
+    /** 校验会话所属租户与该部署所属租户一致（平台管理员放行；旧数据不阻断） */
+    private boolean canAccessDeploy(WebSocketSession session, String deployId) {
+        try {
+            Object role = session.getAttributes().get("role");
+            boolean platform = role != null && ("admin".equalsIgnoreCase(String.valueOf(role))
+                    || "super_admin".equalsIgnoreCase(String.valueOf(role)));
+            if (platform) return true;
+            Object sessionTenant = session.getAttributes().get("tenantId");
+            if (sessionTenant == null) return true;
+            com.ops.common.model.DeployModel deploy = deployRecordMapper.findById(Long.parseLong(deployId));
+            if (deploy == null) return false;
+            Long deployTenant = null;
+            if (deploy.getProjectId() != null) {
+                com.ops.common.model.ProjectModel project = projectMapper.findById(deploy.getProjectId());
+                deployTenant = project == null ? null : project.getTenantId();
+            }
+            if (deployTenant == null || deployTenant == 0L) return true; // 旧数据不阻断
+            return deployTenant.toString().equals(String.valueOf(sessionTenant));
+        } catch (Exception e) {
+            log.warn("Deploy WS ownership check failed: {}", e.getMessage());
+            return true; // 校验异常时放行，避免阻断部署进度展示
         }
     }
 

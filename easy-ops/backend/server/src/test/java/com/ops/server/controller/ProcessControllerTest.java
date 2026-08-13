@@ -1,7 +1,9 @@
 package com.ops.server.controller;
 
 import com.ops.common.model.ProjectModel;
+import com.ops.common.model.NodeModel;
 import com.ops.server.mapper.ProjectMapper;
+import com.ops.server.mapper.NodeMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.mock.mockito.MockBean;
 
@@ -15,6 +17,9 @@ class ProcessControllerTest extends BaseControllerTest {
     @MockBean
     private ProjectMapper projectMapper;
 
+    @MockBean
+    private NodeMapper nodeMapper;
+
     private ProjectModel mockProject() {
         ProjectModel p = new ProjectModel();
         p.setId(1L);
@@ -25,9 +30,19 @@ class ProcessControllerTest extends BaseControllerTest {
         return p;
     }
 
+    private NodeModel mockNode() {
+        NodeModel n = new NodeModel();
+        n.setId(1L);
+        n.setName("test-node");
+        n.setIp("127.0.0.1");
+        n.setPort(2123);
+        return n;
+    }
+
     @Test
     void start_success() throws Exception {
         when(projectMapper.findById(1L)).thenReturn(mockProject());
+        when(nodeMapper.findById(1L)).thenReturn(mockNode());
 
         mockMvc.perform(post("/process/1/1/start"))
                 .andExpect(status().isOk())
@@ -46,6 +61,7 @@ class ProcessControllerTest extends BaseControllerTest {
     @Test
     void stop_success() throws Exception {
         when(projectMapper.findById(1L)).thenReturn(mockProject());
+        when(nodeMapper.findById(1L)).thenReturn(mockNode());
 
         mockMvc.perform(post("/process/1/1/stop"))
                 .andExpect(status().isOk())
@@ -55,6 +71,7 @@ class ProcessControllerTest extends BaseControllerTest {
     @Test
     void restart_success() throws Exception {
         when(projectMapper.findById(1L)).thenReturn(mockProject());
+        when(nodeMapper.findById(1L)).thenReturn(mockNode());
 
         mockMvc.perform(post("/process/1/1/restart"))
                 .andExpect(status().isOk())

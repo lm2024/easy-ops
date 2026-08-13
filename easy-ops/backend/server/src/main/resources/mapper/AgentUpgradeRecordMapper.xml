@@ -7,38 +7,51 @@
     </select>
 
     <select id="findByBatchId" resultType="com.ops.common.model.AgentUpgradeRecordModel">
-        SELECT * FROM agent_upgrade_record WHERE upgrade_batch_id = #{batchId} ORDER BY create_time DESC
+        SELECT * FROM agent_upgrade_record WHERE upgrade_batch_id = #{batchId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
+        ORDER BY create_time DESC
     </select>
 
     <select id="findByNodeId" resultType="com.ops.common.model.AgentUpgradeRecordModel">
-        SELECT * FROM agent_upgrade_record WHERE node_id = #{nodeId} ORDER BY create_time DESC
+        SELECT * FROM agent_upgrade_record WHERE node_id = #{nodeId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
+        ORDER BY create_time DESC
     </select>
 
     <select id="findAll" resultType="com.ops.common.model.AgentUpgradeRecordModel">
-        SELECT * FROM agent_upgrade_record ORDER BY create_time DESC
+        SELECT * FROM agent_upgrade_record
+        <where>
+            <if test="tenantId != null">tenant_id = #{tenantId}</if>
+        </where>
+        ORDER BY create_time DESC
         LIMIT #{pageSize} OFFSET (#{page} - 1) * #{pageSize}
     </select>
 
     <select id="countAll" resultType="long">
         SELECT COUNT(*) FROM agent_upgrade_record
+        <where>
+            <if test="tenantId != null">tenant_id = #{tenantId}</if>
+        </where>
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
         INSERT INTO agent_upgrade_record (upgrade_batch_id, target_version, node_id, node_name,
-            old_version, status, error_message, start_time, end_time, create_time)
+            old_version, status, error_message, start_time, end_time, create_time, tenant_id)
         VALUES (#{upgradeBatchId}, #{targetVersion}, #{nodeId}, #{nodeName},
-            #{oldVersion}, #{status}, #{errorMessage}, #{startTime}, #{endTime}, #{createTime})
+            #{oldVersion}, #{status}, #{errorMessage}, #{startTime}, #{endTime}, #{createTime}, #{tenantId})
     </insert>
 
     <update id="updateStatus">
         UPDATE agent_upgrade_record
         SET status = #{status}, error_message = #{errorMessage}, end_time = #{endTime}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
 
     <update id="updateStatusByBatchId">
         UPDATE agent_upgrade_record SET status = #{status}
         WHERE upgrade_batch_id = #{batchId} AND status = 1
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
 
     <select id="findLatestByNodeId" resultType="com.ops.common.model.AgentUpgradeRecordModel">

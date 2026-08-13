@@ -31,8 +31,8 @@
         </if>
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO version_package (project_id, jar_name, file_path, file_size, version, sha256, remark, package_type, create_time)
-        VALUES (#{projectId}, #{jarName}, #{filePath}, #{fileSize}, #{version}, #{sha256}, #{remark}, #{packageType}, #{createTime})
+        INSERT INTO version_package (project_id, tenant_id, jar_name, file_path, file_size, version, sha256, remark, package_type, create_time)
+        VALUES (#{projectId}, #{tenantId}, #{jarName}, #{filePath}, #{fileSize}, #{version}, #{sha256}, #{remark}, #{packageType}, #{createTime})
     </insert>
     <delete id="deleteById">
         DELETE FROM version_package WHERE id = #{id}

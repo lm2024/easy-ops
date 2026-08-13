@@ -11,8 +11,8 @@
         SELECT * FROM project_script_file WHERE project_id = #{projectId} AND file_path = #{filePath}
     </select>
     <insert id="insert" useGeneratedKeys="true" keyProperty="id">
-        INSERT INTO project_script_file (project_id, file_name, file_path, file_type, description, is_executable, auto_backup, create_time, update_time)
-        VALUES (#{projectId}, #{fileName}, #{filePath}, #{fileType}, #{description}, #{isExecutable}, #{autoBackup}, #{createTime}, #{updateTime})
+        INSERT INTO project_script_file (project_id, file_name, file_path, file_type, description, is_executable, auto_backup, create_time, update_time, tenant_id)
+        VALUES (#{projectId}, #{fileName}, #{filePath}, #{fileType}, #{description}, #{isExecutable}, #{autoBackup}, #{createTime}, #{updateTime}, #{tenantId})
     </insert>
     <update id="update">
         UPDATE project_script_file
@@ -20,11 +20,14 @@
             description = #{description}, is_executable = #{isExecutable}, auto_backup = #{autoBackup},
             update_time = #{updateTime}
         WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </update>
     <delete id="deleteById">
         DELETE FROM project_script_file WHERE id = #{id}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
     <delete id="deleteByProjectId">
         DELETE FROM project_script_file WHERE project_id = #{projectId}
+        <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
 </mapper>

@@ -21,4 +21,5 @@ public class NodeScriptSnapshotModel implements Serializable {
     private Integer syncStatus;     // 同步状态：0-未知 1-一致 2-差异 3-定制
     private Long lastSyncTime;
     private Long updateTime;
+    private Long tenantId;
 }
