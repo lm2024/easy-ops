@@ -38,7 +38,8 @@ class GlobalExceptionHandlerTest {
         MockHttpServletResponse response = new MockHttpServletResponse();
         Result<?> result = handler.handleException(ex, response);
         assertEquals(500, result.getCode());
-        assertEquals("系统内部错误: RuntimeException", result.getMessage());
+        // 与 GlobalExceptionHandler 当前实现一致：未知异常统一返回安全提示，不暴露异常类名
+        assertEquals("系统内部异常，请联系管理员", result.getMessage());
         assertEquals(500, response.getStatus());
     }
 }
