@@ -20,7 +20,8 @@ class ProcessStatusCheckerTest {
         Map<String, Object> result = checker.checkStatus("", "app.jar");
 
         assertEquals(false, result.get("alive"));
-        assertEquals("PS_GREP", result.get("checkMethod"));
+        // 与实现一致：检测方式已从 ps+grep 升级为 ps+/proc/cwd 双重验证（CHECK_METHOD=PS_CWD）
+        assertEquals("PS_CWD", result.get("checkMethod"));
         assertNull(result.get("pid"));
     }
 

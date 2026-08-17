@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- 测试专用日志配置：仅输出到控制台，不写文件。
+         原因：agent 生产日志路径为 ${AGENT_DATA_PATH:/app/data}/logs/agent.log，
+         本地/CI 环境不存在 /app/data 会导致 logback 初始化失败、Spring 上下文加载失败。
+         logback-test.xml 优先级高于 logback-spring.xml，Spring Boot 测试会自动使用本配置。 -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
