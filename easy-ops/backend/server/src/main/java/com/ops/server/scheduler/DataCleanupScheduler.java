@@ -1,5 +1,6 @@
 package com.ops.server.scheduler;
 
+import com.ops.server.config.CleanupProperties;
 import com.ops.server.mapper.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,6 +57,15 @@ public class DataCleanupScheduler {
     @Value("${easyops.nginx-traffic.minute-retain-days:7}")
     private int nginxMinuteRetainDays;
 
+    @Value("${spring.datasource.url:}")
+    private String datasourceUrl;
+
+    @Value("${easyops.data.cleanup.auto-restart:false}")
+    private boolean autoRestart;
+
+    @Value("${easyops.data.cleanup.restart-threshold-pct:80}")
+    private int restartThresholdPct;
+
     // ======================== Mapper 注入 ========================
 
     @Autowired
@@ -85,6 +95,8 @@ public class DataCleanupScheduler {
     @Autowired
     private GlobalScriptDistributeRecordMapper globalScriptDistributeRecordMapper;
     @Autowired
+    private ScriptDistributeRecordMapper scriptDistributeRecordMapper;
+    @Autowired
     private NginxMinuteStatMapper nginxMinuteStatMapper;
     @Autowired
     private NginxDimensionStatMapper nginxDimensionStatMapper;
@@ -96,6 +108,8 @@ public class DataCleanupScheduler {
     private UserNotificationStateMapper userNotificationStateMapper;
     @Autowired
     private KbDocumentLockMapper kbDocumentLockMapper;
+    @Autowired
+    private CleanupProperties cleanupProperties;
 
     // ======================== 清理任务表 ========================
 
@@ -116,18 +130,19 @@ public class DataCleanupScheduler {
      * 每个任务由表名 + 一个 IntSupplier（返回删除条数）组成。
      */
     private void buildTasks() {
-        // ---- create_time 驱动（使用统一的 cutoff） ----
-        tasks.add(task("operation_log",              c -> operationLogMapper.deleteBefore(c)));
-        tasks.add(task("file_access_log",            c -> fileAccessLogMapper.deleteBefore(c)));
-        tasks.add(task("monitor_snapshot",           c -> monitorSnapshotMapper.deleteBefore(c)));
-        tasks.add(task("alarm_record",               c -> alarmRecordMapper.deleteBefore(c)));
-        tasks.add(task("self_heal_event",            c -> selfHealEventMapper.deleteBefore(c)));
-        tasks.add(task("deploy_record",              c -> deployRecordMapper.deleteBefore(c)));
-        tasks.add(task("config_distribute_record",   c -> configDistributeRecordMapper.deleteBefore(c)));
-        tasks.add(task("ai_diagnosis_record",        c -> aiDiagnosisRecordMapper.deleteBefore(c)));
-        tasks.add(task("kb_recent_access",           c -> kbRecentAccessMapper.deleteBefore(c)));
-        tasks.add(task("agent_upgrade_record",       c -> agentUpgradeRecordMapper.deleteBefore(c)));
-        tasks.add(task("global_script_distribute_record", c -> globalScriptDistributeRecordMapper.deleteBefore(c)));
+        // ---- create_time 驱动（保留天数支持按表覆盖：easyops.data.cleanup.table-retain-days） ----
+        addCreateTimeTask("operation_log",              c -> operationLogMapper.deleteBefore(c));
+        addCreateTimeTask("file_access_log",            c -> fileAccessLogMapper.deleteBefore(c));
+        addCreateTimeTask("monitor_snapshot",           c -> monitorSnapshotMapper.deleteBefore(c));
+        addCreateTimeTask("alarm_record",               c -> alarmRecordMapper.deleteBefore(c));
+        addCreateTimeTask("self_heal_event",            c -> selfHealEventMapper.deleteBefore(c));
+        addCreateTimeTask("deploy_record",              c -> deployRecordMapper.deleteBefore(c));
+        addCreateTimeTask("config_distribute_record",   c -> configDistributeRecordMapper.deleteBefore(c));
+        addCreateTimeTask("ai_diagnosis_record",        c -> aiDiagnosisRecordMapper.deleteBefore(c));
+        addCreateTimeTask("kb_recent_access",           c -> kbRecentAccessMapper.deleteBefore(c));
+        addCreateTimeTask("agent_upgrade_record",       c -> agentUpgradeRecordMapper.deleteBefore(c));
+        addCreateTimeTask("global_script_distribute_record", c -> globalScriptDistributeRecordMapper.deleteBefore(c));
+        addCreateTimeTask("script_distribute_record",   c -> scriptDistributeRecordMapper.deleteBefore(c));
 
         // ---- 特殊清理（非 create_time 驱动，cutoff 参数不使用） ----
         // nginx_minute_stat 使用分批删除，避免大数据量锁表
@@ -207,6 +222,24 @@ public class DataCleanupScheduler {
         return new CleanupTask(tableName, cutoff -> action.getAsInt());
     }
 
+    /**
+     * 创建 create_time 驱动的清理任务。保留天数按表覆盖（easyops.data.cleanup.table-retain-days），
+     * 未配置的表回退到全局 retain-days；每个任务独立计算 cutoff。
+     */
+    private void addCreateTimeTask(String tableName, LongToIntFunction deleter) {
+        tasks.add(new CleanupTask(tableName, ignored -> {
+            int days = retainDaysFor(tableName);
+            long cutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            return deleter.apply(cutoff);
+        }));
+    }
+
+    /** 该表的保留天数：table-retain-days 优先，否则用全局 retain-days，最小 1 天 */
+    private int retainDaysFor(String tableName) {
+        Integer days = cleanupProperties.getTableRetainDays().get(tableName);
+        return days != null ? Math.max(1, days) : Math.max(1, retainDays);
+    }
+
     // ======================== 调度入口 ========================
 
     @Scheduled(cron = "${easyops.data.cleanup.cron:0 0 2 * * ?}")
@@ -243,7 +276,81 @@ public class DataCleanupScheduler {
             log.error("定时清理异常", e);
         } finally {
             distributedLock.releaseLock(LOCK_NAME);
+            if (autoRestart) {
+                maybeAutoRestart();
+            }
         }
+    }
+
+    /**
+     * 磁盘水位高时触发 server 优雅重启。
+     *
+     * 原理：H2 的 MVStore 在【数据库关闭时】会自动压缩回收空洞空间
+     * （实测：删除 90% 数据后保持连接打开文件不缩反涨，关闭连接自动压缩 64 倍）。
+     * 定时清理的 DELETE 只标记空闲页，运行中文件只增不减，
+     * 因此需要定期关闭数据库才能让文件真正变小 —— 这里用"自动重启 server"来实现。
+     *
+     * 注意：进程退出后必须由外部守护（systemd / docker --restart / 守护脚本）自动拉起，
+     * 否则服务会停止。该功能默认关闭，由 easyops.data.cleanup.auto-restart 开启。
+     */
+    private void maybeAutoRestart() {
+        try {
+            java.nio.file.Path dbDir = resolveDbDir();
+            java.nio.file.FileStore store = java.nio.file.Files.getFileStore(dbDir);
+            long total = store.getTotalSpace();
+            long usable = store.getUsableSpace();
+            int pct = (int) ((total - usable) * 100 / total);
+            log.info("磁盘水位检查（数据库所在盘: {}）: 使用率 {}%", dbDir, pct);
+            if (pct >= restartThresholdPct) {
+                log.warn("磁盘使用率 {}% >= 阈值 {}%，触发 server 自动重启以回收 H2 空洞空间（依赖外部守护自动拉起）",
+                        pct, restartThresholdPct);
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(3000);
+                    } catch (InterruptedException ignored) {
+                    }
+                    System.exit(0);
+                }, "h2-auto-restart").start();
+            } else {
+                log.info("磁盘使用率 {}% < 阈值 {}%，无需自动重启", pct, restartThresholdPct);
+            }
+        } catch (Exception e) {
+            log.warn("磁盘水位检查失败，跳过自动重启: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 解析数据库文件（ops.mv.db）实际所在目录。
+     * 来源是 spring.datasource.url（jdbc:h2:file:<路径>/ops;MODE=MySQL...），
+     * 确保水位判断针对的是【db 真实所在磁盘】，而不是进程工作目录所在盘。
+     */
+    private java.nio.file.Path resolveDbDir() {
+        String url = datasourceUrl;
+        if (url == null || url.isEmpty()) {
+            // 兜底：从已建连接拿真实 URL
+            try (java.sql.Connection c = jdbcTemplate.getDataSource().getConnection()) {
+                url = c.getMetaData().getURL();
+            } catch (Exception e) {
+                log.warn("无法获取数据源 URL: {}", e.getMessage());
+                return java.nio.file.Paths.get(System.getProperty("user.dir"));
+            }
+        }
+        int idx = url.indexOf("file:");
+        if (idx < 0) {
+            log.warn("数据源 URL 非 file 模式，回退到工作目录: {}", url);
+            return java.nio.file.Paths.get(System.getProperty("user.dir"));
+        }
+        String p = url.substring(idx + 5);
+        int semi = p.indexOf(';');
+        if (semi >= 0) {
+            p = p.substring(0, semi);
+        }
+        if (p.endsWith(".mv.db")) {
+            p = p.substring(0, p.length() - 6);
+        }
+        java.nio.file.Path path = java.nio.file.Paths.get(p).toAbsolutePath().normalize();
+        java.nio.file.Path dir = path.getParent();
+        return dir != null ? dir : path;
     }
 
     // ======================== 内部类型 ========================

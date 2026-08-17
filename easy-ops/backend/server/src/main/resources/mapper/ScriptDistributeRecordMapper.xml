@@ -24,4 +24,7 @@
         DELETE FROM script_distribute_record WHERE id = #{id}
         <if test="tenantId != null">AND tenant_id = #{tenantId}</if>
     </delete>
+    <delete id="deleteBefore">
+        DELETE FROM script_distribute_record WHERE create_time &lt; #{cutoff}
+    </delete>
 </mapper>

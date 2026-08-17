@@ -132,7 +132,14 @@ easyops:
       cron: "0 0 2 * * ?"
       # 默认保留天数（最小 1 天），应用到所有按 create_time 清理的表
       retain-days: 3
-      # 按表单独覆盖保留天数（可选），key 为表名，value 为保留天数
+      # 清理后自动重启 server（回收 H2 空洞空间：H2 在数据库关闭时自动压缩）。
+      # ⚠️ 前提：进程退出后必须由外部守护（systemd / docker --restart / 守护脚本）自动拉起，
+      #    否则服务会停止。默认 false 关闭。
+      auto-restart: false
+      # 磁盘使用率超过该值（%）时，清理完成后触发自动重启
+      restart-threshold-pct: 80
+      # 按表单独覆盖保留天数（可选），key 为表名（小写），value 为保留天数。
+      # 注意：nginx_* 统计/采样表不在此配置，统一走下方 nginx-traffic.minute-retain-days。
       table-retain-days:
         operation_log: 3
         file_access_log: 3
@@ -145,7 +152,7 @@ easyops:
         kb_recent_access: 3
         agent_upgrade_record: 3
         global_script_distribute_record: 3
-        nginx_minute_stat: 2
+        script_distribute_record: 3
 
   nginx-traffic:
     minute-retain-days: 2
