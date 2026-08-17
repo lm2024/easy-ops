@@ -65,7 +65,7 @@ class ProcessStatusControllerTest {
                 .param("jarName", "missing.jar"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.alive").value(false))
-            .andExpect(jsonPath("$.data.checkMethod").value("PS_GREP"));
+            .andExpect(jsonPath("$.data.checkMethod").value("PS_CWD"));
     }
 
     @Test
