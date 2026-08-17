@@ -187,6 +187,10 @@ echo "Bearer $TOKEN"
 - **Docker Agent 缺 `ps` 命令**：`eclipse-temurin:8-jdk` 不自带 `procps`，`ProcessStatusChecker.findPid()` 用 `ps aux | grep` 检测进程 PID 会静默失败。Dockerfile 需加 `RUN apt-get update && apt-get install -y --no-install-recommends procps && rm -rf /var/lib/apt/lists/*`，否则应用监控的 PID 和进程状态全部丢失
 - **心跳进程状态误判**：`NodeController.saveMonitorSnapshot()` 原逻辑先无条件设 `processStatus=RUNNING`（仅因 Agent 在线），再检查 `processes` 列表；若列表为空（未找到应用进程），状态保持 RUNNING 但 PID 为 null。修复：默认应设为 `STOPPED`，仅当 processes 列表中 `alive=true` 时才设为 RUNNING
 - **监控显示僵尸 PID（defunct）**：Agent 以 `exec java` 当 PID 1 时，被 `stop`/`restart` 杀掉的旧应用进程不会被回收，变成 `Z` 状态僵尸，仍出现在 `ps` 输出里。`HeartbeatDaemon.collectProcessMetrics()` 会把僵尸和应用新进程一起上报，监控可能显示**已死但未回收的旧 PID**（重启后 PID "没变" 的假象）。两层根治：① `ProcessStatusChecker.findPid` / `HeartbeatDaemon.listJavaProcesses` 增加 `isZombie(pid)` 过滤（读 `/proc/<pid>/stat` 第 3 字段 `Z` 则跳过）；② Dockerfile 用 `tini` 作 PID 1（`ENTRYPOINT ["/usr/bin/tini","--","/entrypoint.sh"]`），`entrypoint.sh` 用循环拉起 agent，僵尸由 tini 回收，且 agent 重启时应用进程被 tini 接管不会被杀。
+- **H2 删除不缩文件**：MVStore 的 DELETE 只标记空闲页，文件只增不减，且大事务 DELETE 会让文件反涨。压缩只在**数据库正常关闭**时自动发生（kill -9/崩溃不压缩，下次打开也不补）。规则：定时清理只控行数，压缩必须靠重启（详见下方章节）。
+- **H2 URL 是库名、磁盘上是库名.mv.db**：`jdbc:h2:file:.../ops` → 磁盘文件 `ops.mv.db`。解析文件路径要补 `.mv.db`；URL 带 `.mv.db` 会建 `ops.mv.db.mv.db` 空库。
+- **YAML map 不能用 @Value 读**：map 配置（如 `table-retain-days`）在 Environment 展开成扁平 key，`@Value` 读不到（死配置坑）。要用 `@ConfigurationProperties` 绑定。
+- **bash 变量后紧跟全角字符会 unbound**：`$tbl（`、`$DATA_DIR。` 会把全角标点并入变量名报 unbound。一律写 `${tbl}`、`${DATA_DIR}`。
 
 ### Nginx 流量监控 · 白名单与维度扩展（2026-08-08 新增）
 
@@ -199,9 +203,20 @@ echo "Bearer $TOKEN"
 
 启动后查日志关键字 **`启动路径`** 核对。
 
+## H2 数据库膨胀 · 启动压缩（2026-08-17）
+
+事故：`ops.mv.db` 膨胀到 10GB 占满磁盘、server 起不来。根因：**H2 删除不缩文件，压缩只发生在数据库正常关闭时**；运行中定时清理只控行数、控不了文件大小。
+
+规则：
+- **启动前压缩（已实现）**：`ServerApplication.compactBeforeStart()` 在 Spring 启动前执行 `SHUTDOWN COMPACT`。文件超 `COMPACT_THRESHOLD_MB`（环境变量，默认 256MB，0=每次强制）才压；日志看 `[compact] 压缩完成`。Java 内实现，start.sh/systemd/docker 全场景生效，脚本无需干预。
+- **运维**：每周 `./stop.sh && ./start.sh` 重启一次，重启即瘦身；重启前确认无其他进程连着库（8099 临时 server 等），否则压缩失败。
+- **坑**：① 解析 H2 URL 得库名，须补 `.mv.db` 再判断文件存在（否则静默跳过）；② 残留锁 `ops.mv.db.lock.db`（异常退出遗留）确认无进程占用后可删；③ `SHUTDOWN COMPACT` 末尾报 `already closed` 是无害提示，以文件变小为准；④ 大表 DELETE 用 LIMIT 分批（H2 2.2 子查询 LIMIT 正常），避免长锁。
+- **应急**：服务已因磁盘满起不来时，用 `scripts/rescue-h2.sh <data目录> [server.jar] [--yes]` 原地压缩；`scripts/prevent-disk-full.sh` 可做磁盘水位告警（可选）。
+
 ## 数据清理维护
 
-`DataCleanupScheduler` 统一管理 16 张流水表的定时清理（默认凌晨 2:00，保留 3 天）。cron、保留天数均在 `application.yml` 的 `easyops.data.cleanup` 下配置。
+`DataCleanupScheduler` 统一管理 21 张流水表的定时清理（默认凌晨 2:00，保留 3 天）。cron、保留天数均在 `application.yml` 的 `easyops.data.cleanup` 下配置。
+规则：`table-retain-days` 按表覆盖保留天数（@ConfigurationProperties 绑定，已生效）；`nginx_*` 系列不在此配置，统一走 `nginx-traffic.minute-retain-days`；新增表改 3 处见下。
 
 ### 新增清理表（需改 3 处）
 
