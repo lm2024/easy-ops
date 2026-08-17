@@ -49,3 +49,8 @@
 - 交付：`/Users/lm/Documents/GitHub/easy-ops/tenant-architecture-design.md`（基于真实代码/schema 逐模块盘点 + 两种方案对比 + 改动范围量化 + 分阶段路线）。
 - 结论：当前仅"项目级"隔离（`user_project_relation`+`SecurityContext`），无 tenant 概念；约 34 张业务表需加 `tenant_id`，~15 接口加过滤，2 个 WS 广播（`/ws/monitor`、`/ws/notification`）须按租户拆分。改动面广但机械、可分阶段。
 - 用户决策点：方案 A（仅加固项目级，不加租户）vs 方案 B（引入 tenant_id 行级隔离）。
+
+## H2 数据库膨胀救援（2026-08-17）
+- 现象：`ops.mv.db` 数月可膨胀到数 GB~10GB 占满磁盘，server 无法启动。根因：MVStore 删除不回收空间 + nginx 统计/监控快照/日志类表无限累积。
+- 救援：`scripts/rescue-h2.sh <data目录> [server.jar] [--yes]`（`KEEP_DAYS`=统计类保留天数默认7，`LOG_KEEP_DAYS`=日志类默认30）。停 server → DELETE 历史 → `SHUTDOWN COMPACT`。全程本地执行无需下载大文件；已验证 6.6M→304K。
+- 坑：H2 URL 不带 `.mv.db` 后缀；COMPACT 末尾 "already closed" 提示无害；bash 变量后跟全角字符须 `${}`。建议 cron 每周自动清理。

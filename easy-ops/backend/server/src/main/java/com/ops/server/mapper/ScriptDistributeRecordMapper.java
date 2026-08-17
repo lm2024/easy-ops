@@ -23,4 +23,7 @@ public interface ScriptDistributeRecordMapper {
     int updateStatus(@Param("id") Long id, @Param("status") Integer status, @Param("resultDetail") String resultDetail, @Param("tenantId") Long tenantId);
 
     int deleteById(@Param("id") Long id, @Param("tenantId") Long tenantId);
+
+    /** 定时清理：删除 create_time 早于 cutoff 的历史分发记录 */
+    int deleteBefore(@Param("cutoff") long cutoff);
 }

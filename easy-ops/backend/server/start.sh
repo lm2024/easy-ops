@@ -40,6 +40,9 @@ if [ -n "$PID" ]; then
     exit 0
 fi
 
+# 注：数据库启动前压缩由 Java 端处理（ServerApplication.compactBeforeStart），
+#     脚本无需干预；阈值可用环境变量 COMPACT_THRESHOLD_MB 调整。
+
 # ---- 启动服务 ----
 echo "Starting $JAR ..."
 echo "  Port: $SERVER_PORT"
