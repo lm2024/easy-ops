@@ -11,12 +11,15 @@ export const useAuthStore = defineStore('auth', () => {
   const tenantRole = ref<string | null>(localStorage.getItem('tenantRole'))
   const tenantName = ref<string | null>(localStorage.getItem('tenantName'))
 
-  /** 平台管理员（sys_user.role = admin） */
-  const isSuperAdmin = computed(() => (user.value?.role ?? role.value) === 'ADMIN')
+  /** 平台管理员（sys_user.role = admin，兼容大小写） */
+  const isSuperAdmin = computed(() => {
+    const r = (user.value?.role ?? role.value ?? '').toUpperCase()
+    return r === 'ADMIN' || r === 'SUPER_ADMIN'
+  })
   /** 租户管理员（tenant_user.role = TENANT_ADMIN） */
-  const isTenantAdmin = computed(() => tenantRole.value === 'TENANT_ADMIN')
+  const isTenantAdmin = computed(() => (tenantRole.value ?? '').toUpperCase() === 'TENANT_ADMIN')
   /** 只读 VIEWER */
-  const isViewer = computed(() => tenantRole.value === 'VIEWER')
+  const isViewer = computed(() => (tenantRole.value ?? '').toUpperCase() === 'VIEWER')
 
   function setToken(newToken: string) {
     token.value = newToken

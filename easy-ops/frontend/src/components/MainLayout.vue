@@ -66,9 +66,9 @@
             <bulb-outlined />
             <span>系统设置</span>
           </template>
-          <a-menu-item key="db-manage" v-if="authStore.isSuperAdmin"><database-outlined /><span>H2 表结构维护</span></a-menu-item>
+          <a-menu-item key="db-manage"><database-outlined /><span>H2 表结构维护</span></a-menu-item>
           <a-menu-item key="users"><team-outlined /><span>用户管理</span></a-menu-item>
-          <a-menu-item key="tenants" v-if="authStore.isSuperAdmin"><apartment-outlined /><span>租户管理</span></a-menu-item>
+          <a-menu-item key="tenants"><apartment-outlined /><span>租户管理</span></a-menu-item>
           <a-menu-item key="operations"><audit-outlined /><span>操作审计</span></a-menu-item>
         </a-sub-menu>
       </a-menu>
