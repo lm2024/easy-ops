@@ -137,11 +137,11 @@
           </a-form-item>
         </a-col>
         <a-col :span="8" v-if="formState.projectType === 'frontend'">
-          <a-form-item label="解压后目录名" name="frontendDirName">
-            <a-input v-model:value="formState.frontendDirName" placeholder="留空则解压到部署目录本身" />
-            <template #extra>
-              <span style="color: #888">选填。填写时 zip 解压到「部署目录/该目录名」；留空则直接解压到部署目录本身（适合 Nginx 根目录）</span>
-            </template>
+          <a-form-item label="解压规则">
+            <div style="line-height: 32px; color: #888; font-size: 12px">
+              <div>前端包 <code>xxx.zip</code> 解压到「部署目录/<b>xxx</b>/」同名文件夹</div>
+              <div>重部署只清理与包同名的文件夹，<b style="color:#d4380d">不会删除目录内其他文件</b></div>
+            </div>
           </a-form-item>
         </a-col>
       </a-row>
@@ -364,7 +364,7 @@ const guideColumns = computed(() => {
     { title: '应用名称', dataIndex: 'name', key: 'name', width: 80 },
     { title: 'Jar 包名', dataIndex: 'jarName', key: 'jarName', width: 90 },
     { title: '部署目录', dataIndex: 'deployDir', key: 'deployDir', width: 90 },
-    { title: '前端部署目录', dataIndex: 'frontendDir', key: 'frontendDir', width: 110 },
+    { title: '解压目录(与zip同名)', dataIndex: 'frontendDir', key: 'frontendDir', width: 130 },
     { title: '启停脚本', dataIndex: 'scripts', key: 'scripts', width: 100 },
     { title: '部署节点', dataIndex: 'nodeIds', key: 'nodeIds', width: 80 },
     { title: '说明', dataIndex: 'note', key: 'note' }
@@ -376,7 +376,7 @@ const guideData = computed(() => {
     return [
       { key: '1', field: '应用名称', required: '✅ 必填', note: '前端应用的显示名称' },
       { key: '2', field: '部署目录', required: '✅ 必填', note: '应用在服务器上的根目录' },
-      { key: '3', field: '解压后目录名', required: '⬜ 选填', note: '填写则解压到「部署目录/子目录名」；留空则直接解压到部署目录本身' },
+      { key: '3', field: '解压规则', required: '✅ 固定', note: 'xxx.zip 解压到「部署目录/xxx/」同名文件夹；重部署只清理同名文件，不动其他文件' },
       { key: '4', field: '部署节点', required: '✅ 必填', note: '选择要部署到的服务器节点' }
     ]
   }
@@ -398,10 +398,10 @@ const guideData = computed(() => {
       name: '✅ 必填',
       jarName: '⬜ 不用填',
       deployDir: '✅ 必填',
-      frontendDir: '⬜ 可留空（默认解压到部署目录本身）',
+      frontendDir: '⬜ 无需配置（解压到「部署目录/zip同名文件夹」）',
       scripts: '⬜ 不用填',
       nodeIds: '✅ 必填',
-      note: '上传 dist.zip 时自动解压到前端目录，供 Nginx 等使用'
+      note: '上传 xxx.zip 时自动解压到「部署目录/xxx/」，重部署只清理同名文件夹'
     },
     {
       key: '3',
@@ -409,7 +409,7 @@ const guideData = computed(() => {
       name: '✅ 必填',
       jarName: '✅ 必填',
       deployDir: '✅ 必填',
-      frontendDir: '⬜ 可留空',
+      frontendDir: '⬜ 无需配置',
       scripts: '✅ 填写',
       nodeIds: '✅ 必填',
       note: '上传 jar 走后端部署流程，上传 dist.zip 走前端部署流程'

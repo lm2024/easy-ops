@@ -391,20 +391,46 @@ public class FileController {
 
     private void unzipFile(File zipFile, File destDir) throws IOException {
         String destCanonical = destDir.getCanonicalPath();
+        // 智能解包：剥掉所有「非垃圾」文件条目的「最长共有目录前缀」（任意层数），
+        // 并过滤掉 macOS 元数据垃圾（__MACOSX/、.DS_Store、._*）。
+        // 这是 Netlify / Vercel / gh-pages 的标准约定，可正确处理：
+        //   - 扁平 zip（{index.html, app.css}）→ 直接展开
+        //   - 单层包裹（dist/index.html, dist/app.css）→ 剥 dist/，得 {index.html, app.css}
+        //   - 多层包裹（dist3/dist3/index.html, dist3/dist3/assets/...）→ 剥 dist3/dist3/，得 {index.html, assets/}
+        //   - 含 __MACOSX/、.DS_Store 的 zip → 过滤掉垃圾，不影响解包
+        // 目标目录（deployDir/{zipBaseName}）由调用层提供，此处只负责把 zip 内容净化解到目标。
+        String commonPrefix = computeCommonPrefixAndFilterJunk(zipFile);
         java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile));
         java.util.zip.ZipEntry entry;
         byte[] buffer = new byte[8192];
-        while ((entry = zis.getNextEntry()) != null) {
-            File outFile = new File(destDir, entry.getName());
-            // zip-slip 防护：拒绝 ../ 或绝对路径逃逸出目标目录
-            String outCanonical = outFile.getCanonicalPath();
-            if (!outCanonical.equals(destCanonical) && !outCanonical.startsWith(destCanonical + File.separator)) {
-                zis.close();
-                throw new IOException("zip 条目路径非法（越出目标目录）: " + entry.getName());
-            }
-            if (entry.isDirectory()) {
-                outFile.mkdirs();
-            } else {
+        int extractedCount = 0;
+        try {
+            while ((entry = zis.getNextEntry()) != null) {
+                String entryName = entry.getName();
+                if (entry.isDirectory()) {
+                    zis.closeEntry();
+                    continue;
+                }
+                if (isJunkEntry(entryName)) {
+                    // 跳过 macOS 资源叉、.DS_Store 等与部署无关的垃圾文件
+                    zis.closeEntry();
+                    continue;
+                }
+                // 剥壳：去掉所有文件共有的最长目录前缀
+                String effectiveName = entryName;
+                if (!commonPrefix.isEmpty() && entryName.startsWith(commonPrefix)) {
+                    effectiveName = entryName.substring(commonPrefix.length());
+                }
+                if (effectiveName.isEmpty()) {
+                    zis.closeEntry();
+                    continue;
+                }
+                File outFile = new File(destDir, effectiveName);
+                // zip-slip 防护：拒绝 ../ 或绝对路径逃逸出目标目录
+                String outCanonical = outFile.getCanonicalPath();
+                if (!outCanonical.equals(destCanonical) && !outCanonical.startsWith(destCanonical + File.separator)) {
+                    throw new IOException("zip 条目路径非法（越出目标目录）: " + entryName);
+                }
                 File parent = outFile.getParentFile();
                 if (parent != null && !parent.exists()) {
                     parent.mkdirs();
@@ -415,10 +441,80 @@ public class FileController {
                     fos.write(buffer, 0, len);
                 }
                 fos.close();
+                extractedCount++;
+                zis.closeEntry();
             }
-            zis.closeEntry();
+        } catch (java.util.zip.ZipException e) {
+            throw new IOException("不是有效的 zip 文件: " + zipFile.getAbsolutePath() + " (" + e.getMessage() + ")", e);
+        } finally {
+            zis.close();
         }
-        zis.close();
+        // 空包/垃圾文件防护：ZipInputStream 对无效内容可能不抛异常而直接返回 0 个条目，
+        // 若静默返回成功，旧版本目录已被删除而新目录为空，会造成线上应用丢失。
+        if (extractedCount == 0) {
+            throw new IOException("前端包为空或不是有效的 zip 文件（未解压出任何文件）: " + zipFile.getAbsolutePath());
+        }
+    }
+
+    /** macOS 资源叉、元数据垃圾：上传到 Linux 部署目标毫无意义，会污染目录并干扰解包判断 */
+    private static boolean isJunkEntry(String name) {
+        if (name.startsWith("__MACOSX/") || name.startsWith("__MACOSX\\")) {
+            return true;
+        }
+        int slash = Math.max(name.lastIndexOf('/'), name.lastIndexOf('\\'));
+        String base = slash >= 0 ? name.substring(slash + 1) : name;
+        if (base.equals(".DS_Store")) return true;
+        if (base.startsWith("._")) return true; // macOS AppleDouble sidecar
+        return false;
+    }
+
+    /**
+     * 扫描 zip 所有「非垃圾」文件条目，求它们路径的最长共有目录前缀（带尾斜杠）。
+     * 例：dist/index.html, dist/assets/x.css → "dist/"
+     * 例：dist3/dist3/index.html, dist3/dist3/assets/x.css → "dist3/dist3/"
+     * 例：index.html, app.css → ""（无共有前缀，原样展开）
+     * 返回值总是带尾斜杠的目录前缀（空字符串表示无前缀），便于直接 prefix.startsWith 判断。
+     */
+    private String computeCommonPrefixAndFilterJunk(File zipFile) throws IOException {
+        java.util.zip.ZipInputStream zis = null;
+        try {
+            zis = new java.util.zip.ZipInputStream(new java.io.FileInputStream(zipFile));
+            java.util.zip.ZipEntry entry;
+            String common = null;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    zis.closeEntry();
+                    continue;
+                }
+                String name = entry.getName();
+                if (isJunkEntry(name)) {
+                    zis.closeEntry();
+                    continue;
+                }
+                if (common == null) {
+                    common = name;
+                } else {
+                    common = longestCommonPrefix(common, name);
+                }
+                zis.closeEntry();
+                if (common.isEmpty()) break;
+            }
+            if (common == null) return "";
+            int lastSlash = Math.max(common.lastIndexOf('/'), common.lastIndexOf('\\'));
+            if (lastSlash < 0) return "";
+            return common.substring(0, lastSlash + 1);
+        } finally {
+            if (zis != null) zis.close();
+        }
+    }
+
+    private static String longestCommonPrefix(String a, String b) {
+        int min = Math.min(a.length(), b.length());
+        int i = 0;
+        while (i < min && a.charAt(i) == b.charAt(i)) {
+            i++;
+        }
+        return a.substring(0, i);
     }
 
     /**
