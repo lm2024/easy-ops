@@ -228,23 +228,10 @@ public class DeployController {
         String agentFilePath = agentFileDir + "/" + jarName;
         boolean isFrontendDeploy = "frontend".equalsIgnoreCase(version.getPackageType())
                 || jarName.toLowerCase().endsWith(".zip");
-        // 前端部署目录：
-        // 1) frontendDirName 非空（且非 "/"、"."）→ {deployDir}/{frontendDirName}（部署目录下子目录）
-        // 2) frontendDeployDir 非空 → 自定义绝对路径（如 Nginx 静态目录）
-        // 3) 都为空（或 frontendDirName 为 "/"、"."）→ deployDir 本身（dist 直接解压到部署目录根，适配 Nginx 根目录场景）
-        String dirName = project.getFrontendDirName() != null ? project.getFrontendDirName().trim() : "";
-        String frontendDir;
-        if (isFrontendDeploy && !dirName.isEmpty() && !dirName.equals("/") && !dirName.equals(".")) {
-            // 仅允许单段目录名：拒绝路径分隔符与 ".."，防止拼接出部署目录的上级路径被备份/清空
-            if (dirName.contains("/") || dirName.contains("\\") || dirName.equals("..") || dirName.startsWith("..")) {
-                throw new RuntimeException("解压后目录名非法（不能包含路径分隔符或 '..'）: " + dirName);
-            }
-            frontendDir = deployDir + "/" + dirName;
-        } else if (project.getFrontendDeployDir() != null && !project.getFrontendDeployDir().trim().isEmpty()) {
-            frontendDir = project.getFrontendDeployDir().trim();
-        } else {
-            frontendDir = deployDir;
-        }
+        // 前端部署目录（固定契约，不再支持自定义"解压后目录名"）：
+        // 上传的 zip 文件名为 xxx.zip → 解压后生成部署目录下同名文件夹 {deployDir}/xxx/。
+        // 重部署/清理只针对与 zip 同名的文件夹和同名 zip 文件，绝不动部署目录里的其他文件。
+        // 具体目标目录在下方前端分支内计算并校验，这里不做任何路径拼接。
 
         String startScript = project.getStartScript();
         if (startScript != null && project.getJarName() != null && !project.getJarName().isEmpty()) {
@@ -291,26 +278,26 @@ public class DeployController {
 
             try {
                 if (isFrontendDeploy) {
-                    // ===== 前端部署：校验 → 备份 → 清空 → 传输 → 解压，失败自动还原 =====
-                    String cleanTarget = frontendDir != null ? frontendDir.trim() : "";
+                    // ===== 前端部署：校验 → 备份同名文件夹 → 删除同名文件夹 → 传输 → 解压，失败自动还原 =====
+                    // 安全契约：只处理与上传 zip 同名的文件夹 {deployDir}/{baseName}，
+                    // 部署目录内的其他文件一律保留，绝不整目录清空。
+                    String baseName = zipBaseName(jarName);
+                    if (baseName.isEmpty() || baseName.equals(".") || baseName.equals("..")
+                            || baseName.contains("/") || baseName.contains("\\")) {
+                        throw new RuntimeException("前端包文件名非法，无法确定解压目录名（应为 xxx.zip 形式的简单文件名）: " + jarName);
+                    }
+                    String cleanTarget = trimTrailingSlash(deployDir) + "/" + baseName;
                     if (cleanTarget.isEmpty() || cleanTarget.equals("/")) {
                         throw new RuntimeException("前端部署目录非法（空或根目录 /），已终止部署，避免误删文件");
                     }
-                    // 去掉尾部斜杠：否则备份目录 {dir}.backup-{ts} 会建在目标目录内部，清空时被连带删除
-                    while (cleanTarget.length() > 1 && cleanTarget.endsWith("/")) {
-                        cleanTarget = cleanTarget.substring(0, cleanTarget.length() - 1);
-                    }
-                    if (cleanTarget.equals("/")) {
-                        throw new RuntimeException("前端部署目录非法（根目录 /），已终止部署，避免误删文件");
-                    }
-                    // 前端部署目录不得落在版本包存档目录内：deployDir 未配置时 frontendDir 会退化到版本目录，
-                    // 备份/清空会删掉 versions 版本包；deployDir 已配置时也不允许直接指向 {deployDir}/versions
+                    // 前端部署目录不得落在版本包存档目录内：deployDir 未配置时 cleanTarget 会退化到版本目录，
+                    // 备份/删除会删掉 versions 版本包；deployDir 已配置时也不允许直接指向 {deployDir}/versions
                     String versionStore = (project.getDeployDir() != null && !project.getDeployDir().trim().isEmpty())
                             ? deployDir + "/versions" : agentFileDir;
                     if (cleanTarget.equals(versionStore) || cleanTarget.startsWith(versionStore + "/")) {
                         throw new RuntimeException("前端部署目录非法（落在版本包存档目录内），请先为前端项目配置部署目录 deployDir");
                     }
-                    // 系统关键目录黑名单：防止 frontendDeployDir 误配成系统目录导致大面积删除
+                    // 系统关键目录黑名单：防止部署目录误配成系统目录导致大面积删除
                     String[] forbiddenRoots = {"/usr", "/etc", "/var", "/home", "/root", "/opt", "/bin", "/sbin",
                             "/lib", "/tmp", "/proc", "/sys", "/dev", "/app", "/app/data"};
                     for (String f : forbiddenRoots) {
@@ -327,16 +314,16 @@ public class DeployController {
                     if (!zipFile.exists()) throw new RuntimeException("前端包不存在: " + jarPath);
 
                     try {
-                        pushStep(deployId, nid, node.getName(), "running", "clean", nodeIdx, "正在备份并清理旧目录...");
-                        // 1) 备份现役目录到同级 {dir}.backup-{时间戳}（目录非空时才备份）。
-                        //    备份失败必须终止部署（不再清空），否则旧文件将无法还原
+                        pushStep(deployId, nid, node.getName(), "running", "clean", nodeIdx, "正在备份并清理同名旧目录 " + cleanTarget + " ...");
+                        // 1) 仅备份与 zip 同名的文件夹 {deployDir}/{baseName}（目录非空时才备份）。
+                        //    备份失败必须终止部署（不再删除），否则旧文件将无法还原
                         backupPath = cleanTarget + ".backup-" + System.currentTimeMillis();
                         String backupCmd = "if [ -d '" + shellQuote(cleanTarget) + "' ] && [ -n \"$(ls -A '" + shellQuote(cleanTarget) + "' 2>/dev/null)\" ]; then "
                                 + "mkdir -p '" + shellQuote(backupPath) + "' && cp -a '" + shellQuote(cleanTarget) + "/.' '" + shellQuote(backupPath) + "/'; fi";
                         execShellChecked(cleanUrl, backupCmd);
                         backupDone = true;
 
-                        // 2) 清空目标目录（连同隐藏文件）再重建
+                        // 2) 只删除与 zip 同名的文件夹（连同隐藏文件）再重建；部署目录里其他文件保留
                         String cleanCmd = "rm -rf '" + shellQuote(cleanTarget) + "' && mkdir -p '" + shellQuote(cleanTarget) + "'";
                         execShellChecked(cleanUrl, cleanCmd);
 
@@ -357,7 +344,7 @@ public class DeployController {
                         unzipReq.put("targetDir", cleanTarget);
                         checkAgentResult("解压前端包", restTemplate.postForEntity(unzipUrl, unzipReq, String.class));
 
-                        // 3) 部署成功：保留最近 3 份备份，清理更旧的
+                        // 3) 部署成功：保留最近 3 份同名备份，清理更旧的
                         String pruneCmd = "ls -dt '" + shellQuote(cleanTarget + ".backup-") + "'*/ 2>/dev/null | tail -n +4 | xargs -r rm -rf";
                         try {
                             execShellChecked(cleanUrl, pruneCmd);
@@ -372,10 +359,11 @@ public class DeployController {
                         nodeResult.put("success", true);
                         nodeResult.put("message", "前端部署成功");
                     } catch (Exception e) {
-                        // 失败自动还原备份（仅当备份已成功且部署未完成时）
+                        // 失败自动还原备份（仅当备份已成功且部署未完成时）。
+                        // 有备份 → 还原备份并删除备份；无备份（目标目录原本不存在/为空）→ 直接清理本次失败产生的目录，恢复部署前状态
                         if (backupDone && backupPath != null) {
                             try {
-                                String restoreCmd = "if [ -d '" + shellQuote(backupPath) + "' ]; then rm -rf '" + shellQuote(cleanTarget) + "' && mkdir -p '" + shellQuote(cleanTarget) + "' && cp -a '" + shellQuote(backupPath) + "/.' '" + shellQuote(cleanTarget) + "/' && rm -rf '" + shellQuote(backupPath) + "'; fi";
+                                String restoreCmd = "if [ -d '" + shellQuote(backupPath) + "' ]; then rm -rf '" + shellQuote(cleanTarget) + "' && mkdir -p '" + shellQuote(cleanTarget) + "' && cp -a '" + shellQuote(backupPath) + "/.' '" + shellQuote(cleanTarget) + "/' && rm -rf '" + shellQuote(backupPath) + "'; elif [ -d '" + shellQuote(cleanTarget) + "' ]; then rm -rf '" + shellQuote(cleanTarget) + "'; fi";
                                 execShellChecked(cleanUrl, restoreCmd);
                                 nodeLog.append("♻️ 部署失败，已自动还原备份\n");
                             } catch (Exception restoreEx) {
@@ -864,6 +852,28 @@ public class DeployController {
     /** shell 单引号转义，防止路径中的单引号破坏命令结构 */
     private static String shellQuote(String s) {
         return s.replace("'", "'\\''");
+    }
+
+    /**
+     * 取压缩包的基础名（去掉最后一个扩展名）：xxx.zip -> xxx；web.app.zip -> web.app；无扩展名则原样返回。
+     * 前端部署契约：解压后文件夹名 = zip 基础名。
+     */
+    private static String zipBaseName(String jarName) {
+        String name = jarName != null ? jarName.trim() : "";
+        int idx = name.lastIndexOf('.');
+        if (idx > 0) {
+            name = name.substring(0, idx);
+        }
+        return name.trim();
+    }
+
+    /** 去掉路径尾部斜杠（保留根目录 "/" 本身） */
+    private static String trimTrailingSlash(String path) {
+        String p = path;
+        while (p.length() > 1 && p.endsWith("/")) {
+            p = p.substring(0, p.length() - 1);
+        }
+        return p;
     }
 
     /**

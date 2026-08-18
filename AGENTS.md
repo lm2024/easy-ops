@@ -52,6 +52,19 @@ server,前端都归我管需要重启就告诉我
 
 Agent 版本路径：`{agent-data-path}/versions/{projectId}/{version}/`。
 
+### 前端部署契约（2026-08-18 定稿，改动前必读）
+
+**固定规则：解压目录名 = zip 文件名去掉扩展名，禁止自定义"解压后目录名"。**
+
+- 上传 `xxx.zip`（版本管理的 jarName）→ 解压到 `{deployDir}/xxx/`（部署目录下的同名文件夹）。
+- zip 本体传到 `{deployDir}/versions/{版本名}/xxx.zip`（版本存档，回滚/多版本保留）。
+- 重部署/清理**只处理**：`{deployDir}/xxx/`（同名文件夹）与本次上传的 zip；**部署目录内其他文件一律保留**，绝不做整目录 `rm -rf`。
+- 备份/还原也仅针对同名文件夹：`{deployDir}/xxx.backup-{时间戳}`，失败自动还原；首次部署失败（原本无同名目录）会清理产生的空目录。
+- 旧实现（frontendDirName / frontendDeployDir 决定目标目录、整目录清空）已废弃，`frontend_dir_name`/`frontend_deploy_dir` 列保留但部署不再使用。
+- 安全校验链（`DeployController` 前端分支）：文件名须为单段（无路径分隔符/`..`）→ 目标不得是系统目录 → 不得落在 `versions` 存档目录内。
+- Agent 解压校验：zip 未解压出任何文件（空包/伪 zip，`ZipInputStream` 对垃圾内容不抛异常）→ 直接报错，杜绝"旧版本被删后解压出空目录"的静默成功。
+- 前端项目必须配置部署目录 `deployDir`，否则部署报错终止。
+
 ## 关键配置
 
 敏感项走环境变量：`JWT_SECRET`、`AI_API_KEY`、`AGENT_TOKEN`。

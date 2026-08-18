@@ -24,8 +24,8 @@
         <a-descriptions-item label="部署目录" :span="1">
           <code>{{ project.deployDir || '-' }}</code>
         </a-descriptions-item>
-        <a-descriptions-item label="解压后目录名" :span="1" v-if="project.projectType === 'frontend'">
-          <a-tag color="cyan">{{ project.frontendDirName || '-' }}</a-tag>
+        <a-descriptions-item label="解压目录(与zip同名)" :span="1" v-if="project.projectType === 'frontend'">
+          <span style="font-size:12px;color:#888">xxx.zip → 「部署目录/xxx/」；重部署只清理同名文件</span>
         </a-descriptions-item>
         <a-descriptions-item label="部署节点" :span="1">
           <a-space wrap>
@@ -67,8 +67,8 @@
         <div style="font-size:13px;line-height:2">
           <div><b>部署目录</b>：<code>{{ project.deployDir || '未配置（将使用全局默认路径）' }}</code></div>
           <div v-if="project.projectType === 'frontend'">
-            <div><b>解压后目录名</b>：<code>{{ project.frontendDirName || '未配置（解压到部署目录本身）' }}</code></div>
-            <div><b>最终路径</b>：<code>{{ (project.deployDir || '{deployDir}') + (project.frontendDirName ? '/' + project.frontendDirName : '') }}/</code></div>
+            <div><b>解压目录（与 zip 同名）</b>：<code>{{ (project.deployDir || '{deployDir}') + '/{zip文件名去扩展名}/' }}</code></div>
+            <div style="margin-top:4px;font-size:12px;color:#888">💡 上传 <code>xxx.zip</code> 即解压到「部署目录/xxx/」；重部署/清理只针对与包同名的文件夹，<b style="color:#d4380d">不会删除目录内的其他文件</b>。</div>
           </div>
           <div v-else style="margin-top:6px;padding:8px 12px;background:#f6f8fa;border-radius:6px">
             <div style="font-weight:500;margin-bottom:4px">以此为基础自动派生的路径：</div>

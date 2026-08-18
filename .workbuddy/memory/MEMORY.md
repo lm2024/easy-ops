@@ -22,7 +22,13 @@
 
 ## 已部署应用（2026-08-08，全 3 节点成功）
 - **demo-test-app**（projectId=1, backend）：Spring Boot，监听 8082，有 `/hello`(200) `/health`。jar=`demo-test-app.jar`，deployDir=`/app/data/apps/demo-test-app`，startScript=`java -jar`，stopScript 用 `jps` 杀（容器缺 ps）。健康检查 port=8082 path=/hello。
-- **nginx-demo**（projectId=2, frontend）：纯静态前端，zip 解压到 `/app/data/apps/nginx-demo/html`。注意：agent 前端部署只分发文件，不在容器内起 nginx 服务。
+- **nginx-demo**（projectId=2, frontend）：纯静态前端。注意：agent 前端部署只分发文件，不在容器内起 nginx 服务。
+
+## 前端部署契约（2026-08-18 定稿，勿再改回）
+- **解压目录名 = zip 文件名去扩展名**：上传 `xxx.zip` → 解压到 `{deployDir}/xxx/`；`frontendDirName`/`frontendDeployDir` 部署时不再使用（列保留）；前端项目必须配置 deployDir。
+- **重部署只删同名文件**：仅备份/删除 `{deployDir}/{zip基础名}`（备份 `{zip基础名}.backup-{ts}`），目录内其他文件一律保留；失败还原有备份还原、无备份清理空目录。
+- agent 解压 0 文件（伪 zip）即报错触发还原（ZipInputStream 对垃圾内容不抛异常，靠条目计数兜底）。
+- 测试：`docs/260818-前端部署安全契约修复.md`；AGENTS.md「前端部署契约」章节。
 - 部署产物存于 `<data>/versions/1/`、`versions/2/`（勿删，回滚/重部署依赖）。
 
 ## 坑：Docker Agent 缺 ps
