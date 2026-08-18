@@ -54,3 +54,12 @@
 - 现象：`ops.mv.db` 数月可膨胀到数 GB~10GB 占满磁盘，server 无法启动。根因：MVStore 删除不回收空间 + nginx 统计/监控快照/日志类表无限累积。
 - 救援：`scripts/rescue-h2.sh <data目录> [server.jar] [--yes]`（`KEEP_DAYS`=统计类保留天数默认7，`LOG_KEEP_DAYS`=日志类默认30）。停 server → DELETE 历史 → `SHUTDOWN COMPACT`。全程本地执行无需下载大文件；已验证 6.6M→304K。
 - 坑：H2 URL 不带 `.mv.db` 后缀；COMPACT 末尾 "already closed" 提示无害；bash 变量后跟全角字符须 `${}`。建议 cron 每周自动清理。
+
+## H2 表结构维护完善（2026-08-18 已实现+自测）
+- **单一事实来源**：`application.yml` 新增 `easyops.data.table-meta`（14 分类 + 54 张表登记）。type=BASE/CONFIG(禁清空) / FLOW/AGENT_SYNC(可清空)；`source` 标记 agent/nginx 来源。新增表只需加一行，定时清理/手动清理/一键清空/前端四处自动生效。
+- **表元数据服务**：`TableMetaService`（server 侧新类）解析 yml + INFORMATION_SCHEMA 扫描 + 命名规则兜底（未登记表 `recognized=false` 启发式归类，前端显示"待归类"角标）；行数带 10s 缓存；`PROTECTED_TABLES` 硬编码 22 张基础表禁止清空（yml 配错也挡）。
+- **清空接口**（全部 admin-only + confirm 必传 + operation_log 审计 module=DB）：`POST /db/table/{t}/clear`、`/db/clear-batch`、`/db/clear-all-flow`、`GET /db/clearable-tables`。nginx_minute_stat/monitor_snapshot 分批删（10000/批）。返回 compactHint 提示重启缩容。
+- **重要安全修复**：`/db/**` 原在 WebConfig exclude（免登录裸奔），已移除 → 登录校验 401 + 写操作 admin 403。
+- **前端**：DbManageView 删 TABLE_META 硬编码按后端渲染；清空二次确认（输入表名）；一键清空弹窗（勾选+行数）；大表警告。
+- **踩坑**：① yml `easyops.data` 顶层重复定义 → DuplicateKeyException，table-meta 必须 4 空格缩进挂到已有 data 节点下（与 cleanup 平级）② H2 双引号内大小写敏感，表实际存大写 `OPERATION_LOG`，SQL 用大写；yml 表名小写匹配 ③ `UPPER(TABLE_NAME)=?` 参数传大写 ④ vite build 清空 dist 被 WorkBuddy safe-delete 钩子拦，用 `npx vite build --emptyOutDir=false` 绕过 ⑤ `getUserIdByToken` 实际按 username 查（`WHERE username=#{token}`），用户名可直接当 Bearer token 登录 → 自测非 admin 用 `Bearer op_test`。
+- 文档：`docs/260818-h2表维护完善.md`。

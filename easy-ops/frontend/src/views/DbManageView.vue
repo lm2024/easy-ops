@@ -9,14 +9,21 @@
       </template>
 
       <a-row :gutter="16" style="min-height: 500px">
-        <!-- 左侧：分类表列表 -->
+        <!-- 左侧：分类表列表（分类元数据来自后端 easyops.data.table-meta） -->
         <a-col :span="6">
           <div style="border-right: 1px solid #f0f0f0; padding-right: 12px; height: 100%">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
               <span style="font-weight:500;color:#666">数据表 ({{ tables.length }})</span>
-              <a-button size="small" type="link" @click="loadTables" :loading="tableLoading">
-                <reload-outlined />
-              </a-button>
+              <a-space size="4">
+                <a-tooltip title="一键清空数据（推荐先清流水表，保护表除外）">
+                  <a-button size="small" type="primary" danger ghost @click="openClearAll">
+                    <clear-outlined /> 清空
+                  </a-button>
+                </a-tooltip>
+                <a-button size="small" type="link" @click="loadTables(true)" :loading="tableLoading">
+                  <reload-outlined />
+                </a-button>
+              </a-space>
             </div>
             <!-- 全量操作 -->
             <div style="display:flex;gap:6px;margin-bottom:8px">
@@ -43,7 +50,11 @@
               <div v-for="group in filteredTableGroups" :key="group.category">
                 <!-- 分组标题 -->
                 <div class="db-group-title" @click="toggleGroup(group.category)">
-                  <span>{{ group.icon }} {{ group.category }}</span>
+                  <span>{{ group.icon }} {{ group.category }}
+                    <a-tag v-if="group.flowCount > 0" color="orange" style="margin-left:4px;font-size:10px;line-height:16px">
+                      流水 {{ group.flowCount }}
+                    </a-tag>
+                  </span>
                   <span style="color:#bbb;font-size:11px">{{ group.tables.length }}</span>
                 </div>
                 <!-- 分组内容 -->
@@ -54,8 +65,21 @@
                     :class="{ active: selectedTable === t.tableName }"
                     @click="selectTable(t.tableName)"
                   >
-                    <div style="font-size:13px;line-height:1.4">{{ t.label }}</div>
-                    <div style="font-size:11px;color:#999;margin-top:1px">{{ t.tableName }}</div>
+                    <div style="font-size:13px;line-height:1.4;display:flex;align-items:center;gap:4px">
+                      <span>{{ t.label }}</span>
+                      <a-tooltip v-if="!t.recognized" title="未在 easyops.data.table-meta 中登记，已按命名规则自动归类。建议管理员补充登记。">
+                        <warning-outlined style="color:#faad14;font-size:12px" />
+                      </a-tooltip>
+                      <a-tag v-if="t.type === 'FLOW'" color="orange" style="font-size:10px;line-height:14px;margin:0">流水</a-tag>
+                      <a-tag v-else-if="t.type === 'AGENT_SYNC'" color="geekblue" style="font-size:10px;line-height:14px;margin:0">Agent同步</a-tag>
+                      <a-tag v-if="!t.clearable" color="red" style="font-size:10px;line-height:14px;margin:0">保护</a-tag>
+                    </div>
+                    <div style="font-size:11px;color:#999;margin-top:1px;display:flex;justify-content:space-between;align-items:center">
+                      <span>{{ t.tableName }}</span>
+                      <span :class="['db-row-count', { 'db-row-count--large': t.rowCount > 100000 }]">
+                        {{ formatCount(t.rowCount) }}
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -74,6 +98,14 @@
             <a-tabs v-model:activeKey="activeTab" type="card">
               <!-- Tab 1: 数据查看 -->
               <a-tab-pane key="data" tab="📊 数据查看">
+                <!-- 大表警告 -->
+                <a-alert
+                  v-if="currentMeta?.rowCount > 100000"
+                  type="warning"
+                  show-icon
+                  style="margin-bottom:12px"
+                  :message="`当前表约 ${formatNumber(currentMeta.rowCount)} 行，为大数据量表。建议通过「清空数据」处理而非全量浏览。`"
+                />
                 <!-- 搜索 + 操作栏 -->
                 <div style="display:flex;justify-content:space-between;margin-bottom:12px">
                   <a-space>
@@ -91,6 +123,19 @@
                       <span style="font-size:12px;color:#888">共</span>
                     </a-badge>
                     <a-button type="primary" @click="showAddModal"><plus-outlined /> 新增</a-button>
+                    <!-- 清空数据：保护表禁用，其余任意表可清 -->
+                    <a-tooltip v-if="!currentMeta?.clearable" title="系统基础表受保护，禁止清空">
+                      <a-button danger disabled><delete-outlined /> 清空</a-button>
+                    </a-tooltip>
+                    <a-popconfirm
+                      v-else
+                      :title="currentMeta?.flowType ? '确认清空整张表？此操作不可恢复！' : '该表为配置/基础数据表，清空可能影响业务，确认继续？'"
+                      ok-text="继续"
+                      cancel-text="取消"
+                      @confirm="openClearTable"
+                    >
+                      <a-button danger><delete-outlined /> 清空</a-button>
+                    </a-popconfirm>
                   </a-space>
                 </div>
 
@@ -114,11 +159,9 @@
                   <template #bodyCell="{ column, record }">
                     <template v-if="column.key === '__actions'">
                       <a-space>
-                        <a-tooltip title="编辑">
-                          <a-button size="small" type="link" @click="showEditModal(record)">
-                            <edit-outlined />
-                          </a-button>
-                        </a-tooltip>
+                        <a-button size="small" type="link" @click="showEditModal(record)">
+                          <edit-outlined />
+                        </a-button>
                         <a-popconfirm title="确认删除此记录？" @confirm="handleDelete(record)">
                           <a-tooltip title="删除">
                             <a-button size="small" type="link" danger>
@@ -141,6 +184,26 @@
               <a-tab-pane key="structure" tab="📐 表结构">
                 <div v-if="structureLoading" style="text-align:center;padding:40px"><a-spin /></div>
                 <template v-else-if="structure">
+                  <!-- 元数据卡片 -->
+                  <a-card size="small" style="margin-bottom:16px">
+                    <a-descriptions :column="4" size="small">
+                      <a-descriptions-item label="分类">{{ currentMeta?.category || '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="类型">{{ typeLabel(currentMeta?.type) }}</a-descriptions-item>
+                      <a-descriptions-item label="数据来源">{{ currentMeta?.source || '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="保留天数">{{ currentMeta?.retainDays ?? '-' }}</a-descriptions-item>
+                      <a-descriptions-item label="行数">{{ currentMeta?.rowCount >= 0 ? formatNumber(currentMeta.rowCount) : '统计中...' }}</a-descriptions-item>
+                      <a-descriptions-item label="可清空">
+                        <a-tag :color="currentMeta?.clearable ? 'orange' : 'default'">
+                          {{ currentMeta?.clearable ? '是（流水表）' : '否（基础/配置表）' }}
+                        </a-tag>
+                      </a-descriptions-item>
+                      <a-descriptions-item label="识别状态">
+                        <a-tag :color="currentMeta?.recognized ? 'green' : 'warning'">
+                          {{ currentMeta?.recognized ? '已登记' : '未登记（自动归类）' }}
+                        </a-tag>
+                      </a-descriptions-item>
+                    </a-descriptions>
+                  </a-card>
                   <!-- DDL -->
                   <a-card title="DDL" size="small" style="margin-bottom:16px">
                     <pre class="ddl-pre">{{ structure.ddl }}</pre>
@@ -270,6 +333,98 @@
       </a-form>
     </a-modal>
 
+    <!-- 清空单表二次确认弹窗 -->
+    <a-modal
+      v-model:open="clearModalVisible"
+      title="清空表数据"
+      :ok-button-props="{ danger: true, disabled: clearConfirmText !== selectedTable }"
+      ok-text="确认清空"
+      cancel-text="取消"
+      @ok="handleClearTable"
+      :confirm-loading="clearLoading"
+    >
+      <a-alert
+        type="error"
+        show-icon
+        :message="`即将清空表 ${selectedTable}`"
+        :description="`该操作将删除表中全部 ${currentMeta?.rowCount >= 0 ? formatNumber(currentMeta.rowCount) : ''} 行数据，不可恢复！`"
+        style="margin-bottom:16px"
+      />
+      <p style="color:#888;font-size:13px">请输入表名 <b>{{ selectedTable }}</b> 以确认操作：</p>
+      <a-input v-model:value="clearConfirmText" :placeholder="'请输入 ' + selectedTable" />
+      <div v-if="clearResult" style="margin-top:12px">
+        <a-alert :type="clearResult.success ? 'success' : 'error'" :message="clearResult.message" show-icon />
+        <a-alert
+          v-if="clearResult.success"
+          type="info"
+          style="margin-top:8px"
+          message="提示：H2 数据文件不会立即缩小，建议在流量低谷重启 server 触发自动 COMPACT（或使用 scripts/rescue-h2.sh）"
+        />
+      </div>
+    </a-modal>
+
+    <!-- 一键清空弹窗 -->
+    <a-modal
+      v-model:open="clearAllVisible"
+      title="一键清空数据"
+      width="680px"
+      :footer="null"
+    >
+      <a-alert
+        type="error"
+        show-icon
+        message="危险操作"
+        description="以下为全部可清空的表（sys_user 等系统保护表已排除）。建议优先清空「流水」类型表，清空后数据不可恢复！"
+        style="margin-bottom:16px"
+      />
+      <div v-if="clearAllLoading" style="text-align:center;padding:30px"><a-spin /></div>
+      <template v-else>
+        <a-table
+          :data-source="clearAllTables"
+          :columns="clearAllColumns"
+          :pagination="false"
+          size="small"
+          :row-selection="{ selectedRowKeys: clearAllSelected, onChange: (keys: any) => clearAllSelected = keys }"
+          row-key="tableName"
+        />
+        <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:#888;font-size:12px">
+            已选 {{ clearAllSelected.length }} 张表
+          </span>
+          <a-space>
+            <a-button @click="clearAllSelected = clearAllTables.filter((t: any) => t.flowType).map((t: any) => t.tableName)">选流水表</a-button>
+            <a-button @click="clearAllSelected = clearAllTables.map((t: any) => t.tableName)">全选</a-button>
+            <a-popconfirm
+              title="确认清空所选表？此操作不可恢复！"
+              ok-text="确认"
+              cancel-text="取消"
+              @confirm="handleClearAll"
+            >
+              <a-button type="primary" danger :disabled="clearAllSelected.length === 0">
+                <clear-outlined /> 清空所选 ({{ clearAllSelected.length }})
+              </a-button>
+            </a-popconfirm>
+          </a-space>
+        </div>
+        <div v-if="clearAllResult" style="margin-top:16px">
+          <a-alert
+            :type="clearAllResult.success ? 'success' : 'warning'"
+            :message="clearAllResult.message"
+            show-icon
+          />
+          <a-table
+            v-if="clearAllResult.details"
+            :data-source="Object.entries(clearAllResult.details).map(([k, v]: any) => ({ table: k, result: v }))"
+            :columns="[{ title: '表', dataIndex: 'table' }, { title: '结果', dataIndex: 'result' }]"
+            :pagination="false"
+            size="small"
+            style="margin-top:8px"
+            row-key="table"
+          />
+        </div>
+      </template>
+    </a-modal>
+
     <!-- 全量导入弹窗 -->
     <a-modal
       v-model:open="fullImportVisible"
@@ -324,55 +479,15 @@ import {
   listTables, getTableStructure, queryTableData,
   insertRow, updateRow, deleteRow,
   exportTableData, importTableData,
-  exportAllData, importAllData
+  exportAllData, importAllData,
+  listClearableTables, clearTable, clearBatch, clearAllFlow
 } from '../api/db'
 import {
   DatabaseOutlined, TableOutlined, ReloadOutlined,
   PlusOutlined, EditOutlined, DeleteOutlined,
   DownloadOutlined, UploadOutlined, InboxOutlined,
-  CopyOutlined, SearchOutlined
+  CopyOutlined, SearchOutlined, ClearOutlined, WarningOutlined
 } from '@ant-design/icons-vue'
-
-// ====== 表分类元数据 ======
-const TABLE_META: Record<string, { label: string; category: string; icon: string }> = {
-  node_info:               { label: '节点信息',       category: '节点管理', icon: '🖥️' },
-  project_info:            { label: '项目信息',       category: '项目部署', icon: '🚀' },
-  version_package:         { label: '版本包',         category: '项目部署', icon: '🚀' },
-  deploy_record:           { label: '部署记录',       category: '项目部署', icon: '🚀' },
-  alarm_config:            { label: '告警配置',       category: '告警管理', icon: '🔔' },
-  alarm_record:            { label: '告警记录',       category: '告警管理', icon: '🔔' },
-  sys_user:                { label: '系统用户',       category: '用户权限', icon: '👤' },
-  user_project_relation:   { label: '用户项目关系',   category: '用户权限', icon: '👤' },
-  operation_log:           { label: '操作日志',       category: '审计日志', icon: '📋' },
-  file_access_log:         { label: '文件访问日志',   category: '审计日志', icon: '📋' },
-  sys_config:              { label: '系统配置',       category: '系统配置', icon: '⚙️' },
-  scheduler_lock:          { label: '调度锁',         category: '系统配置', icon: '⚙️' },
-  project_config_file:     { label: '项目配置文件',   category: '配置管理', icon: '📁' },
-  node_config_snapshot:    { label: '节点配置快照',   category: '配置管理', icon: '📁' },
-  config_distribute_record:{ label: '配置分发记录',   category: '配置管理', icon: '📁' },
-  project_log_profile:     { label: '日志配置',       category: '日志管理', icon: '📝' },
-  project_health_probe:    { label: '健康探针',       category: '监控诊断', icon: '📊' },
-  monitor_snapshot:        { label: '监控快照',       category: '监控诊断', icon: '📊' },
-  ai_diagnosis_record:     { label: 'AI诊断记录',     category: '监控诊断', icon: '📊' },
-  kb_category:             { label: '知识分类',       category: '知识库',   icon: '📚' },
-  kb_document:             { label: '知识文档',       category: '知识库',   icon: '📚' },
-  kb_document_version:     { label: '文档版本',       category: '知识库',   icon: '📚' },
-  kb_comment:              { label: '文档评论',       category: '知识库',   icon: '📚' },
-  kb_document_lock:        { label: '文档锁',         category: '知识库',   icon: '📚' },
-  kb_image:                { label: '知识库图片',     category: '知识库',   icon: '📚' },
-  kb_tag:                  { label: '知识标签',       category: '知识库',   icon: '📚' },
-  kb_document_tag:         { label: '文档标签关联',   category: '知识库',   icon: '📚' },
-  kb_document_permission:  { label: '文档权限',       category: '知识库',   icon: '📚' },
-  kb_template:             { label: '知识模板',       category: '知识库',   icon: '📚' },
-  kb_favorite:             { label: '知识收藏',       category: '知识库',   icon: '📚' },
-  kb_recent_access:        { label: '最近访问',       category: '知识库',   icon: '📚' },
-  kb_share_link:           { label: '分享链接',       category: '知识库',   icon: '📚' },
-  self_heal_policy:        { label: '自愈策略',       category: '自愈通知', icon: '🔧' },
-  self_heal_event:         { label: '自愈事件',       category: '自愈通知', icon: '🔧' },
-  notification_record:     { label: '通知记录',       category: '自愈通知', icon: '🔧' },
-  user_notification_state: { label: '用户通知状态',   category: '自愈通知', icon: '🔧' },
-}
-const CATEGORY_ORDER = ['节点管理','项目部署','告警管理','用户权限','审计日志','系统配置','配置管理','日志管理','监控诊断','知识库','自愈通知']
 
 // ====== 状态 ======
 const tables = ref<any[]>([])
@@ -382,28 +497,37 @@ const activeTab = ref('data')
 const tableSearch = ref('')
 const collapsedGroups = ref<Set<string>>(new Set())
 
-// 分组后的表列表（带搜索过滤）
+// 当前选中表的元数据
+const currentMeta = computed(() => {
+  if (!selectedTable.value) return null
+  return tables.value.find((t: any) => t.tableName === selectedTable.value) || null
+})
+
+// ====== 分组后的表列表（分类元数据来自后端） ======
 const filteredTableGroups = computed(() => {
   const keyword = tableSearch.value.toLowerCase().trim()
-  const groups: Record<string, any[]> = {}
+  const groups: Record<string, any> = {}
   for (const t of tables.value) {
     const name = t.tableName || ''
-    const meta = TABLE_META[name.toLowerCase()]
-    const label = meta?.label || name
-    const category = meta?.category || '其他'
-    const icon = meta?.icon || '📄'
+    const category = t.category || '其他'
+    const label = t.label || name
     // 搜索过滤：匹配英文表名或中文别名
     if (keyword && !name.toLowerCase().includes(keyword) && !label.includes(keyword)) continue
-    if (!groups[category]) groups[category] = []
-    groups[category].push({ tableName: name, label, category, icon })
+    if (!groups[category]) groups[category] = { tables: [], icon: t.icon || '📄', flowCount: 0 }
+    groups[category].tables.push({ ...t, label })
+    if (t.flowType) groups[category].flowCount++
   }
-  // 按预设顺序排列，未知分类放最后
-  const result: any[] = []
-  for (const cat of CATEGORY_ORDER) {
-    if (groups[cat]) result.push({ category: cat, icon: groups[cat][0].icon, tables: groups[cat] })
+  // 排序：保留后端分类顺序，未识别归"其他"放最后
+  const ordered: any[] = []
+  const seen = new Set<string>()
+  for (const t of tables.value) {
+    const cat = t.category || '其他'
+    if (!seen.has(cat) && groups[cat]) {
+      seen.add(cat)
+      ordered.push({ category: cat, ...groups[cat] })
+    }
   }
-  if (groups['其他']) result.push({ category: '其他', icon: '📄', tables: groups['其他'] })
-  return result
+  return ordered
 })
 
 function toggleGroup(category: string) {
@@ -411,6 +535,29 @@ function toggleGroup(category: string) {
   if (s.has(category)) s.delete(category)
   else s.add(category)
   collapsedGroups.value = s
+}
+
+function typeLabel(type?: string) {
+  const map: Record<string, string> = {
+    BASE: '基础表',
+    CONFIG: '配置表',
+    FLOW: '流水表',
+    AGENT_SYNC: 'Agent 同步表'
+  }
+  return type ? (map[type] || type) : '-'
+}
+
+function formatNumber(n: number) {
+  if (n === null || n === undefined) return '-'
+  return n.toLocaleString()
+}
+
+/** 行数缩写：≥1万 显示 x.x万，≥1亿 显示 x.x亿；否则千分位。rowCount=-1 显示 '-' */
+function formatCount(n: number) {
+  if (n === null || n === undefined || n < 0) return '-'
+  if (n >= 100000000) return (n / 100000000).toFixed(1) + '亿'
+  if (n >= 10000) return (n / 10000).toFixed(1) + '万'
+  return n.toLocaleString()
 }
 
 // ====== 数据查看 ======
@@ -452,6 +599,18 @@ const fullImportMode = ref('truncate')
 const fullImportLoading = ref(false)
 const fullImportResult = ref<any>(null)
 
+// ====== 清空数据 ======
+const clearModalVisible = ref(false)
+const clearConfirmText = ref('')
+const clearLoading = ref(false)
+const clearResult = ref<any>(null)
+
+const clearAllVisible = ref(false)
+const clearAllLoading = ref(false)
+const clearAllTables = ref<any[]>([])
+const clearAllSelected = ref<any[]>([])
+const clearAllResult = ref<any>(null)
+
 // 列定义（表结构展示用）
 const colColumns = [
   { title: '列名', dataIndex: 'name', key: 'name', width: 150 },
@@ -462,20 +621,24 @@ const colColumns = [
   { title: '自增', dataIndex: 'autoInc', key: 'autoInc', width: 80 }
 ]
 
+const clearAllColumns = [
+  { title: '表名', dataIndex: 'tableName', key: 'tableName', width: 180 },
+  { title: '别名', dataIndex: 'label', key: 'label', width: 120 },
+  { title: '分类', dataIndex: 'category', key: 'category', width: 100 },
+  { title: '类型', key: 'type', width: 90, customRender: ({ record }: any) => typeLabel(record.type) },
+  { title: '行数', key: 'rowCount', width: 90, customRender: ({ record }: any) => formatNumber(record.rowCount) },
+  { title: '推荐', key: 'flowType', width: 70, customRender: ({ record }: any) => record.flowType ? '流水' : '-' }
+]
+
 // ====== 方法 ======
 
 function showTotalFn(total: number) { return "共 " + total + " 条" }
-async function loadTables() {
+
+async function loadTables(withRowCount = true) {
   tableLoading.value = true
-  console.log('[DbManage] 加载表列表...')
   try {
-    const res = await listTables()
+    const res = await listTables(withRowCount)
     tables.value = res.data || []
-    console.log('[DbManage] 表列表加载成功: 共', tables.value.length, '张表')
-    if (tables.value.length > 0) {
-      console.log('[DbManage] 首张表字段:', Object.keys(tables.value[0]))
-      console.log('[DbManage] 首张表数据:', JSON.stringify(tables.value[0]))
-    }
   } catch (e: any) {
     console.error('[DbManage] 加载表列表失败:', e?.message, e)
     message.error('加载表列表失败: ' + (e?.message || ''))
@@ -485,25 +648,18 @@ async function loadTables() {
 }
 
 async function selectTable(name: string) {
-  console.log('[DbManage] 选择表:', name)
   selectedTable.value = name
   activeTab.value = 'data'
-  console.log('[DbManage] 开始并行加载表结构和数据...')
+  clearResult.value = null
   await Promise.all([loadStructure(), loadData(1)])
-  console.log('[DbManage] 表结构和数据加载完成')
 }
 
 async function loadStructure() {
   if (!selectedTable.value) return
-  console.log('[DbManage] 加载表结构: 表名=', selectedTable.value)
   structureLoading.value = true
   try {
     const res = await getTableStructure(selectedTable.value)
     structure.value = res.data
-    console.log('[DbManage] 表结构加载成功:', JSON.stringify(structure.value).slice(0, 500))
-    console.log('[DbManage] 主键列:', structure.value?.primaryKey)
-    console.log('[DbManage] 列数:', structure.value?.columns?.length)
-    console.log('[DbManage] 行数:', structure.value?.rowCount)
   } catch (e: any) {
     console.error('[DbManage] 表结构加载失败:', e?.message, e)
     message.error('加载表结构失败: ' + (e?.message || ''))
@@ -516,17 +672,9 @@ async function loadData(page?: number) {
   if (!selectedTable.value) return
   if (page) dataPage.value = page
   dataLoading.value = true
-  console.log('[DbManage] 加载数据: 表=', selectedTable.value, '页码=', dataPage.value, '每页=', dataPageSize.value, '搜索=', searchText.value)
   try {
     const res = await queryTableData(selectedTable.value, dataPage.value, dataPageSize.value, searchText.value)
     const d = res.data
-    console.log('[DbManage] 查询数据返回:', d)
-    console.log('[DbManage] 列定义:', d.columns)
-    console.log('[DbManage] 行数:', d.rows?.length, '总行数:', d.total)
-    if (d.rows?.length > 0) {
-      console.log('[DbManage] 首行数据:', d.rows[0])
-      console.log('[DbManage] 首行字段:', Object.keys(d.rows[0]))
-    }
     // 将列名转为驼峰以匹配行数据的驼峰 key（后端 toCamelCaseKeys 会把 ID→id, SMTP_HOST→smtpHost）
     const toCamel = (s: string) => s.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase())
     dataColumns.value = [
@@ -545,10 +693,6 @@ async function loadData(page?: number) {
     columnNames.value = (d.columns || []).map((c: any) => c.name)
     dataRows.value = (d.rows || []).map((row: any, idx: number) => ({ ...row, __row_index: idx }))
     dataTotal.value = d.total || 0
-    console.log('[DbManage] 表格渲染: 列数=', dataColumns.value.length, '行数=', dataRows.value.length, '总行数=', dataTotal.value)
-    if (dataRows.value.length > 0) {
-      console.log('[DbManage] 渲染首行:', dataRows.value[0])
-    }
   } catch (e: any) {
     console.error('[DbManage] 查询数据失败:', e?.message, e)
     message.error('查询数据失败: ' + (e?.message || ''))
@@ -588,8 +732,6 @@ function showEditModal(record: any) {
   const pk = rawPk ? toCamel(rawPk) : ''
   editPrimaryKey.value = pk || ''
   editRowId.value = pk ? String(record[pk] ?? '') : ''
-  console.log('[DbManage] 编辑记录: 原始主键列=', rawPk, '转驼峰=', pk, '主键值=', editRowId.value)
-  console.log('[DbManage] 编辑记录: record 字段=', Object.keys(record))
   editModalVisible.value = true
 }
 
@@ -603,11 +745,6 @@ async function handleSave() {
       if (data[k] === '' || data[k] === undefined) delete data[k]
     })
     delete data.__row_index
-    console.log('[DbManage] 保存: 模式=', editMode.value, '表=', selectedTable.value, '数据=', data)
-    if (editMode.value === 'edit') {
-      console.log('[DbManage] 保存: 主键列=', editPrimaryKey.value, '主键值=', editRowId.value)
-    }
-
     if (editMode.value === 'add') {
       await insertRow(selectedTable.value, data)
       message.success('新增成功')
@@ -631,7 +768,6 @@ async function handleDelete(record: any) {
   const rawPk = structure.value?.primaryKey?.[0]
   const pk = rawPk ? toCamel(rawPk) : ''
   const id = pk ? String(record[pk] ?? '') : String(record[Object.keys(record)[0]] ?? '')
-  console.log('[DbManage] 删除: 表=', selectedTable.value, '原始主键=', rawPk, '转驼峰=', pk, 'id=', id)
   try {
     await deleteRow(selectedTable.value, id)
     message.success('删除成功')
@@ -646,11 +782,9 @@ async function handleDelete(record: any) {
 async function handleExport() {
   if (!selectedTable.value) return
   exportLoading.value = true
-  console.log('[DbManage] 导出数据: 表=', selectedTable.value)
   try {
     const res = await exportTableData(selectedTable.value)
     const data = res.data
-    console.log('[DbManage] 导出成功: 行数=', data?.rowCount, '列数=', data?.columns?.length)
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -668,7 +802,6 @@ async function handleExport() {
 
 // ====== 导入 ======
 function handleBeforeUpload(file: File): boolean {
-  console.log('[DbManage] 读取导入文件:', file.name, '大小:', file.size)
   const reader = new FileReader()
   reader.onload = (e) => {
     try {
@@ -677,14 +810,11 @@ function handleBeforeUpload(file: File): boolean {
       if (Array.isArray(rows)) {
         importPreview.value = rows
         importRawData.value = json
-        console.log('[DbManage] 导入文件解析成功: 行数=', rows.length, '首行=', rows[0])
         message.success('已读取 ' + rows.length + ' 条数据')
       } else {
-        console.error('[DbManage] 导入文件格式错误: 缺少 rows 数组')
         message.error('JSON 格式错误：需要 rows 数组')
       }
     } catch (err) {
-      console.error('[DbManage] 导入文件解析失败:', err)
       message.error('JSON 解析失败，请检查文件格式')
     }
   }
@@ -697,11 +827,9 @@ async function handleImport() {
   importLoading.value = true
   importResult.value = null
   const rows = importRawData.value.rows || importRawData.value
-  console.log('[DbManage] 导入数据: 表=', selectedTable.value, '模式=', importMode.value, '行数=', rows.length)
   try {
     const res = await importTableData(selectedTable.value, importMode.value, rows)
     importResult.value = res.data
-    console.log('[DbManage] 导入成功:', res.data)
     message.success(res.data?.message || '导入完成')
     await loadData(1)
   } catch (e: any) {
@@ -718,14 +846,92 @@ function resetImport() {
   importResult.value = null
 }
 
+// ====== 清空单表 ======
+function openClearTable() {
+  clearModalVisible.value = true
+  clearConfirmText.value = ''
+  clearResult.value = null
+}
+
+async function handleClearTable() {
+  if (!selectedTable.value) return
+  clearLoading.value = true
+  try {
+    const res = await clearTable(selectedTable.value, true)
+    const data = res.data
+    clearResult.value = {
+      success: true,
+      message: `已清空表 ${selectedTable.value}，删除 ${data?.deleted ?? 0} 行`
+    }
+    message.success('清空成功')
+    await Promise.all([loadData(1), loadStructure(), loadTables(true)])
+  } catch (e: any) {
+    clearResult.value = {
+      success: false,
+      message: '清空失败: ' + (e?.response?.data?.message || e?.message || '')
+    }
+    message.error('清空失败')
+  } finally {
+    clearLoading.value = false
+  }
+}
+
+// ====== 一键清空 ======
+async function openClearAll() {
+  clearAllVisible.value = true
+  clearAllLoading.value = true
+  clearAllResult.value = null
+  clearAllSelected.value = []
+  try {
+    const res = await listClearableTables()
+    clearAllTables.value = res.data || []
+    // 默认勾选"推荐清空"的流水表/Agent同步表
+    clearAllSelected.value = clearAllTables.value.filter((t: any) => t.flowType).map((t: any) => t.tableName)
+  } catch (e: any) {
+    message.error('加载可清空表失败: ' + (e?.message || ''))
+  } finally {
+    clearAllLoading.value = false
+  }
+}
+
+async function handleClearAll() {
+  if (clearAllSelected.value.length === 0) return
+  clearAllResult.value = null
+  try {
+    if (clearAllSelected.value.length === clearAllTables.value.length) {
+      const res = await clearAllFlow(true)
+      const data = res.data
+      clearAllResult.value = {
+        success: true,
+        message: `已一键清空全部可清空表，共删除 ${data?.totalDeleted ?? 0} 行`,
+        details: data?.details
+      }
+    } else {
+      const res = await clearBatch(clearAllSelected.value, true)
+      const data = res.data
+      clearAllResult.value = {
+        success: true,
+        message: `已清空 ${clearAllSelected.value.length} 张表，共删除 ${data?.totalDeleted ?? 0} 行`,
+        details: data?.details
+      }
+    }
+    message.success('清空完成')
+    await Promise.all([loadTables(true), loadStructure()])
+  } catch (e: any) {
+    clearAllResult.value = {
+      success: false,
+      message: '清空失败: ' + (e?.response?.data?.message || e?.message || '')
+    }
+    message.error('清空失败')
+  }
+}
+
 // ====== 全量导入导出 ======
 async function handleFullExport() {
   fullExportLoading.value = true
-  console.log('[DbManage] 全量导出: 开始')
   try {
     const res = await exportAllData()
     const data = res.data
-    console.log('[DbManage] 全量导出成功: 表数=', data?.tableCount, '总行数=', data?.totalRows)
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -743,7 +949,6 @@ async function handleFullExport() {
 }
 
 function handleFullImportUpload(file: File): boolean {
-  console.log('[DbManage] 全量导入: 读取文件', file.name, '大小:', file.size)
   const reader = new FileReader()
   reader.onload = async (e) => {
     try {
@@ -754,11 +959,9 @@ function handleFullImportUpload(file: File): boolean {
       }
       const tableCount = Object.keys(json.tables).length
       const totalRows = Object.values(json.tables).reduce((sum: number, t: any) => sum + (t.rows?.length || 0), 0)
-      console.log('[DbManage] 全量导入: 解析成功 表数=', tableCount, '总行数=', totalRows)
       fullImportResult.value = { tableCount, totalRows, fileName: file.name, json }
       message.success(`已读取 ${tableCount} 张表, ${totalRows} 行数据`)
     } catch (err) {
-      console.error('[DbManage] 全量导入: 解析失败', err)
       message.error('JSON 解析失败，请检查文件格式')
     }
   }
@@ -768,16 +971,13 @@ function handleFullImportUpload(file: File): boolean {
 
 async function handleFullImport() {
   if (!fullImportResult.value?.json) return
-  const tableCount = Object.keys(fullImportResult.value.json.tables).length
   fullImportLoading.value = true
-  console.log('[DbManage] 全量导入: 模式=', fullImportMode.value, '表数=', tableCount)
   try {
     const res = await importAllData(fullImportMode.value, fullImportResult.value.json.tables)
-    console.log('[DbManage] 全量导入成功:', res.data)
     message.success(res.data?.message || '全量导入完成')
     fullImportVisible.value = false
     fullImportResult.value = null
-    await loadTables()
+    await loadTables(true)
   } catch (e: any) {
     console.error('[DbManage] 全量导入失败:', e?.response?.data || e?.message, e)
     message.error('全量导入失败: ' + (e?.response?.data?.message || e?.message || ''))
@@ -793,7 +993,7 @@ function copyText(text: string) {
 }
 
 onMounted(() => {
-  loadTables()
+  loadTables(true)
 })
 </script>
 
@@ -820,6 +1020,16 @@ onMounted(() => {
 }
 .db-group-title:first-child { margin-top: 0; }
 .db-group-title:hover { background: #fafafa; }
+.db-row-count {
+  color: #bbb;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.db-row-count--large {
+  color: #fa8c16;
+  font-weight: 600;
+}
 .db-table-item {
   padding: 7px 10px;
   border-radius: 6px;

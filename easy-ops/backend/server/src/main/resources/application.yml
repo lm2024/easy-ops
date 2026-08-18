@@ -154,8 +154,105 @@ easyops:
         global_script_distribute_record: 3
         script_distribute_record: 3
 
+
+  # =============================================================================
+  # 表元数据（表分类/识别/清空策略的单一事实来源）
+  # 前端 DbManage 与 /db/* 接口全部基于此渲染，新增表只需在此加一行。
+  # type 取值：
+  #   BASE      基础数据表（用户/节点/项目/租户/配置...），禁止清空
+  #   CONFIG    配置/状态表（探针/锁/策略...），禁止清空
+  #   FLOW      流水表（日志/统计/记录...），可一键清空
+  #   AGENT_SYNC agent 同步上报表（快照/上报数据...），可一键清空
+  # source 可选：标记数据来源（agent/nginx/script/kb...）
+  # =============================================================================
+    table-meta:
+      categories:
+        node:     { label: "节点管理",   icon: "🖥️" }
+        project:  { label: "项目部署",   icon: "🚀" }
+        alarm:    { label: "告警管理",   icon: "🔔" }
+        user:     { label: "用户权限",   icon: "👤" }
+        audit:    { label: "审计日志",   icon: "📋" }
+        sys:      { label: "系统配置",   icon: "⚙️" }
+        config:   { label: "配置管理",   icon: "📁" }
+        log:      { label: "日志管理",   icon: "📝" }
+        monitor:  { label: "监控诊断",   icon: "📊" }
+        kb:       { label: "知识库",     icon: "📚" }
+        heal:     { label: "自愈通知",   icon: "🔧" }
+        nginx:    { label: "Nginx 流量", icon: "🌐" }
+        script:   { label: "脚本分发",   icon: "🧩" }
+        tenant:   { label: "租户管理",   icon: "🏢" }
+      tables:
+        # ---- 租户管理 ----
+        tenant:               { label: "租户",             category: tenant,  type: BASE }
+        tenant_user:          { label: "租户用户",         category: tenant,  type: BASE }
+        # ---- 用户权限 ----
+        sys_user:             { label: "系统用户",         category: user,    type: BASE }
+        user_project_relation: { label: "用户项目关系",     category: user,    type: BASE }
+        # ---- 节点管理 ----
+        node_info:            { label: "节点信息",         category: node,    type: BASE }
+        agent_upgrade_record: { label: "Agent 升级记录",   category: node,    type: FLOW }
+        node_transfer_application: { label: "节点传输应用", category: node,    type: AGENT_SYNC, source: agent }
+        # ---- 项目部署 ----
+        project_info:         { label: "项目信息",         category: project, type: BASE }
+        version_package:      { label: "版本包",           category: project, type: BASE }
+        deploy_record:        { label: "部署记录",         category: project, type: FLOW }
+        # ---- 告警管理 ----
+        alarm_config:         { label: "告警配置",         category: alarm,   type: BASE }
+        alarm_record:         { label: "告警记录",         category: alarm,   type: FLOW }
+        # ---- 审计日志 ----
+        operation_log:        { label: "操作日志",         category: audit,   type: FLOW }
+        file_access_log:      { label: "文件访问日志",     category: audit,   type: FLOW }
+        # ---- 系统配置 ----
+        sys_config:           { label: "系统配置",         category: sys,     type: BASE }
+        scheduler_lock:       { label: "调度锁",           category: sys,     type: CONFIG }
+        # ---- 配置管理 ----
+        project_config_file:  { label: "项目配置文件",     category: config,  type: BASE }
+        node_config_snapshot: { label: "节点配置快照",     category: config,  type: AGENT_SYNC, source: agent }
+        config_distribute_record: { label: "配置分发记录", category: config,  type: FLOW }
+        # ---- 日志管理 ----
+        project_log_profile:  { label: "日志配置",         category: log,     type: BASE }
+        # ---- 监控诊断 ----
+        project_health_probe: { label: "健康探针",         category: monitor, type: BASE }
+        monitor_snapshot:     { label: "监控快照",         category: monitor, type: FLOW, source: agent }
+        ai_diagnosis_record:  { label: "AI 诊断记录",      category: monitor, type: FLOW }
+        # ---- 知识库 ----
+        kb_category:          { label: "知识分类",         category: kb,      type: BASE }
+        kb_document:          { label: "知识文档",         category: kb,      type: BASE }
+        kb_document_version:  { label: "文档版本",         category: kb,      type: BASE }
+        kb_comment:           { label: "文档评论",         category: kb,      type: BASE }
+        kb_document_lock:     { label: "文档锁",           category: kb,      type: CONFIG }
+        kb_image:             { label: "知识库图片",       category: kb,      type: BASE }
+        kb_tag:               { label: "知识标签",         category: kb,      type: BASE }
+        kb_document_tag:      { label: "文档标签关联",     category: kb,      type: BASE }
+        kb_document_permission: { label: "文档权限",       category: kb,      type: BASE }
+        kb_template:          { label: "知识模板",         category: kb,      type: BASE }
+        kb_favorite:          { label: "知识收藏",         category: kb,      type: FLOW }
+        kb_recent_access:     { label: "最近访问",         category: kb,      type: FLOW }
+        kb_share_link:        { label: "分享链接",         category: kb,      type: FLOW }
+        # ---- 自愈通知 ----
+        self_heal_policy:     { label: "自愈策略",         category: heal,    type: BASE }
+        self_heal_event:      { label: "自愈事件",         category: heal,    type: FLOW }
+        notification_record:  { label: "通知记录",         category: heal,    type: FLOW }
+        user_notification_state: { label: "用户通知状态",  category: heal,    type: FLOW }
+        # ---- Nginx 流量 ----
+        nginx_access_source:  { label: "访问源",           category: nginx,   type: BASE }
+        nginx_source_whitelist: { label: "白名单",         category: nginx,   type: BASE }
+        nginx_traffic_alarm_rule: { label: "流量告警规则", category: nginx,   type: BASE }
+        nginx_minute_stat:    { label: "分钟统计",         category: nginx,   type: FLOW, source: nginx }
+        nginx_ip_stat:        { label: "IP 统计",          category: nginx,   type: FLOW, source: nginx }
+        nginx_ua_stat:        { label: "UA 统计",          category: nginx,   type: FLOW, source: nginx }
+        nginx_referer_stat:   { label: "来源统计",         category: nginx,   type: FLOW, source: nginx }
+        nginx_request_sample: { label: "请求采样",         category: nginx,   type: FLOW, source: nginx }
+        # ---- 脚本分发 ----
+        global_script_file:   { label: "全局脚本文件",     category: script,  type: BASE }
+        global_script_snapshot: { label: "全局脚本快照",   category: script,  type: FLOW }
+        global_script_distribute_record: { label: "全局脚本分发记录", category: script, type: FLOW }
+        project_script_file:  { label: "项目脚本文件",     category: script,  type: BASE }
+        node_script_snapshot: { label: "节点脚本快照",     category: script,  type: AGENT_SYNC, source: agent }
+        script_distribute_record: { label: "脚本分发记录", category: script,  type: FLOW }
   nginx-traffic:
     minute-retain-days: 2
+
 
   auth:
     auto-login-enabled: ${AUTO_LOGIN_ENABLED:false}

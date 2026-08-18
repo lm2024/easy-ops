@@ -1,6 +1,11 @@
 package com.ops.server.controller;
 
+import com.ops.common.constant.ErrorCode;
+import com.ops.common.model.OperationLogModel;
 import com.ops.common.response.Result;
+import com.ops.server.interceptor.AuthInterceptor;
+import com.ops.server.mapper.OperationLogMapper;
+import com.ops.server.service.TableMetaService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -9,12 +14,16 @@ import org.springframework.jdbc.support.rowset.SqlRowSet;
 import org.springframework.jdbc.support.rowset.SqlRowSetMetaData;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import javax.sql.DataSource;
 import java.util.*;
 
 /**
  * H2 数据库表结构维护控制器
- * 提供表列表、表结构、数据 CRUD、导入导出功能
+ * 提供表列表（含分类/识别元数据）、表结构、数据 CRUD、导入导出、一键清空功能
+ *
+ * 安全模型：本控制器整体仅 admin 可写（新增/修改/删除/清空/导入），
+ * 只读查询（列表/结构/数据）需登录即可。前端菜单已按 isSuperAdmin 门控。
  */
 @RestController
 @RequestMapping("/db")
@@ -24,6 +33,15 @@ public class H2DataController {
 
     @Autowired
     private DataSource dataSource;
+
+    @Autowired
+    private TableMetaService tableMetaService;
+
+    @Autowired
+    private AuthInterceptor authInterceptor;
+
+    @Autowired
+    private OperationLogMapper operationLogMapper;
 
     private JdbcTemplate jdbc;
 
@@ -35,28 +53,16 @@ public class H2DataController {
     // ======================== 表列表 ========================
 
     /**
-     * GET /api/db/tables - 列出所有业务表
+     * GET /api/db/tables - 列出所有业务表（含分类/识别/清空策略元数据）
+     *
+     * 返回字段：tableName / label / category / categoryKey / icon / type
+     *          / source / retainDays / rowCount / clearable / recognized
+     * type: BASE / CONFIG / FLOW / AGENT_SYNC
      */
     @GetMapping("/tables")
-    public Result<?> listTables() {
-        List<Map<String, Object>> tables = jdbc.queryForList(
-                "SELECT TABLE_NAME, REMARKS " +
-                "FROM INFORMATION_SCHEMA.TABLES " +
-                "WHERE TABLE_SCHEMA != 'INFORMATION_SCHEMA' " +
-                "ORDER BY TABLE_NAME");
-        tables = toCamelCaseKeys(tables);
-        // H2 不同版本返回列名不同: TABLE_NAME→tableName, TABLENAME→tablename
-        // 统一标准化为 tableName
-        for (Map<String, Object> row : tables) {
-            if (row.containsKey("tablename") && !row.containsKey("tableName")) {
-                row.put("tableName", row.remove("tablename"));
-            }
-        }
-        log.info("[H2Data] 表列表: 共 {} 张表", tables.size());
-        if (!tables.isEmpty()) {
-            log.info("[H2Data] 表列表: 首张表字段={}", tables.get(0).keySet());
-            log.info("[H2Data] 表列表: 首张表数据={}", tables.get(0));
-        }
+    public Result<?> listTables(@RequestParam(defaultValue = "false") boolean withRowCount) {
+        List<Map<String, Object>> tables = tableMetaService.listTables(withRowCount);
+        log.info("[H2Data] 表列表(含元数据): 共 {} 张表", tables.size());
         return Result.success(tables);
     }
 
@@ -228,7 +234,11 @@ public class H2DataController {
      * POST /api/db/table/{tableName}/data - 新增行
      */
     @PostMapping("/table/{tableName}/data")
-    public Result<?> insertRow(@PathVariable String tableName, @RequestBody Map<String, Object> row) {
+    public Result<?> insertRow(@PathVariable String tableName, @RequestBody Map<String, Object> row,
+                               HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         String tn = tableName.toUpperCase();
         log.info("[H2Data] 新增行: 表={}, 原始数据={}", tn, row);
         List<String> cols = new ArrayList<>();
@@ -257,7 +267,10 @@ public class H2DataController {
      */
     @PutMapping("/table/{tableName}/data/{id}")
     public Result<?> updateRow(@PathVariable String tableName, @PathVariable String id,
-                               @RequestBody Map<String, Object> row) {
+                               @RequestBody Map<String, Object> row, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         String tn = tableName.toUpperCase();
         log.info("[H2Data] 更新行: 表={}, id={}, 数据={}", tn, id, row);
         // 查找主键
@@ -298,7 +311,11 @@ public class H2DataController {
      * DELETE /api/db/table/{tableName}/data/{id} - 删除行
      */
     @DeleteMapping("/table/{tableName}/data/{id}")
-    public Result<?> deleteRow(@PathVariable String tableName, @PathVariable String id) {
+    public Result<?> deleteRow(@PathVariable String tableName, @PathVariable String id,
+                               HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         String tn = tableName.toUpperCase();
         log.info("[H2Data] 删除行: 表={}, id={}", tn, id);
         List<String> pk = findPrimaryKey(tn);
@@ -322,7 +339,10 @@ public class H2DataController {
      * GET /api/db/table/{tableName}/export - 导出表数据为 JSON
      */
     @GetMapping("/table/{tableName}/export")
-    public Result<?> exportData(@PathVariable String tableName) {
+    public Result<?> exportData(@PathVariable String tableName, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         String tn = tableName.toUpperCase();
         log.info("[H2Data] 导出数据: 表={}", tn);
         List<Map<String, Object>> rows = jdbc.queryForList("SELECT * FROM \"" + tn + "\"");
@@ -373,7 +393,10 @@ public class H2DataController {
     @PostMapping("/table/{tableName}/import")
     public Result<?> importData(@PathVariable String tableName,
                                 @RequestParam(defaultValue = "append") String mode,
-                                @RequestBody Map<String, Object> body) {
+                                @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         String tn = tableName.toUpperCase();
         log.info("[H2Data] 导入数据: 表={}, 模式={}", tn, mode);
         Object rowsObj = body.get("rows");
@@ -444,7 +467,10 @@ public class H2DataController {
      * GET /api/db/export-all - 全量导出所有业务表
      */
     @GetMapping("/export-all")
-    public Result<?> exportAll() {
+    public Result<?> exportAll(HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         log.info("[H2Data] 全量导出: 开始");
         // 获取所有业务表
         List<Map<String, Object>> tableList = jdbc.queryForList(
@@ -500,7 +526,10 @@ public class H2DataController {
     @SuppressWarnings("unchecked")
     @PostMapping("/import-all")
     public Result<?> importAll(@RequestParam(defaultValue = "truncate") String mode,
-                               @RequestBody Map<String, Object> body) {
+                               @RequestBody Map<String, Object> body, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
         log.info("[H2Data] 全量导入: 模式={}", mode);
         Object tablesObj = body.get("tables");
         if (tablesObj == null || !(tablesObj instanceof Map)) {
@@ -579,97 +608,231 @@ public class H2DataController {
         return Result.success(result);
     }
 
-    // ======================== 数据清理 API ========================
+    // ======================== 数据清理 / 一键清空 API ========================
 
     /**
-     * POST /api/db/cleanup - 清理所有流水表过期数据
-     * 
-     * @param retainDays 保留天数（可选，默认7天）
+     * POST /api/db/cleanup - 按保留天数清理所有流水表过期数据
+     * 流水表清单来自 easyops.data.table-meta（type=FLOW/AGENT_SYNC），
+     * 保留天数联动 easyops.data.cleanup.table-retain-days 与 nginx minute-retain-days。
+     *
+     * @param retainDays 覆盖保留天数（可选，默认取各表配置）
      */
     @PostMapping("/cleanup")
-    public Result<?> cleanupAll(@RequestParam(required = false, defaultValue = "7") Integer retainDays) {
-        long cutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
-        Map<String, Integer> results = new LinkedHashMap<>();
-        String[] tables = {
-            "operation_log", "file_access_log", "monitor_snapshot",
-            "alarm_record", "self_heal_event", "deploy_record",
-            "config_distribute_record", "ai_diagnosis_record",
-            "notification_record", "kb_recent_access",
-            "agent_upgrade_record", "global_script_distribute_record",
-            "nginx_minute_stat"
-        };
-        for (String table : tables) {
+    public Result<?> cleanupAll(@RequestParam(required = false) Integer retainDays, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+        Map<String, Object> results = new LinkedHashMap<>();
+        int totalDeleted = 0;
+        for (String table : tableMetaService.listClearableTables()) {
             try {
-                int deleted;
-                if ("nginx_minute_stat".equals(table)) {
-                    deleted = jdbc.update("DELETE FROM nginx_minute_stat WHERE bucket_time < ?", cutoff);
-                } else {
-                    deleted = jdbc.update("DELETE FROM " + escapeTableName(table) +
-                        " WHERE create_time < ?", cutoff);
-                }
+                long deleted = cleanupTableByRetain(table, retainDays);
                 if (deleted > 0) {
                     results.put(table, deleted);
-                    log.info("Manual cleanup: deleted {} records from {}", deleted, table);
+                    totalDeleted += deleted;
+                    log.info("[H2Data] cleanup: 清理 {} 删除 {} 条", table, deleted);
                 }
             } catch (Exception e) {
-                // notification_record 用 expire_time，单独处理
-                if ("notification_record".equals(table)) {
-                    try {
-                        int deleted = jdbc.update(
-                            "DELETE FROM notification_record WHERE expire_time < ?",
-                            System.currentTimeMillis());
-                        if (deleted > 0) {
-                            results.put(table, deleted);
-                        }
-                    } catch (Exception ex) {
-                        log.warn("Failed to cleanup {}: {}", table, ex.getMessage());
-                    }
-                } else {
-                    log.warn("Failed to cleanup {}: {}", table, e.getMessage());
-                }
+                log.warn("[H2Data] cleanup: 表 {} 清理失败: {}", table, e.getMessage());
             }
         }
+        results.put("_totalDeleted", totalDeleted);
+        audit(request, "CLEANUP", "按保留天数清理流水表，共删除 " + totalDeleted + " 条");
         return Result.success(results);
     }
 
     /**
-     * POST /api/db/cleanup/{tableName} - 清理指定流水表
-     * 
-     * @param tableName  表名
-     * @param retainDays 保留天数（可选，默认7天）
+     * POST /api/db/table/{tableName}/clear - 清空单张流水表
+     *
+     * @param confirm 必须为 true（防误触）
      */
-    @PostMapping("/cleanup/{tableName}")
-    public Result<?> cleanupTable(@PathVariable String tableName,
-                                   @RequestParam(required = false, defaultValue = "7") Integer retainDays) {
-        String safeTable = escapeTableName(tableName);
-        if (safeTable.isEmpty()) {
-            return Result.paramError("无效的表名");
+    @PostMapping("/table/{tableName}/clear")
+    public Result<?> clearTable(@PathVariable String tableName,
+                                @RequestParam(defaultValue = "false") boolean confirm,
+                                HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
         }
-
+        if (!confirm) {
+            return Result.paramError("请确认清空操作（confirm=true）");
+        }
+        if (!tableMetaService.isValidTable(tableName)) {
+            return Result.paramError("表不存在: " + tableName);
+        }
+        if (!tableMetaService.isClearable(tableName)) {
+            return Result.error(ErrorCode.FORBIDDEN, "该表禁止清空（基础/配置表）：" + tableName);
+        }
         try {
-            int deleted;
-            if ("notification_record".equalsIgnoreCase(safeTable)) {
-                deleted = jdbc.update(
-                    "DELETE FROM " + safeTable + " WHERE expire_time < ?",
-                    System.currentTimeMillis());
-            } else if ("nginx_minute_stat".equalsIgnoreCase(safeTable)) {
-                long bucketCutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
-                deleted = jdbc.update(
-                    "DELETE FROM " + safeTable + " WHERE bucket_time < ?", bucketCutoff);
-            } else {
-                long cutoff = System.currentTimeMillis() - retainDays * 24L * 3600L * 1000L;
-                deleted = jdbc.update(
-                    "DELETE FROM " + safeTable + " WHERE create_time < ?", cutoff);
-            }
-            log.info("Manual cleanup of {}: deleted {} records", safeTable, deleted);
-            Map<String, Object> result = new HashMap<>();
-            result.put("table", safeTable);
+            long deleted = tableMetaService.clearTable(tableName);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("table", tableName);
             result.put("deleted", deleted);
-            result.put("retainDays", retainDays);
+            result.put("compactHint", true);
+            audit(request, "CLEAR_TABLE", "清空表 " + tableName + "，删除 " + deleted + " 行");
+            log.info("[H2Data] 清空表 {} 完成，删除 {} 行", tableName, deleted);
             return Result.success(result);
         } catch (Exception e) {
-            log.warn("Failed to cleanup {}: {}", safeTable, e.getMessage());
-            return Result.error(com.ops.common.constant.ErrorCode.SERVER_ERROR, "清理失败: " + e.getMessage());
+            log.error("[H2Data] 清空表失败: {}", tableName, e);
+            return Result.error(ErrorCode.SERVER_ERROR, "清空失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/db/clear-batch - 批量清空多张流水表
+     * body: { "tables": ["operation_log", "nginx_minute_stat"], "confirm": true }
+     */
+    @PostMapping("/clear-batch")
+    public Result<?> clearBatch(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+        Object confirmObj = body.get("confirm");
+        if (!Boolean.TRUE.equals(confirmObj)) {
+            return Result.paramError("请确认清空操作（confirm=true）");
+        }
+        Object tablesObj = body.get("tables");
+        if (!(tablesObj instanceof List) || ((List<?>) tablesObj).isEmpty()) {
+            return Result.paramError("tables 不能为空");
+        }
+        List<?> rawTables = (List<?>) tablesObj;
+        Map<String, Object> details = new LinkedHashMap<>();
+        long total = 0;
+        for (Object t : rawTables) {
+            String tn = String.valueOf(t);
+            if (!tableMetaService.isValidTable(tn)) {
+                details.put(tn, "表不存在");
+                continue;
+            }
+            if (!tableMetaService.isClearable(tn)) {
+                details.put(tn, "禁止清空（基础/配置表）");
+                continue;
+            }
+            try {
+                long deleted = tableMetaService.clearTable(tn);
+                details.put(tn, "成功删除 " + deleted + " 行");
+                total += deleted;
+            } catch (Exception e) {
+                details.put(tn, "失败: " + e.getMessage());
+            }
+        }
+        audit(request, "CLEAR_BATCH", "批量清空 " + rawTables.size() + " 张表，共删除 " + total + " 行");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalDeleted", total);
+        result.put("details", details);
+        return Result.success(result);
+    }
+
+    /**
+     * POST /api/db/clear-all-flow - 一键清空所有可清空流水表
+     * body: { "confirm": true }
+     */
+    @PostMapping("/clear-all-flow")
+    public Result<?> clearAllFlow(@RequestBody(required = false) Map<String, Object> body, HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+        Object confirmObj = body == null ? null : body.get("confirm");
+        if (!Boolean.TRUE.equals(confirmObj)) {
+            return Result.paramError("请确认清空操作（confirm=true）");
+        }
+        Map<String, Long> deletedMap = tableMetaService.clearAllFlow();
+        long total = 0;
+        for (Map.Entry<String, Long> e : deletedMap.entrySet()) {
+            if (e.getValue() != null && e.getValue() > 0) total += e.getValue();
+        }
+        audit(request, "CLEAR_ALL_FLOW", "一键清空全部流水表，共删除 " + total + " 行");
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("totalDeleted", total);
+        result.put("details", deletedMap);
+        return Result.success(result);
+    }
+
+    /**
+     * GET /api/db/clearable-tables - 可清空表清单（供前端一键清空弹窗展示）
+     */
+    @GetMapping("/clearable-tables")
+    public Result<?> clearableTables(HttpServletRequest request) {
+        if (!isAdmin(request)) {
+            return Result.error(ErrorCode.FORBIDDEN, "无权限：需要管理员身份");
+        }
+        List<Map<String, Object>> list = new ArrayList<>();
+        for (String tn : tableMetaService.listClearableTables()) {
+            list.add(tableMetaService.getTableMeta(tn));
+        }
+        return Result.success(list);
+    }
+
+    /**
+     * 按保留天数清理单表（自动选择时间列）
+     */
+    private long cleanupTableByRetain(String table, Integer overrideRetainDays) throws Exception {
+        int days = overrideRetainDays != null ? Math.max(1, overrideRetainDays)
+                : (tableMetaService.getRetainDays(table) != null
+                        ? Math.max(1, tableMetaService.getRetainDays(table)) : 3);
+        long cutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+        String tn = table.toUpperCase();
+        // 检查表存在的时间列
+        List<String> timeCols = new ArrayList<>();
+        for (String col : new String[]{"create_time", "bucket_time", "ts", "expire_time"}) {
+            try {
+                Integer c = jdbc.queryForObject(
+                        "SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?",
+                        Integer.class, tn, col.toUpperCase());
+                if (c != null && c > 0) timeCols.add(col);
+            } catch (Exception ignored) {
+            }
+        }
+        if (timeCols.isEmpty()) {
+            return 0;
+        }
+        String col = timeCols.get(0);
+        return jdbc.update("DELETE FROM \"" + tn + "\" WHERE " + col + " < ?", cutoff);
+    }
+
+    // ======================== 权限辅助 ========================
+
+    /**
+     * 当前请求是否为平台 admin（复用 AuthInterceptor 的 token 解析）。
+     * agent 身份（X-Token）同样视为 admin。
+     */
+    private boolean isAdmin(HttpServletRequest request) {
+        try {
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                AuthInterceptor.UserAuthContext auth = authInterceptor.lookupUserAuth(authHeader.substring(7).trim());
+                return auth != null && "admin".equalsIgnoreCase(auth.getRole());
+            }
+            // Agent 身份
+            String agentToken = request.getHeader("X-Token");
+            if (agentToken != null && !agentToken.isEmpty()) {
+                AuthInterceptor.UserAuthContext auth = authInterceptor.lookupUserAuth(agentToken);
+                return auth != null && "admin".equalsIgnoreCase(auth.getRole());
+            }
+        } catch (Exception e) {
+            log.warn("[H2Data] 权限校验异常: {}", e.getMessage());
+        }
+        return false;
+    }
+
+    /** 写入操作审计日志（失败不影响主流程） */
+    private void audit(HttpServletRequest request, String action, String content) {
+        try {
+            OperationLogModel logModel = new OperationLogModel();
+            String authHeader = request.getHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                AuthInterceptor.UserAuthContext auth = authInterceptor.lookupUserAuth(authHeader.substring(7).trim());
+                if (auth != null && auth.getUserId() != null) {
+                    logModel.setUserId(Long.parseLong(auth.getUserId()));
+                }
+            }
+            logModel.setModule("DB");
+            logModel.setAction(action);
+            logModel.setContent(content);
+            logModel.setIp(request.getRemoteAddr());
+            logModel.setCreateTime(System.currentTimeMillis());
+            operationLogMapper.insert(logModel);
+        } catch (Exception e) {
+            log.warn("[H2Data] 审计日志写入失败: {}", e.getMessage());
         }
     }
 
