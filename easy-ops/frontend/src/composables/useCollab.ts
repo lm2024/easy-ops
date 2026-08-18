@@ -36,7 +36,7 @@ export function useCollab(documentIdRef: Ref<number | null>) {
     const token = localStorage.getItem('token') || ''
 
     // 直接连接后端
-    const serverUrl = `ws://localhost:8081/api/ws/kb-collab`
+    const serverUrl = `ws://localhost:9091/api/ws/kb-collab`
     const roomName = `${docId}`
 
     console.log('[Collab] ========== 连接开始 ==========')

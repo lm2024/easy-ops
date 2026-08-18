@@ -16,7 +16,7 @@ services:
     environment:
       AGENT_TOKEN: agent-token-1
       AGENT_NODE_NAME: agent-1
-      AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_SERVER_URL: http://host.docker.internal:9091/api
       AGENT_HOST_IP: 127.0.0.1
       AGENT_HOST_PORT: 2123
       JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
@@ -51,7 +51,7 @@ services:
     environment:
       AGENT_TOKEN: agent-token-2
       AGENT_NODE_NAME: agent-2
-      AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_SERVER_URL: http://host.docker.internal:9091/api
       AGENT_HOST_IP: 127.0.0.1
       AGENT_HOST_PORT: 2124
       JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
@@ -72,7 +72,7 @@ services:
     environment:
       AGENT_TOKEN: agent-token-3
       AGENT_NODE_NAME: agent-3
-      AGENT_SERVER_URL: http://host.docker.internal:8081/api
+      AGENT_SERVER_URL: http://host.docker.internal:9091/api
       AGENT_HOST_IP: 127.0.0.1
       AGENT_HOST_PORT: 2125
       JAVA_TOOL_OPTIONS: -Djava.net.preferIPv4Stack=true
