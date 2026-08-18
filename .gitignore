@@ -16,3 +16,7 @@ easy-ops/frontend/dist/
 
 # 环境变量配置文件（包含敏感信息）
 easyops.env
+
+# 打包/临时产物
+*.7z*
+easy-ops/frontend/vite.config.js.timestamp-*.mjs
