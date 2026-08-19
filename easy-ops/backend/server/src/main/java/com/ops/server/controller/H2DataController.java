@@ -115,13 +115,35 @@ public class H2DataController {
             } catch (Exception e2) {
                 log.debug("[H2Data] IS_IDENTITY 不支持, 跳过自增检测");
             }
-            result.put("columns", toCamelCaseKeys(columns));
+            // 2. 把列信息投影为 {name,type,maxLen,nullable,defaultValue,autoInc}，
+            //    与前端 DbManageView.colColumns 对齐（前端"表结构"Tab 渲染所需）。
+            //    生成 DDL 用的是原始 columns 集合（不依赖此投影），不影响 DDL 正确性。
+            List<Map<String, Object>> projectedColumns = new ArrayList<>();
+            for (Map<String, Object> col : columns) {
+                Map<String, Object> p = new LinkedHashMap<>();
+                p.put("name", getH2Value(col, "COLUMN_NAME"));
+                String type = getH2Value(col, "type_name");
+                if (type.isEmpty()) type = getH2Value(col, "TYPE_NAME");
+                if (type.isEmpty()) type = getH2Value(col, "DATA_TYPE");
+                p.put("type", type);
+                String maxLen = getH2Value(col, "CHARACTER_MAXIMUM_LENGTH");
+                p.put("maxLen", (!maxLen.isEmpty() && !"0".equals(maxLen)) ? maxLen : "");
+                String nullable = getH2Value(col, "IS_NULLABLE");
+                p.put("nullable", (nullable.isEmpty() || "YES".equalsIgnoreCase(nullable)) ? "YES" : "NO");
+                String def = getH2Value(col, "COLUMN_DEFAULT");
+                p.put("defaultValue", (!def.isEmpty() && !"NULL".equalsIgnoreCase(def)) ? def : "");
+                String autoInc = getH2Value(col, "IS_IDENTITY");
+                if (autoInc.isEmpty()) autoInc = getH2Value(col, "AUTO_INCREMENT");
+                p.put("autoInc", "YES".equalsIgnoreCase(autoInc) ? "YES" : "NO");
+                projectedColumns.add(p);
+            }
+            result.put("columns", projectedColumns);
 
-            // 2. 主键 - 兼容 H2 1.x 和 2.x
+            // 3. 主键 - 兼容 H2 1.x 和 2.x
             List<String> pkColumns = findPrimaryKeyColumns(tn);
             result.put("primaryKey", pkColumns);
 
-            // 3. DDL
+            // 4. DDL（基于原始 columns 生成）
             try {
                 result.put("ddl", generateDDL(tn, columns, pkColumns));
             } catch (Exception e) {
@@ -129,7 +151,7 @@ public class H2DataController {
                 result.put("ddl", "-- DDL 生成失败: " + e.getMessage());
             }
 
-            // 4. 记录数
+            // 5. 记录数
             try {
                 Integer count = jdbc.queryForObject("SELECT COUNT(*) FROM \"" + escapeTableName(tn) + "\"", Integer.class);
                 result.put("rowCount", count != null ? count : 0);
@@ -302,8 +324,12 @@ public class H2DataController {
 
         String sql = "UPDATE \"" + tn + "\" SET " + String.join(", ", setClauses) + " WHERE " + where;
         log.info("[H2Data] 更新行: sql={}, 参数={}", sql, vals);
-        jdbc.update(sql, vals.toArray());
-        log.info("[H2Data] 更新行成功: 表={}, id={}", tn, id);
+        int affected = jdbc.update(sql, vals.toArray());
+        if (affected == 0) {
+            log.warn("[H2Data] 更新行 0 行受影响: 表={}, id={} (可能记录已被删除或主键错误)", tn, id);
+            return Result.error(404, "更新失败：未找到对应记录（id=" + id + "），可能已被删除");
+        }
+        log.info("[H2Data] 更新行成功: 表={}, id={}, affected={}", tn, id, affected);
         return Result.success("更新成功");
     }
 
@@ -328,8 +354,12 @@ public class H2DataController {
         }
         String sql = "DELETE FROM \"" + tn + "\" WHERE " + where;
         log.info("[H2Data] 删除行: sql={}, 参数={}", sql, id);
-        jdbc.update(sql, id);
-        log.info("[H2Data] 删除行成功: 表={}, id={}", tn, id);
+        int affected = jdbc.update(sql, id);
+        if (affected == 0) {
+            log.warn("[H2Data] 删除行 0 行受影响: 表={}, id={} (可能记录不存在或主键错误)", tn, id);
+            return Result.error(404, "删除失败：未找到对应记录（id=" + id + "），可能已被他人删除");
+        }
+        log.info("[H2Data] 删除行成功: 表={}, id={}, affected={}", tn, id, affected);
         return Result.success("删除成功");
     }
 
