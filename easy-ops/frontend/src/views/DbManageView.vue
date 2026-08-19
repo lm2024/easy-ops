@@ -714,22 +714,35 @@ function formatCellValue(val: any): string {
 }
 
 // ====== 新增/编辑 ======
+// columnNames 是后端返回的原始大写下划线列名；模板 v-model 绑定的 col.dataIndex 是驼峰。
+// 这里统一转驼峰初始化 editForm，避免大写下划线空串被错误地随请求发出
+// （camelToUpperSnake 对已经是大写下划线的字符串会破坏成 U_S_E_R_N_A_M_E）。
+function toCamelName(s: string) {
+  return s.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+}
+
 function showAddModal() {
   editMode.value = 'add'
   editForm.value = {}
   columnNames.value.forEach((col: string) => {
-    editForm.value[col] = ''
+    editForm.value[toCamelName(col)] = ''
   })
   editModalVisible.value = true
 }
 
 function showEditModal(record: any) {
   editMode.value = 'edit'
-  editForm.value = { ...record }
+  // 仅保留模板实际渲染的列（即 dataColumns 里的驼峰 key），防止 __row_index 等内部字段被发送
+  const allowed = new Set(dataColumns.value.map((c: any) => c.dataIndex).filter((k: string) => k !== '__actions'))
+  const filtered: Record<string, any> = {}
+  for (const k of Object.keys(record)) {
+    if (k === '__row_index') continue
+    if (allowed.has(k)) filtered[k] = record[k]
+  }
+  editForm.value = filtered
   // 找到主键值 - 主键列名需要转驼峰以匹配行数据 key（structure 的 primaryKey 是大写，行数据 key 是驼峰）
-  const toCamel = (s: string) => s.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase())
   const rawPk = structure.value?.primaryKey?.[0]
-  const pk = rawPk ? toCamel(rawPk) : ''
+  const pk = rawPk ? toCamelName(rawPk) : ''
   editPrimaryKey.value = pk || ''
   editRowId.value = pk ? String(record[pk] ?? '') : ''
   editModalVisible.value = true
@@ -739,12 +752,12 @@ async function handleSave() {
   if (!selectedTable.value) return
   saveLoading.value = true
   try {
-    const data = { ...editForm.value }
-    // 清理空字符串值
-    Object.keys(data).forEach(k => {
-      if (data[k] === '' || data[k] === undefined) delete data[k]
-    })
-    delete data.__row_index
+    const data: Record<string, any> = {}
+    for (const [k, v] of Object.entries(editForm.value)) {
+      if (k === '__row_index' || k === '__actions') continue
+      if (v === '' || v === undefined) continue  // 空串视为"不修改"，与后端默认值/可空兼容
+      data[k] = v
+    }
     if (editMode.value === 'add') {
       await insertRow(selectedTable.value, data)
       message.success('新增成功')
@@ -764,10 +777,23 @@ async function handleSave() {
 
 async function handleDelete(record: any) {
   if (!selectedTable.value) return
-  const toCamel = (s: string) => s.toLowerCase().replace(/_([a-z])/g, (_, c) => c.toUpperCase())
   const rawPk = structure.value?.primaryKey?.[0]
-  const pk = rawPk ? toCamel(rawPk) : ''
-  const id = pk ? String(record[pk] ?? '') : String(record[Object.keys(record)[0]] ?? '')
+  const pk = rawPk ? toCamelName(rawPk) : ''
+  // 过滤掉 __row_index，避免无主键表 fallback 时拿到行号
+  const dataKeys = Object.keys(record).filter(k => k !== '__row_index')
+  let id: string
+  if (pk && record[pk] !== undefined && record[pk] !== null) {
+    id = String(record[pk])
+  } else if (dataKeys.length > 0) {
+    id = String(record[dataKeys[0]] ?? '')
+  } else {
+    message.error('记录缺少主键字段，无法删除')
+    return
+  }
+  if (!id) {
+    message.error('主键值为空，无法删除')
+    return
+  }
   try {
     await deleteRow(selectedTable.value, id)
     message.success('删除成功')
