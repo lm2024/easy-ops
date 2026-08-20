@@ -189,6 +189,10 @@ public class AgentClient {
     public String getAgentBase(NodeModel node) {
         String ip = node.getIp() != null ? node.getIp() : "127.0.0.1";
         int port = node.getPort() != null ? node.getPort() : 2123;
+        // IPv6 地址需加方括号，否则与端口拼接会解析失败
+        if (ip.contains(":")) {
+            return "http://[" + ip + "]:" + port + "/api";
+        }
         return "http://" + ip + ":" + port + "/api";
     }
 
