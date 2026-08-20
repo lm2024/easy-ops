@@ -31,7 +31,29 @@ service.interceptors.request.use(
 
 // 响应拦截器
 service.interceptors.response.use(
-  (response: AxiosResponse<Result>) => {
+  async (response: AxiosResponse<Result>) => {
+    // blob 响应（文件下载等）：response.data 是 Blob 对象，不包含 code 字段
+    if (response.config.responseType === 'blob') {
+      const blob = response.data
+      if (blob instanceof Blob && blob.size > 0) {
+        // 后端返回错误时（如 500），会将 JSON 错误信息作为 text/plain 写入响应体，
+        // axios 因 responseType=blob 不会走 error handler，需要手动检测
+        const type = blob.type || ''
+        if (type.includes('json') || type.includes('text')) {
+          try {
+            const text = await blob.text()
+            const parsed = JSON.parse(text)
+            if (parsed.code && parsed.code !== 200) {
+              message.error(parsed.message || '请求失败')
+              return Promise.reject(new Error(parsed.message))
+            }
+          } catch {
+            // 非 JSON 内容，视为正常文件数据，直接返回原始 blob
+          }
+        }
+      }
+      return response as any
+    }
     const res = response.data
     const requestUrl = response.config?.url || ''
     const isLoginApi = requestUrl.includes('/auth/login')
