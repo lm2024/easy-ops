@@ -1,11 +1,6 @@
 {
   "$schema": "https://mimo.xiaomi.com/mimocode/config.json",
   "mcp": {
-    "filesystem": {
-      "type": "local",
-      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "."],
-      "enabled": true
-    },
     "codegraph": {
       "type": "local",
       "command": [
@@ -14,24 +9,6 @@
         "--mcp"
       ],
       "enabled": true
-    },
-    "memory": {
-      "command": [
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-memory"
-      ],
-      "enabled": true,
-      "type": "local"
-    },
-    "context7": {
-      "command": [
-        "npx",
-        "-y",
-        "@upstash/context7-mcp"
-      ],
-      "enabled": true,
-      "type": "local"
     }
   }
 }
