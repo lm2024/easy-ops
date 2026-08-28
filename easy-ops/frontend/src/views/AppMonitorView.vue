@@ -151,6 +151,15 @@
               <a-button type="link" size="small" style="padding:0" @click="handleMenuAction('detail', record)">
                 详情
               </a-button>
+              <a-button
+                v-if="record.processStatus === 'RUNNING' && record.processPid > 0"
+                type="link"
+                size="small"
+                style="color:#722ed1;padding:0"
+                @click="openArthasDiagnose(record)"
+              >
+                <BugOutlined /> JVM诊断
+              </a-button>
             </a-space>
           </template>
         </template>
@@ -163,6 +172,12 @@
       :visible="drawerVisible"
       :record="drawerRecord"
       @close="drawerVisible = false"
+    />
+
+    <!-- JVM 诊断 Drawer -->
+    <ArthasDiagnoseDrawer
+      v-model:visible="arthasDrawerVisible"
+      :target="arthasDiagnoseTarget"
     />
 
     <!-- 探针配置弹窗 -->
@@ -190,8 +205,10 @@ import {
 } from '../api/monitorApp'
 import { getNodes } from '../api/node'
 import { operateProjectNode, getProcessTaskStatus } from '../api/project'
-import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, InfoCircleOutlined } from '@ant-design/icons-vue'
+import { DashboardOutlined, ReloadOutlined, PlayCircleOutlined, PauseCircleOutlined, InfoCircleOutlined, BugOutlined } from '@ant-design/icons-vue'
 import InstanceDetailDrawer from '../components/InstanceDetailDrawer.vue'
+import ArthasDiagnoseDrawer from '../components/arthas/ArthasDiagnoseDrawer.vue'
+import type { ArthasDiagnoseTarget } from '../types/arthas'
 import dayjs from 'dayjs'
 
 interface MonitorTableRow extends AppMonitorNodeInfo {
@@ -213,6 +230,9 @@ const probeModalVisible = ref(false)
 // 实例详情 Drawer
 const drawerVisible = ref(false)
 const drawerRecord = ref<any>(null)
+// JVM 诊断 Drawer
+const arthasDrawerVisible = ref(false)
+const arthasDiagnoseTarget = ref<ArthasDiagnoseTarget | null>(null)
 const probeSaving = ref(false)
 const probeProjectId = ref<number>()
 const selectedRowKeys = ref<string[]>([])
@@ -366,6 +386,18 @@ function handleMenuAction(key: string, record: MonitorTableRow) {
   } else if (key === 'detail') {
     openDetail(record)
   }
+}
+
+// 打开 JVM 诊断
+function openArthasDiagnose(record: MonitorTableRow) {
+  arthasDiagnoseTarget.value = {
+    projectId: record.projectId,
+    nodeId: record.nodeId,
+    pid: record.processPid || 0,
+    projectName: record.projectName || '',
+    nodeName: record.nodeName || ''
+  }
+  arthasDrawerVisible.value = true
 }
 
 async function operateNode(record: MonitorTableRow, action: 'start' | 'stop' | 'restart') {

@@ -1,0 +1,101 @@
+[compact] 数据库 C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\ops.mv.db (0MB) 小于阈值 256MB，跳过压缩
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::               (v2.7.18)
+
+2026-08-28 11:44:33 [background-preinit] INFO  o.h.validator.internal.util.Version - HV000001: Hibernate Validator 6.2.5.Final
+2026-08-28 11:44:33 [main] INFO  com.ops.server.ServerApplication - Starting ServerApplication using Java 1.8.0_202 on DESKTOP-6HG71H8 with PID 6960 (C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\target\ops-platform-server-1.0.0-SNAPSHOT.jar started by Li in C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server)
+2026-08-28 11:44:33 [main] DEBUG com.ops.server.ServerApplication - Running with Spring Boot v2.7.18, Spring v5.3.31
+2026-08-28 11:44:33 [main] INFO  com.ops.server.ServerApplication - The following 1 profile is active: "dev"
+2026-08-28 11:44:35 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port(s): 8081 (http)
+2026-08-28 11:44:35 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8081"]
+2026-08-28 11:44:35 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-08-28 11:44:35 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/9.0.83]
+2026-08-28 11:44:35 [main] INFO  o.a.c.c.C.[.[localhost].[/api] - Initializing Spring embedded WebApplicationContext
+2026-08-28 11:44:35 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 1923 ms
+2026-08-28 11:44:36 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-08-28 11:44:36 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-08-28 11:44:36 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter csrfFilter was not registered (possibly already registered?)
+2026-08-28 11:44:36 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter externalApiGuardFilter was not registered (possibly already registered?)
+2026-08-28 11:44:36 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter keyAuditFilter was not registered (possibly already registered?)
+2026-08-28 11:44:36 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter xssFilter was not registered (possibly already registered?)
+2026-08-28 11:44:37 [main] DEBUG c.ops.server.config.GlobalCorsFilter - Filter 'globalCorsFilter' configured for use
+2026-08-28 11:44:38 [main] INFO  c.o.server.scheduler.DistributedLock - 分布式锁初始化 instanceId=c8033bd2
+2026-08-28 11:44:38 [main] INFO  c.o.s.scheduler.DataCleanupScheduler - 定时清理初始化 保留3天 表数=21
+2026-08-28 11:44:38 [main] DEBUG o.s.w.s.s.s.WebSocketHandlerMapping - Patterns [/ws/console, /ws/deploy, /ws/monitor, /ws/notification, /ws/kb-collab, /ws/kb-collab/**] in 'webSocketHandlerMapping'
+2026-08-28 11:44:38 [main] INFO  org.quartz.impl.StdSchedulerFactory - Using default implementation for ThreadExecutor
+2026-08-28 11:44:38 [main] INFO  o.quartz.core.SchedulerSignalerImpl - Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2026-08-28 11:44:38 [main] INFO  org.quartz.core.QuartzScheduler - Quartz Scheduler v.2.3.2 created.
+2026-08-28 11:44:38 [main] INFO  org.quartz.simpl.RAMJobStore - RAMJobStore initialized.
+2026-08-28 11:44:38 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler meta-data: Quartz Scheduler (v2.3.2) 'quartzScheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 10 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2026-08-28 11:44:38 [main] INFO  org.quartz.impl.StdSchedulerFactory - Quartz scheduler 'quartzScheduler' initialized from an externally provided properties instance.
+2026-08-28 11:44:38 [main] INFO  org.quartz.impl.StdSchedulerFactory - Quartz scheduler version: 2.3.2
+2026-08-28 11:44:38 [main] INFO  org.quartz.core.QuartzScheduler - JobFactory set to: org.springframework.scheduling.quartz.SpringBeanJobFactory@6c25e6c4
+2026-08-28 11:44:38 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8081"]
+2026-08-28 11:44:38 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port(s): 8081 (http) with context path '/api'
+2026-08-28 11:44:38 [main] INFO  o.s.s.quartz.SchedulerFactoryBean - Starting Quartz Scheduler now
+2026-08-28 11:44:38 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2026-08-28 11:44:38 [main] INFO  o.s.s.a.ScheduledAnnotationBeanPostProcessor - No TaskScheduler/ScheduledExecutorService bean found for scheduled processing
+2026-08-28 11:44:39 [main] INFO  com.ops.server.ServerApplication - Started ServerApplication in 6.022 seconds (JVM running for 6.592)
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - ========== EasyOps Server 启动路径 ==========
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 监听端口: 8081
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 数据根目录 server.path: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - H2 数据源: jdbc:h2:file:C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\ops;MODE=MySQL;AUTO_SERVER=TRUE
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 版本包目录: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\versions
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 日志目录: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\logs
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - Agent 数据根目录 ops.global.agent-data-path: C:\app\data
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 应用部署根目录 ops.global.deploy-base-dir: C:\app\data\apps
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - 工作目录 user.dir: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server
+2026-08-28 11:44:39 [main] INFO  c.o.s.config.ServerStartupPathLogger - =============================================
+2026-08-28 11:44:39 [main] INFO  o.s.b.a.l.ConditionEvaluationReportLoggingListener - 
+
+Error starting ApplicationContext. To display the conditions report re-run your application with 'debug' enabled.
+2026-08-28 11:44:39 [main] ERROR o.s.boot.SpringApplication - Application run failed
+java.lang.IllegalStateException: Failed to execute CommandLineRunner
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:768)
+	at org.springframework.boot.SpringApplication.lambda$callRunners$2(SpringApplication.java:749)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.accept(ForEachOps.java:184)
+	at java.util.stream.SortedOps$SizedRefSortingSink.end(SortedOps.java:352)
+	at java.util.stream.AbstractPipeline.copyInto(AbstractPipeline.java:482)
+	at java.util.stream.AbstractPipeline.wrapAndCopyInto(AbstractPipeline.java:471)
+	at java.util.stream.ForEachOps$ForEachOp.evaluateSequential(ForEachOps.java:151)
+	at java.util.stream.ForEachOps$ForEachOp$OfRef.evaluateSequential(ForEachOps.java:174)
+	at java.util.stream.AbstractPipeline.evaluate(AbstractPipeline.java:234)
+	at java.util.stream.ReferencePipeline.forEach(ReferencePipeline.java:418)
+	at org.springframework.boot.SpringApplication.callRunners(SpringApplication.java:744)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:315)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1300)
+	at org.springframework.boot.SpringApplication.run(SpringApplication.java:1289)
+	at com.ops.server.ServerApplication.main(ServerApplication.java:24)
+	at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at sun.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at sun.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.lang.reflect.Method.invoke(Method.java:498)
+	at org.springframework.boot.loader.MainMethodRunner.run(MainMethodRunner.java:49)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:108)
+	at org.springframework.boot.loader.Launcher.launch(Launcher.java:58)
+	at org.springframework.boot.loader.JarLauncher.main(JarLauncher.java:65)
+Caused by: java.lang.IllegalArgumentException: JWT_SECRET must be at least 32 characters long. Current length: 16
+	at com.ops.server.config.SecurityConfig.lambda$validateSecurityConfig$0(SecurityConfig.java:44)
+	at org.springframework.boot.SpringApplication.callRunner(SpringApplication.java:765)
+	... 22 common frames omitted
+2026-08-28 11:44:39 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED paused.
+2026-08-28 11:44:39 [pool-8-thread-1] INFO  c.o.s.m.s.MonitorCollectorScheduler - 监控采集已启动 taskId=c450465f64284a41
+2026-08-28 11:44:39 [main] INFO  o.s.s.quartz.SchedulerFactoryBean - Shutting down Quartz Scheduler
+2026-08-28 11:44:39 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED shutting down.
+2026-08-28 11:44:39 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED paused.
+2026-08-28 11:44:39 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED shutdown complete.
+2026-08-28 11:44:39 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown initiated...
+2026-08-28 11:44:39 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Shutdown completed.

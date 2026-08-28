@@ -904,3 +904,48 @@ CREATE INDEX IF NOT EXISTS idx_transfer_node ON node_transfer_application(node_i
 CREATE INDEX IF NOT EXISTS idx_transfer_status ON node_transfer_application(status);
 
 
+
+
+-- ===== Arthas 诊断表 =====
+CREATE TABLE IF NOT EXISTS arthas_diagnose_record (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    session_id VARCHAR(64) NOT NULL UNIQUE,
+    project_id BIGINT NOT NULL,
+    node_id BIGINT NOT NULL,
+    pid INT NOT NULL,
+    jar_name VARCHAR(255),
+    status VARCHAR(20) NOT NULL,
+    trigger_by VARCHAR(64),
+    arthas_version VARCHAR(20),
+    start_time BIGINT NOT NULL,
+    end_time BIGINT,
+    duration_ms INT,
+    summary CLOB,
+    exception CLOB,
+    tenant_id BIGINT,
+    created_at BIGINT,
+    updated_at BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_arthas_record_project ON arthas_diagnose_record(project_id);
+CREATE INDEX IF NOT EXISTS idx_arthas_record_node ON arthas_diagnose_record(node_id);
+CREATE INDEX IF NOT EXISTS idx_arthas_record_start ON arthas_diagnose_record(start_time);
+CREATE INDEX IF NOT EXISTS idx_arthas_record_tenant ON arthas_diagnose_record(tenant_id);
+
+CREATE TABLE IF NOT EXISTS arthas_diagnose_result (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    record_id BIGINT NOT NULL,
+    command VARCHAR(500) NOT NULL,
+    command_type VARCHAR(50) NOT NULL,
+    result_json CLOB,
+    result_file VARCHAR(512),
+    result_size_kb INT,
+    exec_time BIGINT NOT NULL,
+    duration_ms INT,
+    success TINYINT NOT NULL,
+    error_msg CLOB,
+    tenant_id BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_arthas_result_record ON arthas_diagnose_result(record_id);
+CREATE INDEX IF NOT EXISTS idx_arthas_result_type ON arthas_diagnose_result(command_type);
+CREATE INDEX IF NOT EXISTS idx_arthas_result_exec ON arthas_diagnose_result(exec_time);
+

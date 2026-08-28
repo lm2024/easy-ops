@@ -44,6 +44,18 @@ public class ProcessStatusChecker {
         return result;
     }
 
+    /** 检查进程的 comm 是否为 java（排除 bash -c "java ..." 这类包装进程） */
+    private boolean isJavaProcess(long pid) {
+        try {
+            byte[] bytes = java.nio.file.Files.readAllBytes(
+                    java.nio.file.Paths.get("/proc", String.valueOf(pid), "comm"));
+            String comm = new String(bytes, "UTF-8").trim();
+            return "java".equals(comm);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
     /**
      * 查找匹配进程的 PID，未找到返回 null。
      *
@@ -56,6 +68,8 @@ public class ProcessStatusChecker {
         for (Long pid : javaPids) {
             // 跳过僵尸（defunct）进程：已死但未回收，cmdline 已清空，不应匹配
             if (isZombie(pid)) continue;
+            // 必须是真正的 java 进程（排除 bash -c "java ..." 这类包装进程）
+            if (!isJavaProcess(pid)) continue;
             String cmdline = readProcCmdline(pid);
             String extractedJar = extractJarName(cmdline);
             if (jarName.equals(extractedJar) && verifyByWorkingDir(pid, deployDir)) {

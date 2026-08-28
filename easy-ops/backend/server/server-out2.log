@@ -1,0 +1,67 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+ :: Spring Boot ::               (v2.7.18)
+
+2026-08-28 17:49:14 [background-preinit] INFO  o.h.validator.internal.util.Version - HV000001: Hibernate Validator 6.2.5.Final
+2026-08-28 17:49:14 [main] INFO  com.ops.server.ServerApplication - Starting ServerApplication using Java 1.8.0_202 on DESKTOP-6HG71H8 with PID 28408 (C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\target\ops-platform-server-1.0.0-SNAPSHOT.jar started by Li in C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server)
+2026-08-28 17:49:14 [main] DEBUG com.ops.server.ServerApplication - Running with Spring Boot v2.7.18, Spring v5.3.31
+2026-08-28 17:49:14 [main] INFO  com.ops.server.ServerApplication - The following 1 profile is active: "dev"
+2026-08-28 17:49:17 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat initialized with port(s): 8081 (http)
+2026-08-28 17:49:17 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Initializing ProtocolHandler ["http-nio-8081"]
+2026-08-28 17:49:17 [main] INFO  o.a.catalina.core.StandardService - Starting service [Tomcat]
+2026-08-28 17:49:17 [main] INFO  o.a.catalina.core.StandardEngine - Starting Servlet engine: [Apache Tomcat/9.0.83]
+2026-08-28 17:49:17 [main] INFO  o.a.c.c.C.[.[localhost].[/api] - Initializing Spring embedded WebApplicationContext
+2026-08-28 17:49:17 [main] INFO  o.s.b.w.s.c.ServletWebServerApplicationContext - Root WebApplicationContext: initialization completed in 3238 ms
+2026-08-28 17:49:18 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Starting...
+2026-08-28 17:49:21 [main] INFO  com.zaxxer.hikari.HikariDataSource - HikariPool-1 - Start completed.
+2026-08-28 17:49:21 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter csrfFilter was not registered (possibly already registered?)
+2026-08-28 17:49:21 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter externalApiGuardFilter was not registered (possibly already registered?)
+2026-08-28 17:49:21 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter keyAuditFilter was not registered (possibly already registered?)
+2026-08-28 17:49:21 [main] INFO  o.s.b.web.servlet.RegistrationBean - Filter xssFilter was not registered (possibly already registered?)
+2026-08-28 17:49:21 [main] DEBUG c.ops.server.config.GlobalCorsFilter - Filter 'globalCorsFilter' configured for use
+2026-08-28 17:49:23 [main] INFO  c.o.server.scheduler.DistributedLock - 分布式锁初始化 instanceId=5c949f96
+2026-08-28 17:49:23 [main] INFO  c.o.s.scheduler.DataCleanupScheduler - 定时清理初始化 保留3天 表数=21
+2026-08-28 17:49:23 [main] DEBUG o.s.w.s.s.s.WebSocketHandlerMapping - Patterns [/ws/console, /ws/deploy, /ws/monitor, /ws/notification, /ws/kb-collab, /ws/kb-collab/**] in 'webSocketHandlerMapping'
+2026-08-28 17:49:23 [main] INFO  org.quartz.impl.StdSchedulerFactory - Using default implementation for ThreadExecutor
+2026-08-28 17:49:24 [main] INFO  o.quartz.core.SchedulerSignalerImpl - Initialized Scheduler Signaller of type: class org.quartz.core.SchedulerSignalerImpl
+2026-08-28 17:49:24 [main] INFO  org.quartz.core.QuartzScheduler - Quartz Scheduler v.2.3.2 created.
+2026-08-28 17:49:24 [main] INFO  org.quartz.simpl.RAMJobStore - RAMJobStore initialized.
+2026-08-28 17:49:24 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler meta-data: Quartz Scheduler (v2.3.2) 'quartzScheduler' with instanceId 'NON_CLUSTERED'
+  Scheduler class: 'org.quartz.core.QuartzScheduler' - running locally.
+  NOT STARTED.
+  Currently in standby mode.
+  Number of jobs executed: 0
+  Using thread pool 'org.quartz.simpl.SimpleThreadPool' - with 10 threads.
+  Using job-store 'org.quartz.simpl.RAMJobStore' - which does not support persistence. and is not clustered.
+
+2026-08-28 17:49:24 [main] INFO  org.quartz.impl.StdSchedulerFactory - Quartz scheduler 'quartzScheduler' initialized from an externally provided properties instance.
+2026-08-28 17:49:24 [main] INFO  org.quartz.impl.StdSchedulerFactory - Quartz scheduler version: 2.3.2
+2026-08-28 17:49:24 [main] INFO  org.quartz.core.QuartzScheduler - JobFactory set to: org.springframework.scheduling.quartz.SpringBeanJobFactory@b70da4c
+2026-08-28 17:49:24 [main] INFO  o.a.coyote.http11.Http11NioProtocol - Starting ProtocolHandler ["http-nio-8081"]
+2026-08-28 17:49:24 [main] INFO  o.s.b.w.e.tomcat.TomcatWebServer - Tomcat started on port(s): 8081 (http) with context path '/api'
+2026-08-28 17:49:24 [main] INFO  o.s.s.quartz.SchedulerFactoryBean - Starting Quartz Scheduler now
+2026-08-28 17:49:24 [main] INFO  org.quartz.core.QuartzScheduler - Scheduler quartzScheduler_$_NON_CLUSTERED started.
+2026-08-28 17:49:24 [main] INFO  o.s.s.a.ScheduledAnnotationBeanPostProcessor - No TaskScheduler/ScheduledExecutorService bean found for scheduled processing
+2026-08-28 17:49:24 [main] INFO  com.ops.server.ServerApplication - Started ServerApplication in 11.103 seconds (JVM running for 11.947)
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - ========== EasyOps Server 启动路径 ==========
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 监听端口: 8081
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 数据根目录 server.path: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - H2 数据源: jdbc:h2:file:./data/ops;MODE=MySQL;AUTO_SERVER=TRUE
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 版本包目录: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\versions
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 日志目录: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server\data\logs
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - Agent 数据根目录 ops.global.agent-data-path: C:\app\data
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 应用部署根目录 ops.global.deploy-base-dir: C:\app\data\apps
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - 工作目录 user.dir: C:\Users\Li\Downloads\GitHub\easy-ops\easy-ops\backend\server
+2026-08-28 17:49:24 [main] INFO  c.o.s.config.ServerStartupPathLogger - =============================================
+[SecurityConfig] JWT secret loaded from environment. Expire: 86400000ms
+2026-08-28 17:49:24 [pool-8-thread-1] INFO  c.o.s.m.s.MonitorCollectorScheduler - 监控采集已启动 taskId=14845ca51ac34139
+2026-08-28 17:49:24 [pool-8-thread-1] INFO  c.o.s.scheduler.HeartbeatChecker - 节点离线 名称=agent-3 IP=127.0.0.1
+2026-08-28 17:49:24 [pool-8-thread-1] INFO  c.o.s.scheduler.HeartbeatChecker - 节点离线 名称=agent-2 IP=127.0.0.1
+2026-08-28 17:49:24 [pool-8-thread-1] INFO  c.o.s.scheduler.HeartbeatChecker - 节点离线 名称=agent-1 IP=127.0.0.1
+2026-08-28 17:49:24 [main] INFO  c.ops.server.config.DataInitializer - [DataInit] 已同步管理员密码（来源：app.admin.default-password）
+2026-08-28 17:49:24 [main] INFO  c.o.s.t.config.NginxTrafficBootstrap - Nginx流量监控就绪: 日志源=0 分钟统计行数=0 历史保留2天(超期由定时任务删除)
