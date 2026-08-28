@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ArthasDiagnoseResultMapper">
+
+    <resultMap id="BaseResultMap" type="com.ops.common.model.ArthasDiagnoseResultModel">
+        <id column="id" property="id"/>
+        <result column="record_id" property="recordId"/>
+        <result column="command" property="command"/>
+        <result column="command_type" property="commandType"/>
+        <result column="result_json" property="resultJson"/>
+        <result column="result_file" property="resultFile"/>
+        <result column="result_size_kb" property="resultSizeKb"/>
+        <result column="exec_time" property="execTime"/>
+        <result column="duration_ms" property="durationMs"/>
+        <result column="success" property="success"/>
+        <result column="error_msg" property="errorMsg"/>
+        <result column="tenant_id" property="tenantId"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.ops.common.model.ArthasDiagnoseResultModel" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO arthas_diagnose_result (
+            record_id, command, command_type, result_json, result_file,
+            result_size_kb, exec_time, duration_ms, success, error_msg, tenant_id
+        ) VALUES (
+            #{recordId}, #{command}, #{commandType}, #{resultJson}, #{resultFile},
+            #{resultSizeKb}, #{execTime}, #{durationMs}, #{success}, #{errorMsg}, #{tenantId}
+        )
+    </insert>
+
+    <select id="findByRecordId" resultMap="BaseResultMap">
+        SELECT * FROM arthas_diagnose_result WHERE record_id = #{recordId} ORDER BY exec_time ASC
+    </select>
+
+    <select id="findByRecordIdAndType" resultMap="BaseResultMap">
+        SELECT * FROM arthas_diagnose_result
+        WHERE record_id = #{recordId} AND command_type = #{commandType}
+        ORDER BY exec_time ASC
+    </select>
+
+    <delete id="deleteByRecordIds">
+        DELETE FROM arthas_diagnose_result WHERE record_id IN
+        <foreach collection="recordIds" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>

@@ -584,6 +584,9 @@ public class HeartbeatDaemon implements CommandLineRunner {
                     // 跳过僵尸（defunct）进程：已被杀死但未被父进程回收，
                     // 其 cmdline 已清空，上报它会让监控误显示旧 PID。
                     if (isZombie(pid)) continue;
+                    // 只接受真正的 Java 进程（comm=java），排除 bash/sh 包装进程
+                    // bash -c "... && java -jar ..." 的命令行也含 java，但 comm 是 bash
+                    if (!isJavaProcess(pid)) continue;
                     pids.add(pid);
                 } catch (NumberFormatException ignored) {}
             }
@@ -615,6 +618,22 @@ public class HeartbeatDaemon implements CommandLineRunner {
             // /proc 不可用时不过滤，避免漏报
         }
         return false;
+    }
+
+    /**
+     * 判断进程是否为真正的 Java 进程。
+     * 读取 /proc/<pid>/comm，只接受 comm 为 "java" 的进程。
+     * 排除 bash/sh 包装进程（bash -c "... && java -jar ..." 的命令行也含 java，但 comm 是 bash）。
+     */
+    private boolean isJavaProcess(long pid) {
+        try {
+            java.nio.file.Path commPath = java.nio.file.Paths.get("/proc", String.valueOf(pid), "comm");
+            if (!java.nio.file.Files.exists(commPath)) return true; // /proc 不可用时不过滤
+            String comm = new String(java.nio.file.Files.readAllBytes(commPath), "UTF-8").trim();
+            return "java".equalsIgnoreCase(comm);
+        } catch (Exception ignored) {
+            return true; // 异常时不过滤，避免漏报
+        }
     }
 
     /** 读取 /proc/<pid>/cmdline */
