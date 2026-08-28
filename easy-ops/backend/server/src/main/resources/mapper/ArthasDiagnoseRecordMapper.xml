@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.ArthasDiagnoseRecordMapper">
+
+    <resultMap id="BaseResultMap" type="com.ops.common.model.ArthasDiagnoseRecordModel">
+        <id column="id" property="id"/>
+        <result column="session_id" property="sessionId"/>
+        <result column="project_id" property="projectId"/>
+        <result column="node_id" property="nodeId"/>
+        <result column="pid" property="pid"/>
+        <result column="jar_name" property="jarName"/>
+        <result column="status" property="status"/>
+        <result column="trigger_by" property="triggerBy"/>
+        <result column="arthas_version" property="arthasVersion"/>
+        <result column="start_time" property="startTime"/>
+        <result column="end_time" property="endTime"/>
+        <result column="duration_ms" property="durationMs"/>
+        <result column="summary" property="summary"/>
+        <result column="exception" property="exception"/>
+        <result column="tenant_id" property="tenantId"/>
+        <result column="created_at" property="createdAt"/>
+        <result column="updated_at" property="updatedAt"/>
+    </resultMap>
+
+    <insert id="insert" parameterType="com.ops.common.model.ArthasDiagnoseRecordModel" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO arthas_diagnose_record (
+            session_id, project_id, node_id, pid, jar_name, status, trigger_by,
+            arthas_version, start_time, end_time, duration_ms, summary, exception,
+            tenant_id, created_at, updated_at
+        ) VALUES (
+            #{sessionId}, #{projectId}, #{nodeId}, #{pid}, #{jarName}, #{status}, #{triggerBy},
+            #{arthasVersion}, #{startTime}, #{endTime}, #{durationMs}, #{summary}, #{exception},
+            #{tenantId}, #{createdAt}, #{updatedAt}
+        )
+    </insert>
+
+    <update id="update" parameterType="com.ops.common.model.ArthasDiagnoseRecordModel">
+        UPDATE arthas_diagnose_record
+        <set>
+            <if test="status != null">status = #{status},</if>
+            <if test="endTime != null">end_time = #{endTime},</if>
+            <if test="durationMs != null">duration_ms = #{durationMs},</if>
+            <if test="summary != null">summary = #{summary},</if>
+            <if test="exception != null">exception = #{exception},</if>
+            <if test="updatedAt != null">updated_at = #{updatedAt},</if>
+        </set>
+        WHERE id = #{id}
+    </update>
+
+    <select id="findById" resultMap="BaseResultMap">
+        SELECT * FROM arthas_diagnose_record WHERE id = #{id}
+    </select>
+
+    <select id="findBySessionId" resultMap="BaseResultMap">
+        SELECT * FROM arthas_diagnose_record WHERE session_id = #{sessionId}
+    </select>
+
+    <select id="findByProjectId" resultMap="BaseResultMap">
+        SELECT * FROM arthas_diagnose_record
+        WHERE project_id = #{projectId}
+        ORDER BY start_time DESC
+        LIMIT #{offset}, #{limit}
+    </select>
+
+    <select id="countByProjectId" resultType="int">
+        SELECT COUNT(*) FROM arthas_diagnose_record WHERE project_id = #{projectId}
+    </select>
+
+    <select id="findExpiredIds" resultType="long">
+        SELECT id FROM arthas_diagnose_record WHERE start_time &lt; #{cutoff}
+    </select>
+
+    <delete id="deleteByIds">
+        DELETE FROM arthas_diagnose_record WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+    </delete>
+
+</mapper>
