@@ -43,6 +43,7 @@
           </template>
           <a-menu-item key="config-manage"><setting-outlined /><span>配置文件管理</span></a-menu-item>
           <a-menu-item key="log-manage"><file-text-outlined /><span>日志管理</span></a-menu-item>
+          <a-menu-item key="dump-analyze"><file-search-outlined /><span>Heap Dump 分析</span></a-menu-item>
         </a-sub-menu>
 
         <!-- 监控告警 -->
@@ -226,7 +227,7 @@ import {
   DashboardOutlined, AlertOutlined,
   DatabaseOutlined, BulbOutlined, TeamOutlined, AuditOutlined,
   FundOutlined, MedicineBoxOutlined,
-  LineChartOutlined, ApartmentOutlined
+  LineChartOutlined, ApartmentOutlined, FileSearchOutlined
 } from '@ant-design/icons-vue'
 
 const route = useRoute()
