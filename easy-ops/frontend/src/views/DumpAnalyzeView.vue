@@ -15,14 +15,16 @@
           :multiple="false"
           :before-upload="beforeUpload"
           :show-upload-list="false"
-          accept=".hprof,.core"
+          accept=".hprof,.core,.hprof.gz,.core.gz"
         >
           <p class="ant-upload-drag-icon">
             <inbox-outlined />
           </p>
           <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
           <p class="ant-upload-hint">
-            支持 Java heap dump（.hprof）或 Core dump（.core）文件，最大 500MB
+            支持 Java heap dump（.hprof）或 Core dump（.core）文件<br/>
+            也支持 gzip 压缩文件（.hprof.gz、.core.gz）<br/>
+            最大 200MB（大文件请先压缩：gzip -k file.hprof）
           </p>
         </a-upload-dragger>
       </div>
@@ -143,15 +145,17 @@ const analysisResult = ref<any>(null)
 
 async function beforeUpload(file: File) {
   // 验证文件类型
-  if (!file.name.endsWith('.hprof') && !file.name.endsWith('.core')) {
-    message.error('只支持 .hprof 或 .core 格式的文件')
+  const validExtensions = ['.hprof', '.core', '.hprof.gz', '.core.gz']
+  const isValidType = validExtensions.some(ext => file.name.endsWith(ext))
+  if (!isValidType) {
+    message.error('只支持 .hprof、.core 或 .gz 压缩文件')
     return false
   }
 
-  // 验证文件大小（500MB）
-  const maxSize = 500 * 1024 * 1024
+  // 验证文件大小（200MB）
+  const maxSize = 200 * 1024 * 1024
   if (file.size > maxSize) {
-    message.error('文件大小超过限制（最大 500MB）')
+    message.error('文件大小超过限制（最大 200MB）。请先压缩：gzip -k file.hprof')
     return false
   }
 

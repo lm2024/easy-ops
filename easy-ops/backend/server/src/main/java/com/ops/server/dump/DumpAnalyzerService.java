@@ -262,7 +262,13 @@ public class DumpAnalyzerService {
                 long classNameId = readId(buffer, idSize);
                 classSerialToNameId.put(classObjId, classNameId);
             }
-            buffer.position(bodyStart + length);
+            // 安全地移动到下一个记录
+            int nextPos = bodyStart + length;
+            if (nextPos <= data.length) {
+                buffer.position(nextPos);
+            } else {
+                break; // 文件截断或格式错误
+            }
         }
 
         for (Map.Entry<Long, Long> entry : classSerialToNameId.entrySet()) {
@@ -284,7 +290,13 @@ public class DumpAnalyzerService {
             if (tag == HPROF_HEAP_DUMP || tag == HPROF_HEAP_DUMP_SEGMENT) {
                 parseHeapDumpSegment(buffer, bodyStart, length, idSize, classNames, classStatsMap);
             }
-            buffer.position(bodyStart + length);
+            // 安全地移动到下一个记录
+            int nextPos = bodyStart + length;
+            if (nextPos <= data.length) {
+                buffer.position(nextPos);
+            } else {
+                break; // 文件截断或格式错误
+            }
         }
 
         List<ClassStats> classStatsList = new ArrayList<>(classStatsMap.values());
