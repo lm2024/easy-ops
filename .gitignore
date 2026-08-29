@@ -24,3 +24,7 @@ easy-ops/frontend/vite.config.js.timestamp-*.mjs
 *.jar
 *.war
 *.ear
+
+# Dump 测试文件（不应提交到仓库）
+*.hprof
+*.core
