@@ -1,11 +1,11 @@
 # AGENTS.md — EasyOps AI 提示词
 
 ## 身份与职责
-用户称呼：叫我大佬 | 我负责：Docker Agent 打包发布 | 大佬负责：Server、前端（需要重启告诉我）
+用户称呼：叫我大佬 | 我负责：Docker Agent 打包发布,agent服务必须用 docker 启动 | 大佬负责：本地Server、前端（需要重启告诉我）
 问题解决：刨根问底找根因，架构设计解决，不能还原代码或用偏方
 
 ## 项目架构
-分布式运维平台：**Server (8081) ↔ Agent (2123)**，WebSocket 推送。代码根 `easy-ops/`（多一层嵌套）。
+分布式运维平台：**Server ( 9091) ↔ Agent (2123)**，WebSocket 推送。代码根 `easy-ops/`（多一层嵌套）。
 | 层 | 技术栈 |
 |----|--------|
 | Server/Agent | Java 8, Spring Boot 2.7, MyBatis, H2 (MySQL模式), JWT, Quartz |
@@ -22,7 +22,8 @@
 | Server | `backend/server/` | `JWT_SECRET`, `AGENT_DATA_PATH` |
 | Agent | `backend/agent/` | `AGENT_SERVER_URL`, `AGENT_NODE_NAME`, `AGENT_TOKEN` |
 | 前端 | `frontend/scripts/` | `SERVER_API_URL`, `SERVE_MODE=nginx` |
-
+demo-test-app是测试的应用服务,需要部署Docker agent 服务中;方便 agent 监控demo-test-app应用
+nginx-demo如果涉及到测试调试修改 NGINX 监控功能的时候,必须用 demo 服务去在 agent Docker 节点进行部署,方便监控 NGINX
 启动：`./start.sh` / `./stop.sh`
 
 ### 前端部署契约（2026-08-18）
@@ -94,3 +95,11 @@ H2（36 表），核心：`node_info` `project_info` `version_package` `deploy_r
 WS 推送：只推实时指标，状态走 HTTP/DB | 前端刷新：`mergeDashboard` 保留 WS 实时值
 Docker jar 更新：`docker exec cp /app/agent.jar /app/data/agent.jar && restart`
 日志：中文、补异常栈、高频 DEBUG/关键 INFO/可恢复 WARN/严重 ERROR
+
+
+人工补充:
+文档写在docs 目录中,在该目录下根据日期,需求来创建文件夹,在文件夹内编写文档,文档要简单清晰
+如果后续开发需要e2e端到端测试,那么你就看看该文件夹e2e,曾经的测试在这里写的
+必须强调下监控功能,主要是要监控部署的应用,agent 自身监控,这两个要区分清楚,不要混淆
+尤其是 ws 消息发送的时候,监控的是谁,谁是被监控的要搞清楚在改代码
+每次有任何改动, 都告诉我改了哪个服务, 多少个文件是否需要重启服务,重新部署哪些服务等
