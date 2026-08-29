@@ -268,32 +268,39 @@ public class DumpAnalyzerService {
         Map<String, ClassStats> classStatsMap = new HashMap<>();
 
         // 第一遍：收集字符串和类信息
-        while (buffer.hasRemaining()) {
-            int startPos = buffer.position();
-            if (startPos >= data.length - 9) break;
-            byte tag = buffer.get();
-            buffer.getInt();
-            int length = buffer.getInt();
-            int bodyStart = buffer.position();
+        try {
+            while (buffer.hasRemaining()) {
+                int startPos = buffer.position();
+                if (startPos >= data.length - 9) break;
 
-            if (tag == HPROF_STRING) {
-                long strId = readId(buffer, idSize);
-                String str = readNullTerminatedString(buffer, bodyStart + length);
-                strings.put(strId, str);
-            } else if (tag == HPROF_LOAD_CLASS) {
-                buffer.getInt();
-                long classObjId = readId(buffer, idSize);
-                buffer.getInt();
-                long classNameId = readId(buffer, idSize);
-                classSerialToNameId.put(classObjId, classNameId);
+                byte tag = buffer.get();
+                buffer.getInt(); // 时间戳
+                int length = buffer.getInt();
+                int bodyStart = buffer.position();
+
+                // 安全检查：确保 length 合理
+                if (length < 0 || bodyStart + length > data.length) {
+                    log.warn("[Dump分析] 记录长度异常: tag={}, length={}, bodyStart={}, dataLength={}", tag, length, bodyStart, data.length);
+                    break;
+                }
+
+                if (tag == HPROF_STRING) {
+                    long strId = readId(buffer, idSize);
+                    String str = readNullTerminatedString(buffer, bodyStart + length);
+                    strings.put(strId, str);
+                } else if (tag == HPROF_LOAD_CLASS) {
+                    buffer.getInt();
+                    long classObjId = readId(buffer, idSize);
+                    buffer.getInt();
+                    long classNameId = readId(buffer, idSize);
+                    classSerialToNameId.put(classObjId, classNameId);
+                }
+
+                // 安全地移动到下一个记录
+                buffer.position(bodyStart + length);
             }
-            // 安全地移动到下一个记录
-            int nextPos = bodyStart + length;
-            if (nextPos <= data.length) {
-                buffer.position(nextPos);
-            } else {
-                break; // 文件截断或格式错误
-            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 第一遍扫描异常: {}", e.getMessage());
         }
 
         for (Map.Entry<Long, Long> entry : classSerialToNameId.entrySet()) {
@@ -302,25 +309,33 @@ public class DumpAnalyzerService {
         }
 
         // 第二遍：分析堆数据
-        buffer.position(27); // 跳过完整的文件头 (18 + 1 + 4 + 8 = 27 字节)
+        buffer.position(27); // 跳过完整的文件头
 
-        while (buffer.hasRemaining()) {
-            int startPos = buffer.position();
-            if (startPos >= data.length - 9) break;
-            byte tag = buffer.get();
-            buffer.getInt();
-            int length = buffer.getInt();
-            int bodyStart = buffer.position();
-            if (tag == HPROF_HEAP_DUMP || tag == HPROF_HEAP_DUMP_SEGMENT) {
-                parseHeapDumpSegment(buffer, bodyStart, length, idSize, classNames, classStatsMap);
+        try {
+            while (buffer.hasRemaining()) {
+                int startPos = buffer.position();
+                if (startPos >= data.length - 9) break;
+
+                byte tag = buffer.get();
+                buffer.getInt(); // 时间戳
+                int length = buffer.getInt();
+                int bodyStart = buffer.position();
+
+                // 安全检查：确保 length 合理
+                if (length < 0 || bodyStart + length > data.length) {
+                    log.warn("[Dump分析] 记录长度异常: tag={}, length={}, bodyStart={}, dataLength={}", tag, length, bodyStart, data.length);
+                    break;
+                }
+
+                if (tag == HPROF_HEAP_DUMP || tag == HPROF_HEAP_DUMP_SEGMENT) {
+                    parseHeapDumpSegment(buffer, bodyStart, length, idSize, classNames, classStatsMap);
+                }
+
+                // 安全地移动到下一个记录
+                buffer.position(bodyStart + length);
             }
-            // 安全地移动到下一个记录
-            int nextPos = bodyStart + length;
-            if (nextPos <= data.length) {
-                buffer.position(nextPos);
-            } else {
-                break; // 文件截断或格式错误
-            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 第二遍扫描异常: {}", e.getMessage());
         }
 
         List<ClassStats> classStatsList = new ArrayList<>(classStatsMap.values());
@@ -341,96 +356,221 @@ public class DumpAnalyzerService {
     private void parseHeapDumpSegment(ByteBuffer buffer, int offset, int length, int idSize,
                                        Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
         int endPos = offset + length;
-        while (buffer.position() < endPos && buffer.hasRemaining()) {
-            byte subTag = buffer.get();
-            switch (subTag) {
-                case 0x20: buffer.getInt(); readId(buffer, idSize); break;
-                case 0x21: case 0x26: case 0x27: case 0x28: readId(buffer, idSize); break;
-                case 0x22: readId(buffer, idSize); readId(buffer, idSize); break;
-                case 0x23: case 0x24: readId(buffer, idSize); buffer.getInt(); buffer.getInt(); break;
-                case 0x25: case 0x29: readId(buffer, idSize); buffer.getInt(); buffer.getInt(); break;
-                case 0x2C: parseClassDump(buffer, idSize, classNames, classStatsMap); break;
-                case 0x2D: parseInstanceDump(buffer, idSize, classNames, classStatsMap); break;
-                case 0x2E: parseObjectArrayDump(buffer, idSize, classNames, classStatsMap); break;
-                case 0x2F: parsePrimitiveArrayDump(buffer, idSize, classNames, classStatsMap); break;
-                default: return;
+        // 确保 endPos 不超过 buffer 容量
+        if (endPos > buffer.capacity()) {
+            endPos = buffer.capacity();
+        }
+
+        try {
+            while (buffer.position() < endPos && buffer.hasRemaining()) {
+                int currentPos = buffer.position();
+                if (currentPos >= endPos - 1) break;
+
+                byte subTag = buffer.get();
+                switch (subTag) {
+                    case 0x20: // HEAP_DUMP_INFO
+                        if (currentPos + 4 + idSize > endPos) return;
+                        buffer.getInt();
+                        readId(buffer, idSize);
+                        break;
+                    case 0x21: // ROOT_UNKNOWN
+                        if (currentPos + idSize > endPos) return;
+                        readId(buffer, idSize);
+                        break;
+                    case 0x22: // ROOT_JNI_GLOBAL
+                        if (currentPos + idSize * 2 > endPos) return;
+                        readId(buffer, idSize);
+                        readId(buffer, idSize);
+                        break;
+                    case 0x23: // ROOT_JNI_LOCAL
+                        if (currentPos + idSize + 8 > endPos) return;
+                        readId(buffer, idSize);
+                        buffer.getInt();
+                        buffer.getInt();
+                        break;
+                    case 0x24: // ROOT_JAVA_FRAME
+                        if (currentPos + idSize + 8 > endPos) return;
+                        readId(buffer, idSize);
+                        buffer.getInt();
+                        buffer.getInt();
+                        break;
+                    case 0x25: // ROOT_NATIVE_STACK
+                        if (currentPos + idSize + 4 > endPos) return;
+                        readId(buffer, idSize);
+                        buffer.getInt();
+                        break;
+                    case 0x26: // ROOT_STICKY_CLASS
+                    case 0x28: // ROOT_MONITOR_USED
+                        if (currentPos + idSize > endPos) return;
+                        readId(buffer, idSize);
+                        break;
+                    case 0x27: // ROOT_THREAD_BLOCK
+                        if (currentPos + idSize + 4 > endPos) return;
+                        readId(buffer, idSize);
+                        buffer.getInt();
+                        break;
+                    case 0x29: // ROOT_THREAD_OBJECT
+                        if (currentPos + idSize + 8 > endPos) return;
+                        readId(buffer, idSize);
+                        buffer.getInt();
+                        buffer.getInt();
+                        break;
+                    case 0x2C: // CLASS_DUMP
+                        if (currentPos + idSize * 6 + 20 > endPos) return;
+                        parseClassDump(buffer, idSize, endPos, classNames, classStatsMap);
+                        break;
+                    case 0x2D: // INSTANCE_DUMP
+                        if (currentPos + idSize * 2 + 8 > endPos) return;
+                        parseInstanceDump(buffer, idSize, endPos, classNames, classStatsMap);
+                        break;
+                    case 0x2E: // OBJECT_ARRAY_DUMP
+                        if (currentPos + idSize * 2 + 4 > endPos) return;
+                        parseObjectArrayDump(buffer, idSize, endPos, classNames, classStatsMap);
+                        break;
+                    case 0x2F: // PRIMITIVE_ARRAY_DUMP
+                        if (currentPos + idSize + 5 > endPos) return;
+                        parsePrimitiveArrayDump(buffer, idSize, endPos, classNames, classStatsMap);
+                        break;
+                    default:
+                        log.warn("[Dump分析] 未知的堆转储子标签: 0x{}, 位置: {}", String.format("%02X", subTag), currentPos);
+                        return;
+                }
             }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析堆转储段异常: {}", e.getMessage());
         }
     }
 
-    private void parseClassDump(ByteBuffer buffer, int idSize, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
-        long classObjId = readId(buffer, idSize);
-        buffer.getInt();
-        for (int i = 0; i < 5; i++) readId(buffer, idSize);
-        readId(buffer, idSize);
-        int instanceSize = buffer.getInt();
-        int constPoolCount = buffer.getShort() & 0xFFFF;
-        for (int i = 0; i < constPoolCount; i++) { buffer.getShort(); byte type = buffer.get(); skipValue(buffer, type, idSize); }
-        int staticFieldCount = buffer.getShort() & 0xFFFF;
-        for (int i = 0; i < staticFieldCount; i++) { readId(buffer, idSize); byte type = buffer.get(); skipValue(buffer, type, idSize); }
-        int instanceFieldCount = buffer.getShort() & 0xFFFF;
-        for (int i = 0; i < instanceFieldCount; i++) { readId(buffer, idSize); buffer.get(); }
-        String className = classNames.get(classObjId);
-        if (className != null) {
-            ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
-            stats.setClassName(className);
-            stats.setInstanceIdSize(instanceSize);
+    private void parseClassDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            long classObjId = readId(buffer, idSize);
+            buffer.getInt(); // stack trace serial
+            for (int i = 0; i < 5; i++) readId(buffer, idSize); // super, loader, signers, protection, reserved1
+            readId(buffer, idSize); // reserved2
+            int instanceSize = buffer.getInt();
+
+            // 常量池
+            int constPoolCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < constPoolCount && buffer.position() < endPos; i++) {
+                buffer.getShort(); // index
+                byte type = buffer.get();
+                skipValue(buffer, type, idSize);
+            }
+
+            // 静态字段
+            int staticFieldCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < staticFieldCount && buffer.position() < endPos; i++) {
+                readId(buffer, idSize); // name
+                byte type = buffer.get();
+                skipValue(buffer, type, idSize);
+            }
+
+            // 实例字段
+            int instanceFieldCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < instanceFieldCount && buffer.position() < endPos; i++) {
+                readId(buffer, idSize); // name
+                buffer.get(); // type
+            }
+
+            String className = classNames.get(classObjId);
+            if (className != null) {
+                ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
+                stats.setClassName(className);
+                stats.setInstanceIdSize(instanceSize);
+            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 CLASS_DUMP 异常: {}", e.getMessage());
         }
     }
 
-    private void parseInstanceDump(ByteBuffer buffer, int idSize, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
-        readId(buffer, idSize);
-        buffer.getInt();
-        long classObjId = readId(buffer, idSize);
-        int numBytes = buffer.getInt();
-        buffer.position(buffer.position() + numBytes);
-        String className = classNames.get(classObjId);
-        if (className != null) {
+    private void parseInstanceDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize); // object id
+            buffer.getInt(); // stack trace serial
+            long classObjId = readId(buffer, idSize);
+            int numBytes = buffer.getInt();
+
+            // 安全跳过实例数据
+            int newPos = buffer.position() + numBytes;
+            if (newPos > endPos) {
+                newPos = endPos;
+            }
+            buffer.position(newPos);
+
+            String className = classNames.get(classObjId);
+            if (className != null) {
+                ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
+                stats.setClassName(className);
+                stats.incrementInstanceCount();
+                stats.addTotalSize(numBytes + 16);
+            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 INSTANCE_DUMP 异常: {}", e.getMessage());
+        }
+    }
+
+    private void parseObjectArrayDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize); // array object id
+            buffer.getInt(); // stack trace serial
+            int numElements = buffer.getInt();
+            long arrayClassId = readId(buffer, idSize);
+
+            // 安全跳过元素数据
+            int dataSize = numElements * idSize;
+            int newPos = buffer.position() + dataSize;
+            if (newPos > endPos) {
+                newPos = endPos;
+            }
+            buffer.position(newPos);
+
+            String className = classNames.get(arrayClassId);
+            if (className == null) className = "Object[]";
             ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
             stats.setClassName(className);
             stats.incrementInstanceCount();
-            stats.addTotalSize(numBytes + 16);
+            stats.addTotalSize(dataSize + 16);
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 OBJECT_ARRAY_DUMP 异常: {}", e.getMessage());
         }
     }
 
-    private void parseObjectArrayDump(ByteBuffer buffer, int idSize, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
-        readId(buffer, idSize);
-        buffer.getInt();
-        int numElements = buffer.getInt();
-        long arrayClassId = readId(buffer, idSize);
-        buffer.position(buffer.position() + numElements * idSize);
-        String className = classNames.get(arrayClassId);
-        if (className == null) className = "Object[]";
-        ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
-        stats.setClassName(className);
-        stats.incrementInstanceCount();
-        stats.addTotalSize(numElements * idSize + 16);
-    }
+    private void parsePrimitiveArrayDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize); // array object id
+            buffer.getInt(); // stack trace serial
+            int numElements = buffer.getInt();
+            byte elementType = buffer.get();
+            int elementSize = getElementSize(elementType);
+            int dataSize = numElements * elementSize;
 
-    private void parsePrimitiveArrayDump(ByteBuffer buffer, int idSize, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
-        readId(buffer, idSize);
-        buffer.getInt();
-        int numElements = buffer.getInt();
-        byte elementType = buffer.get();
-        int elementSize = getElementSize(elementType);
-        int dataSize = numElements * elementSize;
-        buffer.position(buffer.position() + dataSize);
-        String typeName;
-        switch (elementType) {
-            case 4: typeName = "boolean[]"; break;
-            case 5: typeName = "char[]"; break;
-            case 6: typeName = "float[]"; break;
-            case 7: typeName = "double[]"; break;
-            case 8: typeName = "byte[]"; break;
-            case 9: typeName = "short[]"; break;
-            case 10: typeName = "int[]"; break;
-            case 11: typeName = "long[]"; break;
-            default: typeName = "unknown[]";
+            // 安全跳过数组数据
+            int newPos = buffer.position() + dataSize;
+            if (newPos > endPos) {
+                newPos = endPos;
+            }
+            buffer.position(newPos);
+
+            String typeName;
+            switch (elementType) {
+                case 4: typeName = "boolean[]"; break;
+                case 5: typeName = "char[]"; break;
+                case 6: typeName = "float[]"; break;
+                case 7: typeName = "double[]"; break;
+                case 8: typeName = "byte[]"; break;
+                case 9: typeName = "short[]"; break;
+                case 10: typeName = "int[]"; break;
+                case 11: typeName = "long[]"; break;
+                default: typeName = "unknown[]";
+            }
+
+            ClassStats stats = classStatsMap.computeIfAbsent(typeName, k -> new ClassStats());
+            stats.setClassName(typeName);
+            stats.incrementInstanceCount();
+            stats.addTotalSize(dataSize + 16);
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 PRIMITIVE_ARRAY_DUMP 异常: {}", e.getMessage());
         }
-        ClassStats stats = classStatsMap.computeIfAbsent(typeName, k -> new ClassStats());
-        stats.setClassName(typeName);
-        stats.incrementInstanceCount();
-        stats.addTotalSize(dataSize + 16);
     }
 
     private int getElementSize(byte type) {
