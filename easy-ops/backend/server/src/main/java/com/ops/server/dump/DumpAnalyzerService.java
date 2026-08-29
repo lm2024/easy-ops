@@ -75,8 +75,12 @@ public class DumpAnalyzerService {
     }
 
     private boolean isHprofFormat(byte[] data) {
-        if (data.length < 4) return false;
-        return data[0] == 0x4A && data[1] == 0x41 && data[2] == 0x56 && data[3] == 0x41;
+        if (data.length < 19) return false;
+        // HPROF 文件头: "JAVA PROFILE 1.0.2\0" (19 字节)
+        // 前 4 字节: "JAVA" (0x4A415641)
+        // 接着是 " PROFILE 1.0.2" + null
+        return data[0] == 0x4A && data[1] == 0x41 && data[2] == 0x56 && data[3] == 0x41 &&
+               data[4] == 0x20 && data[5] == 0x50 && data[6] == 0x52 && data[7] == 0x4F;
     }
 
     private boolean isCoreFormat(byte[] data) {
@@ -228,13 +232,34 @@ public class DumpAnalyzerService {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         buffer.order(ByteOrder.BIG_ENDIAN);
 
-        int header = buffer.getInt();
-        if (header != HPROF_HEADER) {
-            throw new IllegalArgumentException("无效的 HPROF 文件格式");
+        // HPROF 文件头格式: "JAVA PROFILE 1.0.2" (18 字节字符串) + null (1 字节) + ID 大小 (4 字节) + 时间戳 (8 字节)
+        if (data.length < 28) {
+            throw new IllegalArgumentException("文件太小，不是有效的 HPROF 文件");
         }
 
+        // 验证 "JAVA" 标识
+        int header = buffer.getInt();
+        if (header != HPROF_HEADER) {
+            throw new IllegalArgumentException("无效的 HPROF 文件格式：缺少 JAVA 标识");
+        }
+
+        // 跳过 " PROFILE 1.0.2" 部分 (14 字节)，当前位置应该是 18
+        buffer.position(18);
+
+        // 读取 null 结尾符
+        byte nullByte = buffer.get();
+        if (nullByte != 0) {
+            throw new IllegalArgumentException("无效的 HPROF 文件格式：字符串未正确终止");
+        }
+
+        // 读取 ID 大小 (4 字节)
         int idSize = buffer.getInt();
+        if (idSize != 4 && idSize != 8) {
+            throw new IllegalArgumentException("无效的 ID 大小: " + idSize + " (期望 4 或 8)");
+        }
         result.setIdSize(idSize);
+
+        // 读取时间戳 (8 字节)
         buffer.getLong(); // 时间戳
 
         Map<Long, String> strings = new HashMap<>();
