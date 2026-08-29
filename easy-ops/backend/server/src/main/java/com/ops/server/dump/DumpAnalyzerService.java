@@ -232,55 +232,64 @@ public class DumpAnalyzerService {
         ByteBuffer buffer = ByteBuffer.wrap(data);
         buffer.order(ByteOrder.BIG_ENDIAN);
 
-        // HPROF 文件头格式: "JAVA PROFILE 1.0.2" (18 字节字符串) + null (1 字节) + ID 大小 (4 字节) + 时间戳 (8 字节)
+        log.info("[Dump分析] === 开始解析 HPROF 文件 ===");
+        log.info("[Dump分析] 文件大小: {} bytes", data.length);
+
         if (data.length < 28) {
             throw new IllegalArgumentException("文件太小，不是有效的 HPROF 文件");
         }
 
-        // 验证 "JAVA" 标识
         int header = buffer.getInt();
+        log.info("[Dump分析] 文件头: 0x{}", String.format("%08X", header));
         if (header != HPROF_HEADER) {
             throw new IllegalArgumentException("无效的 HPROF 文件格式：缺少 JAVA 标识");
         }
 
-        // 跳过 " PROFILE 1.0.2" 部分 (14 字节)，当前位置应该是 18
         buffer.position(18);
-
-        // 读取 null 结尾符
         byte nullByte = buffer.get();
+        log.info("[Dump分析] Null 字节: 0x{}", String.format("%02X", nullByte));
         if (nullByte != 0) {
             throw new IllegalArgumentException("无效的 HPROF 文件格式：字符串未正确终止");
         }
 
-        // 读取 ID 大小 (4 字节)
         int idSize = buffer.getInt();
+        log.info("[Dump分析] ID 大小: {} 字节", idSize);
         if (idSize != 4 && idSize != 8) {
-            throw new IllegalArgumentException("无效的 ID 大小: " + idSize + " (期望 4 或 8)");
+            throw new IllegalArgumentException("无效的 ID 大小: " + idSize);
         }
         result.setIdSize(idSize);
 
-        // 读取时间戳 (8 字节)
-        buffer.getLong(); // 时间戳
+        long timestamp = buffer.getLong();
+        log.info("[Dump分析] 时间戳: {}", timestamp);
 
         Map<Long, String> strings = new HashMap<>();
         Map<Long, Long> classSerialToNameId = new HashMap<>();
         Map<Long, String> classNames = new HashMap<>();
         Map<String, ClassStats> classStatsMap = new HashMap<>();
 
-        // 第一遍：收集字符串和类信息
+        log.info("[Dump分析] 第一遍起始位置: {}", buffer.position());
+
+        int recordCount = 0, stringCount = 0, classCount = 0;
+
         try {
             while (buffer.hasRemaining()) {
                 int startPos = buffer.position();
                 if (startPos >= data.length - 9) break;
 
                 byte tag = buffer.get();
-                buffer.getInt(); // 时间戳
+                buffer.getInt();
                 int length = buffer.getInt();
                 int bodyStart = buffer.position();
+                recordCount++;
 
-                // 安全检查：确保 length 合理
+                if (recordCount <= 5 || recordCount % 50000 == 0) {
+                    log.info("[Dump分析] 记录 {}: 位置={}, tag=0x{}, length={}, bodyStart={}",
+                            recordCount, startPos, String.format("%02X", tag), length, bodyStart);
+                }
+
                 if (length < 0 || bodyStart + length > data.length) {
-                    log.warn("[Dump分析] 记录长度异常: tag={}, length={}, bodyStart={}, dataLength={}", tag, length, bodyStart, data.length);
+                    log.warn("[Dump分析] 记录长度异常: tag=0x{}, length={}, bodyStart={}, dataLength={}, 停止第一遍扫描",
+                            String.format("%02X", tag), length, bodyStart, data.length);
                     break;
                 }
 
@@ -288,55 +297,62 @@ public class DumpAnalyzerService {
                     long strId = readId(buffer, idSize);
                     String str = readNullTerminatedString(buffer, bodyStart + length);
                     strings.put(strId, str);
+                    stringCount++;
                 } else if (tag == HPROF_LOAD_CLASS) {
                     buffer.getInt();
                     long classObjId = readId(buffer, idSize);
                     buffer.getInt();
                     long classNameId = readId(buffer, idSize);
                     classSerialToNameId.put(classObjId, classNameId);
+                    classCount++;
                 }
 
-                // 安全地移动到下一个记录
                 buffer.position(bodyStart + length);
             }
         } catch (Exception e) {
-            log.warn("[Dump分析] 第一遍扫描异常: {}", e.getMessage());
+            log.error("[Dump分析] 第一遍扫描异常:位置={}, 错误={}", buffer.position(), e.getMessage(), e);
         }
+
+        log.info("[Dump分析] 第一遍完成: 记录数={}, 字符串数={}, 类加载数={}", recordCount, stringCount, classCount);
 
         for (Map.Entry<Long, Long> entry : classSerialToNameId.entrySet()) {
             String name = strings.get(entry.getValue());
             if (name != null) classNames.put(entry.getKey(), name.replace('/', '.'));
         }
+        log.info("[Dump分析] 类名映射完成: {} 个类", classNames.size());
 
-        // 第二遍：分析堆数据
-        buffer.position(27); // 跳过完整的文件头
+        // 第二遍
+        log.info("[Dump分析] === 第二遍扫描：分析堆数据 ===");
+        buffer.position(27);
 
+        int heapSegmentCount = 0;
         try {
             while (buffer.hasRemaining()) {
                 int startPos = buffer.position();
                 if (startPos >= data.length - 9) break;
 
                 byte tag = buffer.get();
-                buffer.getInt(); // 时间戳
+                buffer.getInt();
                 int length = buffer.getInt();
                 int bodyStart = buffer.position();
 
-                // 安全检查：确保 length 合理
                 if (length < 0 || bodyStart + length > data.length) {
-                    log.warn("[Dump分析] 记录长度异常: tag={}, length={}, bodyStart={}, dataLength={}", tag, length, bodyStart, data.length);
+                    log.warn("[Dump分析] 第二遍记录长度异常: tag=0x{}, length={}, bodyStart={}", String.format("%02X", tag), length, bodyStart);
                     break;
                 }
 
                 if (tag == HPROF_HEAP_DUMP || tag == HPROF_HEAP_DUMP_SEGMENT) {
+                    heapSegmentCount++;
                     parseHeapDumpSegment(buffer, bodyStart, length, idSize, classNames, classStatsMap);
                 }
 
-                // 安全地移动到下一个记录
                 buffer.position(bodyStart + length);
             }
         } catch (Exception e) {
-            log.warn("[Dump分析] 第二遍扫描异常: {}", e.getMessage());
+            log.error("[Dump分析] 第二遍扫描异常:位置={}, 错误={}", buffer.position(), e.getMessage(), e);
         }
+
+        log.info("[Dump分析] 第二遍完成: 堆转储段数={}, 解析出类数={}", heapSegmentCount, classStatsMap.size());
 
         List<ClassStats> classStatsList = new ArrayList<>(classStatsMap.values());
         classStatsList.sort((a, b) -> Long.compare(b.getTotalSize(), a.getTotalSize()));
@@ -351,6 +367,11 @@ public class DumpAnalyzerService {
         result.setTotalSize(totalSize);
         result.setTotalSizeFormatted(formatBytes(totalSize));
         result.setClassCount(classStatsList.size());
+
+        log.info("[Dump分析] === 最终结果: 类数={}, 总实例数={}, 总大小={} ===", classStatsList.size(), totalInstances, formatBytes(totalSize));
+        if (!classStatsList.isEmpty()) {
+            classStatsList.stream().limit(5).forEach(s -> log.info("[Dump分析] TOP类: {} 实例={} 大小={}", s.getClassName(), s.getInstanceCount(), formatBytes(s.getTotalSize())));
+        }
     }
 
     private void parseHeapDumpSegment(ByteBuffer buffer, int offset, int length, int idSize,
