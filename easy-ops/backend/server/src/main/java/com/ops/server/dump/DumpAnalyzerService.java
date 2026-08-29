@@ -468,6 +468,126 @@ public class DumpAnalyzerService {
         }
     }
 
+    private void parseClassDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            long classObjId = readId(buffer, idSize);
+            buffer.getInt(); // stack trace serial
+            for (int i = 0; i < 5; i++) readId(buffer, idSize);
+            readId(buffer, idSize);
+            int instanceSize = buffer.getInt();
+
+            int constPoolCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < constPoolCount && buffer.position() < endPos; i++) {
+                buffer.getShort();
+                byte type = buffer.get();
+                skipValue(buffer, type, idSize);
+            }
+
+            int staticFieldCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < staticFieldCount && buffer.position() < endPos; i++) {
+                readId(buffer, idSize);
+                byte type = buffer.get();
+                skipValue(buffer, type, idSize);
+            }
+
+            int instanceFieldCount = buffer.getShort() & 0xFFFF;
+            for (int i = 0; i < instanceFieldCount && buffer.position() < endPos; i++) {
+                readId(buffer, idSize);
+                buffer.get();
+            }
+
+            String className = classNames.get(classObjId);
+            if (className != null) {
+                ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
+                stats.setClassName(className);
+                stats.setInstanceIdSize(instanceSize);
+            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 CLASS_DUMP 异常: {}", e.getMessage());
+        }
+    }
+
+    private void parseInstanceDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize);
+            buffer.getInt();
+            long classObjId = readId(buffer, idSize);
+            int numBytes = buffer.getInt();
+
+            int newPos = buffer.position() + numBytes;
+            if (newPos > endPos) newPos = endPos;
+            buffer.position(newPos);
+
+            String className = classNames.get(classObjId);
+            if (className != null) {
+                ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
+                stats.setClassName(className);
+                stats.incrementInstanceCount();
+                stats.addTotalSize(numBytes + 16);
+            }
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 INSTANCE_DUMP 异常: {}", e.getMessage());
+        }
+    }
+
+    private void parseObjectArrayDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize);
+            buffer.getInt();
+            int numElements = buffer.getInt();
+            long arrayClassId = readId(buffer, idSize);
+
+            int dataSize = numElements * idSize;
+            int newPos = buffer.position() + dataSize;
+            if (newPos > endPos) newPos = endPos;
+            buffer.position(newPos);
+
+            String className = classNames.get(arrayClassId);
+            if (className == null) className = "Object[]";
+            ClassStats stats = classStatsMap.computeIfAbsent(className, k -> new ClassStats());
+            stats.setClassName(className);
+            stats.incrementInstanceCount();
+            stats.addTotalSize(dataSize + 16);
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 OBJECT_ARRAY_DUMP 异常: {}", e.getMessage());
+        }
+    }
+
+    private void parsePrimitiveArrayDump(ByteBuffer buffer, int idSize, int endPos, Map<Long, String> classNames, Map<String, ClassStats> classStatsMap) {
+        try {
+            readId(buffer, idSize);
+            buffer.getInt();
+            int numElements = buffer.getInt();
+            byte elementType = buffer.get();
+            int elementSize = getElementSize(elementType);
+            int dataSize = numElements * elementSize;
+
+            int newPos = buffer.position() + dataSize;
+            if (newPos > endPos) newPos = endPos;
+            buffer.position(newPos);
+
+            String typeName;
+            switch (elementType) {
+                case 4: typeName = "boolean[]"; break;
+                case 5: typeName = "char[]"; break;
+                case 6: typeName = "float[]"; break;
+                case 7: typeName = "double[]"; break;
+                case 8: typeName = "byte[]"; break;
+                case 9: typeName = "short[]"; break;
+                case 10: typeName = "int[]"; break;
+                case 11: typeName = "long[]"; break;
+                default: typeName = "unknown[]";
+            }
+
+            ClassStats stats = classStatsMap.computeIfAbsent(typeName, k -> new ClassStats());
+            stats.setClassName(typeName);
+            stats.incrementInstanceCount();
+            stats.addTotalSize(dataSize + 16);
+        } catch (Exception e) {
+            log.warn("[Dump分析] 解析 PRIMITIVE_ARRAY_DUMP 异常: {}", e.getMessage());
+        }
+    }
+
     private int getElementSize(byte type) {
         switch (type) {
             case 4: case 8: return 1;
