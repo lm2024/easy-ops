@@ -302,8 +302,7 @@ public class DumpAnalyzerService {
         }
 
         // 第二遍：分析堆数据
-        buffer.position(0);
-        buffer.getInt(); buffer.getInt(); buffer.getLong();
+        buffer.position(27); // 跳过完整的文件头 (18 + 1 + 4 + 8 = 27 字节)
 
         while (buffer.hasRemaining()) {
             int startPos = buffer.position();
