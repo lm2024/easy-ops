@@ -32,6 +32,12 @@ easy-ops/frontend/vite.config.js.timestamp-*.mjs
 # IDE 配置
 .idea/
 .vscode/
+.cursor/
+*.iml
+.classpath
+.project
+.settings/
+.factorypath
 
 # AI 工具目录
 .codebuddy/
@@ -39,6 +45,8 @@ easy-ops/frontend/vite.config.js.timestamp-*.mjs
 .mimocode/
 .reasonix/
 .claude/
+.cline/
+.codegraph/
 .skills/
 
 # 临时文件
@@ -46,9 +54,13 @@ easy-ops/frontend/vite.config.js.timestamp-*.mjs
 *.log
 *.bak
 
-# Dump 测试文件
-*.hprof
-*.core
+# H2 数据库文件（运行数据，不应提交）
+*.mv.db
+*.trace.db
+
+# 测试覆盖率产物
+coverage/
+.nyc_output/
 
 # Agent JAR 包（不应提交到仓库）
 easy-ops/backend/agent/docker/easy-ops-agent-*.jar
