@@ -15,14 +15,14 @@
           :multiple="false"
           :before-upload="beforeUpload"
           :show-upload-list="false"
-          accept=".hprof"
+          accept=".hprof,.core"
         >
           <p class="ant-upload-drag-icon">
             <inbox-outlined />
           </p>
-          <p class="ant-upload-text">点击或拖拽 .hprof 文件到此区域上传</p>
+          <p class="ant-upload-text">点击或拖拽文件到此区域上传</p>
           <p class="ant-upload-hint">
-            支持 Java heap dump 文件（.hprof 格式），最大 500MB
+            支持 Java heap dump（.hprof）或 Core dump（.core）文件，最大 500MB
           </p>
         </a-upload-dragger>
       </div>
@@ -143,8 +143,8 @@ const analysisResult = ref<any>(null)
 
 async function beforeUpload(file: File) {
   // 验证文件类型
-  if (!file.name.endsWith('.hprof')) {
-    message.error('只支持 .hprof 格式的 dump 文件')
+  if (!file.name.endsWith('.hprof') && !file.name.endsWith('.core')) {
+    message.error('只支持 .hprof 或 .core 格式的文件')
     return false
   }
 
