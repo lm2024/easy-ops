@@ -95,8 +95,10 @@ import { ref, computed, inject } from 'vue'
 import { message } from 'ant-design-vue'
 import { ReloadOutlined, WarningOutlined } from '@ant-design/icons-vue'
 import { execArthasCommand } from '@/api/arthas'
+import { parseThreads, parseBusyThreads, parseDeadlock, formatStackTrace } from '@/utils/arthasParse'
+import { friendlyMessage } from '@/utils/arthasError'
 
-const onArthasError = inject('onArthasError', (e: any) => {})
+const onArthasError = inject('onArthasError', (_e: any) => {})
 
 const props = defineProps<{ sessionId: string }>()
 
@@ -167,30 +169,21 @@ async function execCommand(command: string, timeoutMs = 5000) {
 async function collectThreads() {
   threadLoading.value = true
   try {
-    const results = await execCommand('thread', 5000)
-    if (results.length > 0) {
-      const data = results[0]
-      if (Array.isArray(data)) {
-        threads.value = data.map((t: any) => ({
-          id: t.id || t.threadId,
-          name: t.name || t.threadName,
-          state: t.state || t.threadState,
-          cpu: t.cpu != null ? t.cpu.toFixed(1) : '-'
-        }))
-      } else if (data.threads) {
-        threads.value = data.threads.map((t: any) => ({
-          id: t.id || t.threadId,
-          name: t.name || t.threadName,
-          state: t.state || t.threadState,
-          cpu: t.cpu != null ? t.cpu.toFixed(1) : '-'
-        }))
-      }
+    const results = await execCommand('thread', 8000)
+    // Arthas 4.x 把完整线程列表放在 threadStats 字段，
+    // 旧实现只认"顶层数组"或 data.threads，导致列表永远是空的。
+    const parsed = parseThreads(results)
+    if (parsed && parsed.threads.length > 0) {
+      threads.value = parsed.threads
+      message.success(`线程列表采集完成（${parsed.threads.length} 个线程）`)
+    } else {
+      threads.value = []
+      message.warning('未能解析线程列表，请尝试刷新重试')
     }
     lastCollectTime.value = Date.now()
-    message.success('线程列表采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + e.message)
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     threadLoading.value = false
   }
@@ -199,21 +192,19 @@ async function collectThreads() {
 async function collectBusyThreads() {
   busyLoading.value = true
   try {
-    const results = await execCommand('thread -n 5', 8000)
-    if (results.length > 0) {
-      const data = results[0]
-      if (Array.isArray(data)) {
-        busyThreads.value = data.map((t: any) => ({
-          id: t.id || t.threadId,
-          name: t.name || t.threadName,
-          cpu: t.cpu != null ? t.cpu.toFixed(2) : '-'
-        }))
-      }
+    const results = await execCommand('thread -n 5', 15000)
+    // 最忙线程在 busyThreads 字段，而不是顶层数组
+    const list = parseBusyThreads(results)
+    if (list.length > 0) {
+      busyThreads.value = list
+      message.success('最忙线程采集完成')
+    } else {
+      busyThreads.value = []
+      message.warning('未能解析最忙线程数据')
     }
-    message.success('最忙线程采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + e.message)
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     busyLoading.value = false
   }
@@ -224,25 +215,18 @@ async function detectDeadlock() {
   deadlockResult.value = ''
   try {
     const results = await execCommand('thread -b', 8000)
-    if (results.length > 0) {
-      const data = results[0]
-      if (typeof data === 'string') {
-        deadlockResult.value = data
-      } else if (data.message) {
-        deadlockResult.value = data.message
-      } else {
-        deadlockResult.value = JSON.stringify(data, null, 2)
-      }
-      if (deadlockResult.value.includes('No deadlock') || deadlockResult.value.includes('没有死锁')) {
-        message.success('未检测到死锁')
-        deadlockResult.value = ''
-      } else {
-        message.warning('检测到死锁！')
-      }
+    // 无死锁时 Arthas 只回一条 status 消息，之前会被后端过滤掉，
+    // 导致这里拿到空数组、界面无任何反馈。
+    const { text, hasDeadlock } = parseDeadlock(results)
+    deadlockResult.value = text
+    if (hasDeadlock) {
+      message.warning('检测到死锁！')
+    } else {
+      message.success('未检测到死锁')
     }
   } catch (e: any) {
     onArthasError(e)
-    message.error('检测失败: ' + e.message)
+    message.error(friendlyMessage('检测失败', e))
   } finally {
     deadlockLoading.value = false
   }
@@ -252,15 +236,29 @@ async function viewThreadStack(threadId: number) {
   try {
     const thread = threads.value.find(t => t.id === threadId) || busyThreads.value.find(t => t.id === threadId)
     currentThreadName.value = thread?.name || `Thread-${threadId}`
-    const results = await execCommand(`thread ${threadId}`, 5000)
-    if (results.length > 0) {
-      const data = results[0]
-      currentStack.value = typeof data === 'string' ? data : JSON.stringify(data, null, 2)
+
+    // 采集线程列表/最忙线程时已经带回堆栈，优先复用本地数据，省掉一次网络往返
+    const localStack = thread?.stackTrace
+    if (Array.isArray(localStack) && localStack.length > 0) {
+      currentStack.value = formatStackTrace(localStack)
+      stackModalVisible.value = true
+      return
+    }
+
+    const results = await execCommand(`thread ${threadId}`, 8000)
+    const parsed = parseThreads(results)
+    const single = parsed?.threads?.[0] || parsed?.raw || results?.[0]
+    if (single && Array.isArray(single.stackTrace) && single.stackTrace.length > 0) {
+      currentStack.value = formatStackTrace(single.stackTrace)
+    } else if (typeof single === 'string') {
+      currentStack.value = single
+    } else {
+      currentStack.value = JSON.stringify(single ?? null, null, 2)
     }
     stackModalVisible.value = true
   } catch (e: any) {
     onArthasError(e)
-    message.error('获取线程栈失败: ' + e.message)
+    message.error(friendlyMessage('获取线程栈失败', e))
   }
 }
 

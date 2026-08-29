@@ -70,9 +70,11 @@ import { ref, computed, inject } from 'vue'
 import { message } from 'ant-design-vue'
 import { ReloadOutlined } from '@ant-design/icons-vue'
 import { execArthasCommand } from '@/api/arthas'
+import { parseMemory, parseGc, pickByType } from '@/utils/arthasParse'
 import type { DashboardData } from '@/types/arthas'
+import { friendlyMessage } from '@/utils/arthasError'
 
-const onArthasError = inject('onArthasError', (e: any) => {})
+const onArthasError = inject('onArthasError', (_e: any) => {})
 
 const props = defineProps<{
   sessionId: string
@@ -134,77 +136,74 @@ async function collectOverview() {
     // 执行 memory 命令补充内存详情
     const memRes = await execArthasCommand({ sessionId: props.sessionId, command: 'memory', timeoutMs: 5000 })
     if (memRes.data && memRes.data.success && memRes.data.results) {
-      parseMemory(memRes.data.results)
+      applyMemory(memRes.data.results)
     }
     lastCollectTime.value = Date.now()
     message.success('概览采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + (e.message || e))
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     loading.value = false
   }
 }
 
 function parseDashboard(results: any[]) {
-  for (const r of results) {
-    if (r.type === 'dashboard') {
-      // 解析 thread 部分
-      if (r.thread) {
-        dashboard.value.thread.total = r.thread.total || 0
-        dashboard.value.thread.runnable = r.thread.runnable || 0
-        dashboard.value.thread.timedWaiting = r.thread['timed-waiting'] || 0
-        dashboard.value.thread.waiting = r.thread.waiting || 0
-        dashboard.value.thread.blocked = r.thread.blocked || 0
-        dashboard.value.thread.deadlock = r.thread.deadlock || 0
-      }
-      // 解析 memory 部分
-      if (r.memory) {
-        const heap = r.memory.heap || {}
-        dashboard.value.memory.heapUsed = Math.round((heap.used || 0) / 1024 / 1024)
-        dashboard.value.memory.heapMax = Math.round((heap.max || 0) / 1024 / 1024)
-      }
-      // 解析 gc 部分
-      if (r.gc) {
-        dashboard.value.gc.youngCount = r.gc['gc.ps_scavenge.count'] || r.gc['gc.g1_young_generation.count'] || 0
-        dashboard.value.gc.youngTimeMs = Math.round((r.gc['gc.ps_scavenge.time'] || r.gc['gc.g1_young_generation.time'] || 0) * 1000)
-        dashboard.value.gc.fullCount = r.gc['gc.ps_marksweep.count'] || r.gc['gc.g1_old_generation.count'] || 0
-        dashboard.value.gc.fullTimeMs = Math.round((r.gc['gc.ps_marksweep.time'] || r.gc['gc.g1_old_generation.time'] || 0) * 1000)
-      }
-    }
+  const item = pickByType(results, 'dashboard')
+  if (!item) {
+    return
+  }
+
+  // 线程统计：Arthas 4.x 的 dashboard 给出的是完整线程数组（threads），
+  // 不像 3.x 那样预先聚合好各状态数量，需要自己归类。
+  const list: any[] = Array.isArray(item.threads) ? item.threads : []
+  const stat = { total: list.length, runnable: 0, timedWaiting: 0, waiting: 0, blocked: 0, deadlock: 0 }
+  for (const th of list) {
+    const s = String(th?.state || '')
+    if (s.includes('RUNNABLE')) stat.runnable++
+    else if (s.includes('TIMED_WAIT')) stat.timedWaiting++
+    else if (s.includes('WAITING')) stat.waiting++
+    else if (s.includes('BLOCKED')) stat.blocked++
+  }
+  dashboard.value.thread = stat
+
+  // 内存与 GC：dashboard 本身已带 memoryInfo 和 gcInfos，直接复用统一解析
+  applyMemory(results)
+  const parsedGc = parseGc(results)
+  if (parsedGc) {
+    dashboard.value.gc = parsedGc
   }
 }
 
-function parseMemory(results: any[]) {
-  for (const r of results) {
-    if (r.type === 'memory') {
-      const heap = r.heap || {}
-      const nonheap = r['non-heap'] || {}
-      // 老年代
-      if (heap['ps_old_gen'] || heap['g1_old_gen']) {
-        const old = heap['ps_old_gen'] || heap['g1_old_gen']
-        dashboard.value.memory.oldGenUsed = Math.round((old.used || 0) / 1024 / 1024)
-        dashboard.value.memory.oldGenMax = Math.round((old.max || 0) / 1024 / 1024)
-      }
-      // Eden
-      if (heap['ps_eden_space'] || heap['g1_eden_space']) {
-        const eden = heap['ps_eden_space'] || heap['g1_eden_space']
-        dashboard.value.memory.edenUsed = Math.round((eden.used || 0) / 1024 / 1024)
-        dashboard.value.memory.edenMax = Math.round((eden.max || 0) / 1024 / 1024)
-      }
-      // Survivor
-      if (heap['ps_survivor_space'] || heap['g1_survivor_space']) {
-        const surv = heap['ps_survivor_space'] || heap['g1_survivor_space']
-        dashboard.value.memory.survivorUsed = Math.round((surv.used || 0) / 1024 / 1024)
-        dashboard.value.memory.survivorMax = Math.round((surv.max || 0) / 1024 / 1024)
-      }
-      // Metaspace
-      if (nonheap.metaspace) {
-        dashboard.value.memory.metaspaceUsed = Math.round((nonheap.metaspace.used || 0) / 1024 / 1024)
-        dashboard.value.memory.metaspaceMax = Math.round((nonheap.metaspace.max || 0) / 1024 / 1024)
-      }
-    }
-  }
+/**
+ * 提取堆与各内存分区，回填到概览指标。
+ * 分区名随垃圾收集器不同而变化（Parallel 是 ps_*，G1 是 g1_*），这里都兼容。
+ */
+function applyMemory(results: any[]) {
+  const mem = parseMemory(results)
+  if (!mem) return
+  const m = dashboard.value.memory
+  m.heapUsed = mem.heapUsed
+  m.heapMax = mem.heapMax
+
+  const pick = (names: string[]) => (mem.pools || []).find((p: any) => names.includes(p.name))
+  const maxOf = (pool: any) => (pool && typeof pool.max === 'number' ? pool.max : 0)
+
+  const oldGen = pick(['ps_old_gen', 'g1_old_gen'])
+  m.oldGenUsed = oldGen ? oldGen.used : 0
+  m.oldGenMax = maxOf(oldGen)
+
+  const eden = pick(['ps_eden_space', 'g1_eden_space'])
+  m.edenUsed = eden ? eden.used : 0
+  m.edenMax = maxOf(eden)
+
+  const survivor = pick(['ps_survivor_space', 'g1_survivor_space'])
+  m.survivorUsed = survivor ? survivor.used : 0
+  m.survivorMax = maxOf(survivor)
+
+  const metaspace = pick(['metaspace'])
+  m.metaspaceUsed = metaspace ? metaspace.used : 0
+  m.metaspaceMax = maxOf(metaspace)
 }
 
 function formatTime(ts: number): string {

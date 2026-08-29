@@ -6,7 +6,7 @@
 # =============================================================================
 
 server:
-  port: ${SERVER_PORT:8081}
+  port: ${SERVER_PORT:9091}
   servlet:
     context-path: /api
     encoding:
@@ -215,6 +215,8 @@ easyops:
         project_health_probe: { label: "健康探针",         category: monitor, type: BASE }
         monitor_snapshot:     { label: "监控快照",         category: monitor, type: FLOW, source: agent }
         ai_diagnosis_record:  { label: "AI 诊断记录",      category: monitor, type: FLOW }
+        arthas_diagnose_record: { label: "Arthas 诊断记录", category: monitor, type: FLOW }
+        arthas_diagnose_result: { label: "Arthas 命令结果", category: monitor, type: FLOW }
         # ---- 知识库 ----
         kb_category:          { label: "知识分类",         category: kb,      type: BASE }
         kb_document:          { label: "知识文档",         category: kb,      type: BASE }
@@ -252,6 +254,18 @@ easyops:
         script_distribute_record: { label: "脚本分发记录", category: script,  type: FLOW }
   nginx-traffic:
     minute-retain-days: 2
+
+  # =============================================================================
+  # Arthas JVM 诊断
+  # 诊断记录与命令结果都会持续累积，命令结果体量尤其大（含火焰图等），
+  # 必须配合下方的 retain-days 定期清理，否则会快速撑大数据库文件。
+  # =============================================================================
+  arthas:
+    # 诊断记录保留天数（按 start_time 清理，同时级联清理对应的命令结果），最小 1 天
+    retain-days: ${ARTHAS_RETAIN_DAYS:30}
+    # 单条命令结果入库大小上限（KB）。
+    # 超过该值只存结构与预览，完整产物通过火焰图/堆转储下载获取，避免撑爆数据库。
+    result-max-size-kb: ${ARTHAS_RESULT_MAX_KB:64}
 
 
   auth:

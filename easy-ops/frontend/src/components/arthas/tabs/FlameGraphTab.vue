@@ -37,48 +37,35 @@
         <div class="flamegraph-header">
           <a-tag color="blue">{{ eventType.toUpperCase() }} 火焰图</a-tag>
           <span class="flamegraph-info">采样时长: {{ duration }}s</span>
+          <a-input
+            v-model:value="searchKeyword"
+            placeholder="搜索方法名（如: importData）"
+            style="width: 250px"
+            size="small"
+            allow-clear
+            @press-enter="searchInFlameGraph"
+          >
+            <template #prefix><search-outlined /></template>
+          </a-input>
+          <a-button type="link" size="small" @click="searchInFlameGraph" :disabled="!searchKeyword">
+            搜索
+          </a-button>
           <a-button type="link" size="small" @click="downloadFlameGraph">
             <download-outlined /> 下载 HTML
           </a-button>
         </div>
 
-        <!-- 读图指南 -->
+        <!-- 排查问题三步（简化版） -->
         <div class="flamegraph-guide">
           <div class="guide-section">
-            <div class="guide-title">📊 怎么看</div>
-            <div class="guide-axis">
-              <div class="axis-item">
-                <span class="axis-label">← 横轴 →</span>
-                <span class="axis-desc">宽度 = CPU消耗占比，<b style="color:#ff4d4f">越宽越耗时</b></span>
-              </div>
-              <div class="axis-item">
-                <span class="axis-label">↑ 纵轴 ↓</span>
-                <span class="axis-desc">高度 = 调用栈深度，<b>从下往上</b>是调用关系</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="guide-section">
-            <div class="guide-title">🎨 颜色含义</div>
-            <div class="color-legend">
-              <div class="color-item"><span class="color-block" style="background:#50e150"></span>Java编译（你的业务代码）</div>
-              <div class="color-item"><span class="color-block" style="background:#50cccc"></span>内联方法</div>
-              <div class="color-item"><span class="color-block" style="background:#cce880"></span>C1编译</div>
-              <div class="color-item"><span class="color-block" style="background:#b2e1b2"></span>解释执行</div>
-              <div class="color-item"><span class="color-block" style="background:#e15a5a"></span>Native（GC/JNI）</div>
-              <div class="color-item"><span class="color-block" style="background:#c8c83c"></span>C++ VM（JVM内部）</div>
-            </div>
-          </div>
-
-          <div class="guide-section">
-            <div class="guide-title">🔍 排查问题三步</div>
+            <div class="guide-title">🔍 快速排查</div>
             <div class="steps">
-              <div class="step-item"><span class="step-num">1</span>找<b style="color:#ff4d4f">最宽</b>的矩形 = 最耗时的方法</div>
-              <div class="step-item"><span class="step-num">2</span>看<b>绿色</b>（Java业务代码），忽略红色/黄色（JVM内部）</div>
-              <div class="step-item"><span class="step-num">3</span><b>点击</b>矩形放大，看它调用了谁、被谁调用</div>
+              <div class="step-item"><span class="step-num">1</span>在上方搜索框输入你要找的方法名（如: importData）</div>
+              <div class="step-item"><span class="step-num">2</span>点击搜索，火焰图会高亮该方法</div>
+              <div class="step-item"><span class="step-num">3</span>看这个方法的<b style="color:#ff4d4f">宽度</b>，越宽说明越耗资源</div>
             </div>
             <div class="guide-tips">
-              💡 快捷键：<b>0</b>=重置缩放 | <b>Ctrl+F</b>=搜索方法 | <b>I</b>=反转视图 | <b>D</b>=切换主题
+              💡 提示：找<b>最宽的绿色块</b>，那就是最耗 CPU/内存的地方
             </div>
           </div>
         </div>
@@ -149,10 +136,11 @@
 <script setup lang="ts">
 import { ref, onBeforeUnmount, inject, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
-import { PlayCircleOutlined, StopOutlined, ReloadOutlined, DownloadOutlined, HistoryOutlined } from '@ant-design/icons-vue'
+import { PlayCircleOutlined, StopOutlined, ReloadOutlined, DownloadOutlined, HistoryOutlined, SearchOutlined } from '@ant-design/icons-vue'
 import { execArthasCommand, getFlamegraphList } from '@/api/arthas'
+import { friendlyMessage } from '@/utils/arthasError'
 
-const onArthasError = inject('onArthasError', (e: any) => {})
+const onArthasError = inject('onArthasError', (_e: any) => {})
 
 const props = defineProps<{ sessionId: string }>()
 
@@ -162,6 +150,7 @@ const profiling = ref(false)
 const elapsedSeconds = ref(0)
 const flameGraphHtml = ref('')
 const flamegraphIframe = ref()
+const searchKeyword = ref('')
 
 let profilerTimer: number | null = null
 
@@ -202,9 +191,26 @@ function formatTime(timestamp: number): string {
 }
 
 // 下载历史火焰图
-function downloadHistory(fileName: string) {
-  if (downloadBaseUrl.value) {
-    window.open(downloadBaseUrl.value + encodeURIComponent(fileName), '_blank')
+async function downloadHistory(fileName: string) {
+  if (!downloadBaseUrl.value) return
+  try {
+    const token = localStorage.getItem('token') || sessionStorage.getItem('token') || ''
+    const url = downloadBaseUrl.value + encodeURIComponent(fileName)
+    const response = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (!response.ok) {
+      throw new Error(`下载失败: ${response.status}`)
+    }
+    const blob = await response.blob()
+    const blobUrl = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = blobUrl
+    a.download = fileName
+    a.click()
+    URL.revokeObjectURL(blobUrl)
+  } catch (e: any) {
+    message.error('下载火焰图失败: ' + (e.message || e))
   }
 }
 
@@ -236,7 +242,7 @@ async function startProfiler() {
         startTimer()
       } catch (e: any) {
         onArthasError(e)
-        message.error('启动采样失败: ' + e.message)
+        message.error(friendlyMessage('启动采样失败', e))
       }
     }
   })
@@ -272,6 +278,11 @@ async function stopProfiler() {
         html = data
       } else if (data.htmlContent) {
         html = data.htmlContent
+      } else if (data.tooLarge) {
+        // Agent 侧对超大火焰图只回传路径，避免网络与内存开销
+        const mb = data.fileSizeBytes ? (data.fileSizeBytes / 1024 / 1024).toFixed(1) : '未知'
+        message.warning(`火焰图过大（${mb}MB），已跳过页面内联预览，请到「历史文件」下载后本地打开`)
+        html = ''
       } else if (data.output) {
         html = data.output
       } else if (data.result) {
@@ -294,7 +305,7 @@ async function stopProfiler() {
   } catch (e: any) {
     onArthasError(e)
     profiling.value = false
-    message.error('生成火焰图失败: ' + e.message)
+    message.error(friendlyMessage('生成火焰图失败', e))
   }
 }
 
@@ -302,6 +313,16 @@ function loadFlameGraph() {
   if (flameGraphHtml.value && flamegraphIframe.value) {
     flamegraphIframe.value.srcdoc = flameGraphHtml.value
   }
+}
+
+function searchInFlameGraph() {
+  if (!searchKeyword.value || !flamegraphIframe.value) return
+  // 向 iframe 发送搜索消息
+  flamegraphIframe.value.contentWindow?.postMessage({
+    type: 'flamegraph-search',
+    keyword: searchKeyword.value
+  }, '*')
+  message.info(`搜索: ${searchKeyword.value}`)
 }
 
 function downloadFlameGraph() {

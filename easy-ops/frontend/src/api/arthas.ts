@@ -64,3 +64,8 @@ export function getFlamegraphList(sessionId: string) {
     downloadBaseUrl: string
   }>>('/arthas/diagnose/flamegraph-list', { params: { sessionId } })
 }
+
+/** 一键诊断（自动分析内存问题） */
+export function autoDiagnose(data: { sessionId: string; type?: string }) {
+  return request.post<any, Result<any>>('/arthas/diagnose/auto', data)
+}

@@ -94,8 +94,10 @@ import { ref, h, defineComponent, inject } from 'vue'
 import { message } from 'ant-design-vue'
 import { PlayCircleOutlined, StopOutlined } from '@ant-design/icons-vue'
 import { execArthasCommand } from '@/api/arthas'
+import { parseTraceTree } from '@/utils/arthasParse'
+import { friendlyMessage } from '@/utils/arthasError'
 
-const onArthasError = inject('onArthasError', (e: any) => {})
+const onArthasError = inject('onArthasError', (_e: any) => {})
 
 const props = defineProps<{ sessionId: string }>()
 
@@ -169,9 +171,15 @@ async function startTrace() {
   try {
     message.loading('正在追踪，请触发目标方法调用...')
     const results = await execCommand(command, 60000)
-    if (results.length > 0) {
-      for (const r of results) {
-        const parsed = parseTraceResult(r)
+    // trace 的返回里，第一项通常是 type='enhancer' 的增强回执，
+    // 真正的调用树在 type='trace'（含 root 字段）的项上。
+    // 不区分的话会把增强回执也当成一次调用渲染成 unknown 节点。
+    const traceItems = (results || []).filter((r: any) => r && (r.type === 'trace' || r.root))
+    if (traceItems.length > 0) {
+      for (const r of traceItems) {
+        // 用解析层下钻到真正的调用树根（root 只是包装节点，直接渲染会变成 unknown）
+        const tree = parseTraceTree([r])
+        const parsed = tree ? parseTraceResult(tree) : null
         if (parsed) traceResults.value.push(parsed)
       }
       activeResultKey.value = traceResults.value.map((_, i) => String(i))
@@ -181,7 +189,7 @@ async function startTrace() {
     }
   } catch (e: any) {
     onArthasError(e)
-    message.error('追踪失败: ' + e.message)
+    message.error(friendlyMessage('追踪失败', e))
   } finally {
     tracing.value = false
   }
@@ -191,7 +199,8 @@ function parseTraceResult(data: any): any | null {
   if (typeof data === 'string') {
     return { totalCost: '?', maxDepth: 0, methodCount: 0, tree: { className: 'raw', methodName: data, cost: '?', costPercent: 100, children: [] } }
   }
-  const tree = data.tree || data
+  // Arthas 4.x 把调用树放在 root 字段下；旧的 3.x 结构用 tree
+  const tree = data.root || data.tree || data
   const totalCost = tree.cost || data.cost || '?'
   const stats = calculateStats(tree)
   return {
