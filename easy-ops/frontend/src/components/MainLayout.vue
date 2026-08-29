@@ -241,7 +241,7 @@ const siderTheme = computed(() => appStore.themeMode)
 // 有效菜单 key 集合（不含分组 key sub-core, sub-tools 等）
 const validMenuKeys = new Set([
   'nodes', 'projects', 'versions', 'deploy',
-  'config-manage', 'log-manage',
+  'config-manage', 'log-manage', 'dump-analyze',
   'monitor', 'app-monitor', 'agent-status', 'nginx-traffic', 'alarms', 'alarm-config', 'self-heal',
   'db-manage', 'users', 'tenants', 'operations', 'batch-download'
 ])
@@ -276,7 +276,7 @@ onMounted(loadTenants)
 // 路由前缀 -> 菜单 key
 const pathPrefixMap: Record<string, string> = {
   'nodes': 'nodes', 'projects': 'projects', 'versions': 'versions', 'deploy': 'deploy',
-  'config-manage': 'config-manage', 'log-manage': 'log-manage',
+  'config-manage': 'config-manage', 'log-manage': 'log-manage', 'dump-analyze': 'dump-analyze',
   'monitor': 'monitor', 'app-monitor': 'app-monitor', 'agent-status': 'agent-status', 'nginx-traffic': 'nginx-traffic', 'alarms': 'alarms', 'alarm-config': 'alarm-config',
   'self-heal': 'self-heal',
   'db-manage': 'db-manage', 'users': 'users', 'tenants': 'tenants', 'operations': 'operations',
@@ -286,7 +286,7 @@ const pathPrefixMap: Record<string, string> = {
 // 路由前缀 -> 分组 key
 const prefixToSub: Record<string, string> = {
   nodes: 'sub-core', projects: 'sub-core', versions: 'sub-core', deploy: 'sub-core',
-  'config-manage': 'sub-tools', 'log-manage': 'sub-tools',
+  'config-manage': 'sub-tools', 'log-manage': 'sub-tools', 'dump-analyze': 'sub-tools',
   monitor: 'sub-monitor', 'app-monitor': 'sub-monitor', 'agent-status': 'sub-monitor', alarms: 'sub-monitor', 'alarm-config': 'sub-monitor',
   'self-heal': 'sub-monitor',
   'db-manage': 'sub-system', users: 'sub-system', tenants: 'sub-system', operations: 'sub-system'
