@@ -37,10 +37,10 @@ public class DumpAnalyzeController {
             return Result.paramError("只支持 .hprof 或 .core 格式的文件");
         }
 
-        // 检查文件大小（限制 500MB）
-        long maxSize = 500 * 1024 * 1024;
+        // 检查文件大小（限制 200MB，避免内存溢出）
+        long maxSize = 200 * 1024 * 1024;
         if (file.getSize() > maxSize) {
-            return Result.paramError("文件大小超过限制（最大 500MB）");
+            return Result.paramError("文件大小超过限制（最大 200MB）。大文件请先压缩：gzip -k file.hprof");
         }
 
         String fileId = UUID.randomUUID().toString().replace("-", "");
