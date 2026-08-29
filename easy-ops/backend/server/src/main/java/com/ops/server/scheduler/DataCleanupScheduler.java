@@ -66,6 +66,14 @@ public class DataCleanupScheduler {
     @Value("${easyops.data.cleanup.restart-threshold-pct:80}")
     private int restartThresholdPct;
 
+    /**
+     * Arthas 诊断记录保留天数。
+     * 命令结果表（arthas_diagnose_result）数据量远大于记录表，必须定期清理，
+     * 否则几轮诊断就能把 H2 撑大。
+     */
+    @Value("${easyops.arthas.retain-days:30}")
+    private int arthasRetainDays;
+
     // ======================== Mapper 注入 ========================
 
     @Autowired
@@ -108,6 +116,10 @@ public class DataCleanupScheduler {
     private UserNotificationStateMapper userNotificationStateMapper;
     @Autowired
     private KbDocumentLockMapper kbDocumentLockMapper;
+    @Autowired
+    private ArthasDiagnoseRecordMapper arthasDiagnoseRecordMapper;
+    @Autowired
+    private ArthasDiagnoseResultMapper arthasDiagnoseResultMapper;
     @Autowired
     private CleanupProperties cleanupProperties;
 
@@ -196,6 +208,29 @@ public class DataCleanupScheduler {
                 log.info("清理 nginx_request_sample 保留{}天 删除{}条", days, deleted);
             }
             return deleted;
+        }));
+        // Arthas 诊断数据：按 start_time 保留（不是 create_time，故单独处理）。
+        // 命令结果表体量远大于记录表，必须先删结果再删主记录，且分批提交，
+        // 一次性传入上万个 id 会让 H2 的 IN 子句膨胀、拖慢整个清理周期。
+        tasks.add(task("arthas_diagnose_record", c -> {
+            int days = Math.max(1, arthasRetainDays);
+            long cutoff = System.currentTimeMillis() - days * 24L * 3600L * 1000L;
+            List<Long> ids = arthasDiagnoseRecordMapper.findExpiredIds(cutoff);
+            if (ids == null || ids.isEmpty()) {
+                return 0;
+            }
+            final int batchSize = 1000;
+            int deletedResults = 0;
+            int deletedRecords = 0;
+            for (int i = 0; i < ids.size(); i += batchSize) {
+                List<Long> batch = ids.subList(i, Math.min(i + batchSize, ids.size()));
+                deletedResults += arthasDiagnoseResultMapper.deleteByRecordIds(batch);
+                deletedRecords += arthasDiagnoseRecordMapper.deleteByIds(batch);
+            }
+            if (deletedRecords > 0) {
+                log.info("清理 arthas 诊断数据 保留{}天 删除记录{}条 命令结果{}条", days, deletedRecords, deletedResults);
+            }
+            return deletedRecords + deletedResults;
         }));
         tasks.add(task("notification_record", c ->
                 notificationRecordMapper.deleteExpired(System.currentTimeMillis())));

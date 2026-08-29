@@ -20,3 +20,7 @@ easyops.env
 # 打包/临时产物
 *.7z*
 easy-ops/frontend/vite.config.js.timestamp-*.mjs
+# JAR 包（不应提交到仓库）
+*.jar
+*.war
+*.ear

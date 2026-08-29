@@ -13,6 +13,10 @@ services:
     volumes:
       - agent1-data:/app/data
       - nginx-access-logs:/var/log/nginx:ro
+    # Arthas 诊断需要 attach 到目标 JVM，依赖 ptrace 系统调用。
+    # 新版 Docker 的默认 seccomp 通常已放行，显式声明可避免版本/内核差异导致 attach 失败。
+    cap_add:
+      - SYS_PTRACE
     environment:
       AGENT_TOKEN: agent-token-1
       AGENT_NODE_NAME: agent-1
@@ -48,6 +52,8 @@ services:
       - "2124:2123"
     volumes:
       - agent2-data:/app/data
+    cap_add:
+      - SYS_PTRACE
     environment:
       AGENT_TOKEN: agent-token-2
       AGENT_NODE_NAME: agent-2
@@ -69,6 +75,8 @@ services:
       - "2125:2123"
     volumes:
       - agent3-data:/app/data
+    cap_add:
+      - SYS_PTRACE
     environment:
       AGENT_TOKEN: agent-token-3
       AGENT_NODE_NAME: agent-3

@@ -1,2 +1,0 @@
-[permissions]
-allow = ["Bash=export BUILDX_CONFIG=/tmp/buildx && cd /Users/lm/Documents/GitHub/easy-ops/easy-ops/backend && docker build -t backend-agent-1:latest agent/docker 2>&1 | tail -12", "Bash=find /Users/lm/Documents/GitHub/easy-ops/easy-ops -type f -name \"*.java\" | xargs grep -l -i \"nginx\" 2>/dev/null | head -40"]

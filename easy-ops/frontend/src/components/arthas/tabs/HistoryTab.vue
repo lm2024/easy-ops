@@ -99,6 +99,12 @@ import { ref, onMounted } from 'vue'
 import { message, Modal } from 'ant-design-vue'
 import { SearchOutlined } from '@ant-design/icons-vue'
 import { getDiagnoseHistory, getDiagnoseDetail, deleteDiagnoseRecord } from '@/api/arthas'
+import { friendlyMessage } from '@/utils/arthasError'
+
+// projectId 由诊断抽屉传入，后端它是必填参数。
+// 早期这里没传，后端 @RequestParam 直接抛 "Required request parameter 'projectId' is not present"，
+// 前端只看到一句"系统内部异常"，历史列表从来没打开过。
+const props = defineProps<{ projectId?: number }>()
 
 const nodes = ref<any[]>([])
 const loading = ref(false)
@@ -171,9 +177,16 @@ function formatResult(result: any): string {
 }
 
 async function loadHistory() {
+  // 没有项目上下文时请求必然失败，直接给出说明，不要发一个注定报错的请求
+  if (!props.projectId) {
+    historyList.value = []
+    pagination.value.total = 0
+    return
+  }
   loading.value = true
   try {
     const params: any = {
+      projectId: props.projectId,
       page: pagination.value.current,
       pageSize: pagination.value.pageSize
     }
@@ -187,7 +200,7 @@ async function loadHistory() {
     historyList.value = res.data?.list || []
     pagination.value.total = res.data?.total || 0
   } catch (e: any) {
-    message.error('加载历史失败: ' + e.message)
+    message.error(friendlyMessage('加载历史失败', e))
   } finally {
     loading.value = false
   }
@@ -214,7 +227,7 @@ async function viewDetail(record: any) {
     const res = await getDiagnoseDetail(record.id)
     currentDetail.value = res.data
   } catch (e: any) {
-    message.error('加载详情失败: ' + e.message)
+    message.error(friendlyMessage('加载详情失败', e))
   } finally {
     detailLoading.value = false
   }
@@ -233,7 +246,7 @@ function deleteRecord(record: any) {
         message.success('删除成功')
         loadHistory()
       } catch (e: any) {
-        message.error('删除失败: ' + e.message)
+        message.error(friendlyMessage('删除失败', e))
       }
     }
   })

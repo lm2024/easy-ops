@@ -40,6 +40,15 @@ public class ArthasSessionManager {
     private int sessionTimeoutMinutes;
 
     private final ConcurrentHashMap<Long, ArthasSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * 按 PID 维度的 attach 互斥锁。
+     * attach 涉及"启动进程 + 等待端口就绪"，耗时可达十几秒。若不加锁，
+     * 同一 PID 的并发请求会各自启动一个 arthas-boot 进程，后完成的覆盖前者，
+     * 被覆盖的那个进程和端口将永远无法回收。
+     */
+    private final ConcurrentHashMap<Long, Object> attachLocks = new ConcurrentHashMap<>();
+
     private Semaphore semaphore;
 
     @PostConstruct
@@ -64,9 +73,25 @@ public class ArthasSessionManager {
     }
 
     /**
-     * attach 到目标 PID
+     * attach 到目标 PID。
+     * 外层按 PID 串行化，保证同一进程不会被并发 attach 出多个 arthas-boot 进程。
      */
     public ArthasSession attach(long pid, String projectId, String nodeId) {
+        Object lock = attachLocks.computeIfAbsent(pid, k -> new Object());
+        synchronized (lock) {
+            try {
+                return doAttach(pid, projectId, nodeId);
+            } finally {
+                // 会话已进入 sessions（或已彻底失败并释放资源），释放锁对象
+                attachLocks.remove(pid, lock);
+            }
+        }
+    }
+
+    /**
+     * 执行实际的 attach 流程。调用方必须持有该 PID 的 attach 锁。
+     */
+    private ArthasSession doAttach(long pid, String projectId, String nodeId) {
         // 并发控制
         if (!semaphore.tryAcquire()) {
             throw new RuntimeException("Arthas 诊断会话已满（最多 " + maxConcurrentSessions + " 个），请稍后重试");
@@ -294,26 +319,52 @@ public class ArthasSessionManager {
     }
 
     /**
-     * 清理残留进程（Agent 启动时调用）
+     * 清理残留进程（Agent 启动时调用）。
+     *
+     * <p>只清理 arthas-boot 启动器进程：它仅负责 attach，attach 成功后即退出，
+     * 因此残留的一定是 attach 失败的僵尸进程。目标 JVM 内部的 arthas agent
+     * 不在此列（它随目标进程存活，且卸载只能走 HTTP API 的 stop 命令）。
+     *
+     * <p>这里用 JDK 自带的 jps 而不是 ps aux：容器镜像可能没有 procps，
+     * 而 jps 随 JDK 分发，且能精确匹配 Java 进程，不会误伤同名的非 Java 进程。
      */
     private void cleanupResidual() {
-        // 扫描可能残留的 arthas-boot 进程
+        java.io.BufferedReader reader = null;
         try {
-            Process p = Runtime.getRuntime().exec(new String[]{"/bin/sh", "-c",
-                    "ps aux | grep arthas-boot | grep -v grep | awk '{print $2}'"});
-            java.io.BufferedReader reader = new java.io.BufferedReader(
-                    new java.io.InputStreamReader(p.getInputStream()));
+            Process p = Runtime.getRuntime().exec(new String[]{"jps", "-l"});
+            reader = new java.io.BufferedReader(new java.io.InputStreamReader(p.getInputStream()));
             String line;
+            int cleaned = 0;
             while ((line = reader.readLine()) != null) {
-                String pidStr = line.trim();
-                if (!pidStr.isEmpty()) {
-                    log.info("清理残留 Arthas 进程: pid={}", pidStr);
+                String[] parts = line.trim().split("\\s+");
+                if (parts.length < 2 || !parts[1].contains("arthas-boot")) {
+                    continue;
+                }
+                String pidStr = parts[0];
+                if (pidStr.isEmpty()) {
+                    continue;
+                }
+                log.info("清理残留 Arthas 启动器进程: pid={}", pidStr);
+                try {
                     Runtime.getRuntime().exec(new String[]{"kill", "-9", pidStr});
+                    cleaned++;
+                } catch (Exception e) {
+                    log.debug("清理残留进程失败（可能已退出）: pid={}, error={}", pidStr, e.getMessage());
                 }
             }
-            reader.close();
+            if (cleaned > 0) {
+                log.info("Arthas 残留进程清理完成，共清理 {} 个", cleaned);
+            }
         } catch (Exception e) {
-            log.debug("清理残留 Arthas 进程跳过（非 Linux 或无残留）: {}", e.getMessage());
+            log.debug("清理残留 Arthas 进程跳过（jps 不可用或无残留）: {}", e.getMessage());
+        } finally {
+            if (reader != null) {
+                try {
+                    reader.close();
+                } catch (Exception ignored) {
+                    // 关闭失败无需处理
+                }
+            }
         }
     }
 }

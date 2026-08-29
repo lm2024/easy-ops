@@ -32,7 +32,7 @@
             </a-card>
           </a-col>
           <a-col :span="8">
-            <a-card size="small" title="非堆 (Non-Heap)">
+            <a-card size="small" :title="nonheapTitle">
               <a-progress
                 type="dashboard"
                 :percent="nonheapPercent"
@@ -44,8 +44,8 @@
           </a-col>
           <a-col :span="8">
             <a-card size="small" title="直接内存">
-              <a-statistic title="已使用" :value="directUsed" suffix="MB" />
-              <a-statistic title="最大" :value="directMax" suffix="MB" :value-style="{ fontSize: '14px' }" />
+              <a-statistic title="已使用" :value="directUsed.value" :suffix="directUsed.unit" />
+              <a-statistic title="最大" :value="directMax.value" :suffix="directMax.unit" :value-style="{ fontSize: '14px' }" />
             </a-card>
           </a-col>
         </a-row>
@@ -56,9 +56,17 @@
         <div class="section-title">各内存代详情</div>
         <a-table :columns="poolColumns" :data-source="memoryPools" :pagination="false" size="small" row-key="name">
           <template #bodyCell="{ column, record }">
-            <template v-if="column.key === 'usedPercent'">
-              <a-progress :percent="record.usedPercent" :size="'small'"
+            <template v-if="column.key === 'used'">
+              <span>{{ formatBytesText(record.usedBytes) }}</span>
+            </template>
+            <template v-else-if="column.key === 'max'">
+              <span v-if="record.maxBytes > 0">{{ formatBytesText(record.maxBytes) }}</span>
+              <span v-else class="muted">未限制</span>
+            </template>
+            <template v-else-if="column.key === 'usedPercent'">
+              <a-progress v-if="record.maxBytes > 0" :percent="record.usedPercent" :size="'small'"
                 :stroke-color="record.usedPercent > 80 ? '#ff4d4f' : record.usedPercent > 60 ? '#faad14' : '#52c41a'" />
+              <span v-else class="muted">无上限</span>
             </template>
           </template>
         </a-table>
@@ -83,7 +91,7 @@
       </div>
 
       <!-- 原始数据 -->
-      <div class="section">
+      <div class="section" v-if="rawJson">
         <a-collapse>
           <a-collapse-panel key="raw" header="查看原始 JSON 数据">
             <pre class="raw-json">{{ rawJson }}</pre>
@@ -99,8 +107,10 @@ import { ref, computed, inject } from 'vue'
 import { message } from 'ant-design-vue'
 import { ReloadOutlined, ThunderboltOutlined } from '@ant-design/icons-vue'
 import { execArthasCommand } from '@/api/arthas'
+import { parseMemory, parseGc, formatBytes, formatBytesText } from '@/utils/arthasParse'
+import { friendlyMessage } from '@/utils/arthasError'
 
-const onArthasError = inject('onArthasError', (e: any) => {})
+const onArthasError = inject('onArthasError', (_e: any) => {})
 
 const props = defineProps<{ sessionId: string }>()
 
@@ -116,58 +126,42 @@ const memoryData = ref<any>(null)
 const gcStats = ref<any>(null)
 const classloaders = ref<any[]>([])
 
-const heapUsed = computed(() => memoryData.value?.heap?.used ? Math.round(memoryData.value.heap.used / 1024 / 1024) : 0)
-const heapMax = computed(() => memoryData.value?.heap?.max ? Math.round(memoryData.value.heap.max / 1024 / 1024) : 0)
-const heapPercent = computed(() => heapMax.value > 0 ? Math.round((heapUsed.value / heapMax.value) * 100) : 0)
+// 内存指标统一走解析层：Arthas 4.x 的内存数据藏在 memoryInfo 里且是数组结构，
+// 直接在组件里按旧结构取字段会全部拿到 undefined。
+const heapUsed = computed(() => memoryData.value?.heapUsed ?? 0)
+const heapMax = computed(() => memoryData.value?.heapMax ?? 0)
+const heapPercent = computed(() => memoryData.value?.heapPercent ?? 0)
 
-const nonheapUsed = computed(() => memoryData.value?.['non-heap']?.used ? Math.round(memoryData.value['non-heap'].used / 1024 / 1024) : 0)
-const nonheapMax = computed(() => memoryData.value?.['non-heap']?.max ? Math.round(memoryData.value['non-heap'].max / 1024 / 1024) : 0)
-const nonheapPercent = computed(() => nonheapMax.value > 0 ? Math.round((nonheapUsed.value / nonheapMax.value) * 100) : 0)
+const nonheapUsed = computed(() => memoryData.value?.nonheapUsed ?? 0)
+const nonheapMax = computed(() => memoryData.value?.nonheapMax ?? 0)
+const nonheapPercent = computed(() => memoryData.value?.nonheapPercent ?? 0)
 
-const directUsed = computed(() => memoryData.value?.direct?.used ? Math.round(memoryData.value.direct.used / 1024 / 1024) : 0)
-const directMax = computed(() => memoryData.value?.direct?.max ? Math.round(memoryData.value.direct.max / 1024 / 1024) : 0)
-
-const memoryPools = computed(() => {
-  if (!memoryData.value) return []
-  const pools: any[] = []
-  const heap = memoryData.value.heap || {}
-  for (const key of Object.keys(heap)) {
-    if (key !== 'used' && key !== 'max' && key !== 'committed' && key !== 'init') {
-      const pool = heap[key]
-      if (pool.used != null) {
-        pools.push({
-          name: key,
-          type: 'heap',
-          used: Math.round(pool.used / 1024 / 1024),
-          max: pool.max > 0 ? Math.round(pool.max / 1024 / 1024) : '-',
-          usedPercent: pool.max > 0 ? Math.round((pool.used / pool.max) * 100) : 0
-        })
-      }
-    }
-  }
-  const nonheap = memoryData.value['non-heap'] || {}
-  for (const key of Object.keys(nonheap)) {
-    if (key !== 'used' && key !== 'max' && key !== 'committed' && key !== 'init') {
-      const pool = nonheap[key]
-      if (pool.used != null) {
-        pools.push({
-          name: key,
-          type: 'non-heap',
-          used: Math.round(pool.used / 1024 / 1024),
-          max: pool.max > 0 ? Math.round(pool.max / 1024 / 1024) : '-',
-          usedPercent: pool.max > 0 ? Math.round((pool.used / pool.max) * 100) : 0
-        })
-      }
-    }
-  }
-  return pools
+/**
+ * 直接内存单独走自适应单位。
+ * 它常常只有几十 KB（实测 81921 字节 ≈ 80KB），按 MB 取整必然显示 0。
+ */
+const directPool = computed(
+  () => (memoryData.value?.pools || []).find((p: any) => p.name === 'direct') || null
+)
+const directUsed = computed(() => formatBytes(directPool.value?.usedBytes || 0))
+const directMax = computed(() => {
+  const p = directPool.value
+  // maxBytes <= 0 表示 JVM 未上报上限：Arthas 对 direct 直接返回 Long.MIN_VALUE
+  return p && p.maxBytes > 0 ? formatBytes(p.maxBytes) : { value: '未限制', unit: '' }
 })
+
+// 非堆（metaspace）常返回 max=-1，此时分母已退化成 total，标题上标注一下避免误解
+const nonheapTitle = computed(() =>
+  memoryData.value?.nonheapMaxUnlimited ? '非堆 (Non-Heap, 按已提交)' : '非堆 (Non-Heap)'
+)
+
+const memoryPools = computed(() => memoryData.value?.pools || [])
 
 const poolColumns = [
   { title: '内存池', dataIndex: 'name', key: 'name' },
   { title: '类型', dataIndex: 'type', key: 'type', width: 100 },
-  { title: '已用(MB)', dataIndex: 'used', key: 'used', width: 100 },
-  { title: '最大(MB)', dataIndex: 'max', key: 'max', width: 100 },
+  { title: '已用', dataIndex: 'used', key: 'used', width: 110 },
+  { title: '最大', dataIndex: 'max', key: 'max', width: 110 },
   { title: '使用率', dataIndex: 'usedPercent', key: 'usedPercent', width: 200 }
 ]
 
@@ -189,15 +183,16 @@ async function collectMemory() {
   memoryLoading.value = true
   try {
     const results = await execCommand('memory', 5000)
-    if (results.length > 0) {
-      memoryData.value = results[0]
-      rawJson.value = JSON.stringify(results[0], null, 2)
+    memoryData.value = parseMemory(results)
+    rawJson.value = JSON.stringify(results[0] ?? null, null, 2)
+    if (!memoryData.value) {
+      message.warning('未能解析内存数据，请查看原始 JSON')
     }
     lastCollectTime.value = Date.now()
     message.success('内存数据采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + e.message)
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     memoryLoading.value = false
   }
@@ -207,29 +202,16 @@ async function collectGc() {
   gcLoading.value = true
   try {
     const results = await execCommand('jvm', 5000)
-    if (results.length > 0) {
-      const jvmData = results[0]
-      const collectors = jvmData?.jvmInfo?.['GARBAGE-COLLECTORS'] || []
-      let youngCount = 0, youngTimeMs = 0, fullCount = 0, fullTimeMs = 0
-      for (const c of collectors) {
-        const name = c.name || ''
-        const val = c.value || {}
-        const count = val.collectionCount || 0
-        const time = val.collectionTime || 0
-        if (name.includes('Scavenge') || name.includes('Young') || name.includes('Copy')) {
-          youngCount = count
-          youngTimeMs = time
-        } else if (name.includes('MarkSweep') || name.includes('Old') || name.includes('ConcurrentMarkSweep')) {
-          fullCount = count
-          fullTimeMs = time
-        }
-      }
-      gcStats.value = { youngCount, youngTimeMs, fullCount, fullTimeMs }
+    const gc = parseGc(results)
+    if (gc) {
+      gcStats.value = gc
+      message.success('GC 统计采集完成')
+    } else {
+      message.warning('未能解析 GC 统计，请查看原始 JSON')
     }
-    message.success('GC 统计采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + e.message)
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     gcLoading.value = false
   }
@@ -252,7 +234,7 @@ async function collectClassloader() {
     message.success('类加载器信息采集完成')
   } catch (e: any) {
     onArthasError(e)
-    message.error('采集失败: ' + e.message)
+    message.error(friendlyMessage('采集失败', e))
   } finally {
     classloaderLoading.value = false
   }
@@ -266,7 +248,7 @@ async function runGc() {
     await collectMemory()
   } catch (e: any) {
     onArthasError(e)
-    message.error('触发失败: ' + e.message)
+    message.error(friendlyMessage('触发失败', e))
   } finally {
     gcRunLoading.value = false
   }
@@ -295,5 +277,6 @@ defineExpose({ collectAll, collectMemory })
 .last-collect { color: #8c8c8c; font-size: 12px; }
 .section { margin-bottom: 24px; }
 .section-title { font-weight: 600; font-size: 14px; margin-bottom: 12px; color: #262626; border-left: 3px solid #1890ff; padding-left: 8px; }
-.raw-json { max-height: 400px; overflow: auto; background: #f5f5f5; padding: 12px; border-radius: 4px; font-size: 12px; }
+.raw-json { max-height: 400px; overflow: auto; background: rgba(0, 0, 0, 0.15); padding: 12px; border-radius: 4px; font-size: 12px; color: inherit; min-height: unset; }
+.muted { opacity: 0.45; font-size: 12px; }
 </style>

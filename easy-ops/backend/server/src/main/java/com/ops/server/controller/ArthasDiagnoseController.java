@@ -89,10 +89,15 @@ public class ArthasDiagnoseController {
      */
     @GetMapping("/diagnose/history")
     public Result<?> history(@RequestParam Long projectId,
+                              @RequestParam(required = false) Long nodeId,
+                              @RequestParam(required = false) String status,
+                              @RequestParam(required = false) Long startTime,
+                              @RequestParam(required = false) Long endTime,
                               @RequestParam(defaultValue = "1") int page,
                               @RequestParam(defaultValue = "20") int pageSize) {
         try {
-            return Result.success(diagnoseService.getHistory(projectId, page, pageSize));
+            return Result.success(
+                    diagnoseService.getHistory(projectId, nodeId, status, startTime, endTime, page, pageSize));
         } catch (Exception e) {
             return Result.error(500, "查询历史失败: " + e.getMessage());
         }
@@ -111,6 +116,20 @@ public class ArthasDiagnoseController {
     }
 
     /**
+     * DELETE /api/arthas/diagnose/delete - 删除诊断记录及其命令结果
+     */
+    @DeleteMapping("/diagnose/delete")
+    public Result<?> delete(@RequestParam Long id) {
+        try {
+            diagnoseService.deleteDiagnose(id);
+            return Result.success(null);
+        } catch (Exception e) {
+            log.error("删除诊断记录失败: id={}, error={}", id, e.getMessage());
+            return Result.error(500, "删除失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * GET /api/arthas/diagnose/flamegraph-list - 火焰图历史文件列表
      */
     @GetMapping("/diagnose/flamegraph-list")
@@ -119,6 +138,21 @@ public class ArthasDiagnoseController {
             return Result.success(diagnoseService.getFlamegraphList(sessionId));
         } catch (Exception e) {
             return Result.error(500, "获取火焰图历史列表失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * POST /api/arthas/diagnose/auto - 一键诊断（自动分析内存问题）
+     */
+    @PostMapping("/diagnose/auto")
+    public Result<?> autoDiagnose(@RequestBody Map<String, Object> body) {
+        String sessionId = body.get("sessionId").toString();
+        String diagnoseType = body.get("type") != null ? body.get("type").toString() : "jmap-histo";
+        try {
+            return Result.success(diagnoseService.autoDiagnose(sessionId, diagnoseType));
+        } catch (Exception e) {
+            log.error("一键诊断失败: sessionId={}, type={}, error={}", sessionId, diagnoseType, e.getMessage());
+            return Result.error(500, "诊断失败: " + e.getMessage());
         }
     }
 

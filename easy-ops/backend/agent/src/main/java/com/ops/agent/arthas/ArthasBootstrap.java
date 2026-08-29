@@ -18,6 +18,17 @@ import java.nio.file.StandardCopyOption;
 public class ArthasBootstrap {
     private static final Logger log = LoggerFactory.getLogger(ArthasBootstrap.class);
 
+    /**
+     * 内置 Arthas 完整包的版本。
+     * 必须与 agent/src/main/resources/arthas/arthas-bin.zip 中的实际版本一致，
+     * 否则每次启动都会误判为"版本变更"而重复解压。
+     */
+    @Value("${agent.arthas.version:4.3.3}")
+    private String arthasVersion;
+
+    /** 记录已释放版本的文件名，用于版本校验 */
+    private static final String VERSION_FILE = ".arthas-version";
+
     @Value("${agent.data-path:/app/data}")
     private String agentDataPath;
 
@@ -39,15 +50,22 @@ public class ArthasBootstrap {
     }
 
     /**
-     * 确保 Arthas 完整包已就绪
-     * 检查 arthas-core.jar 是否存在，不存在则从 classpath 解压 arthas-bin.zip
+     * 确保 Arthas 完整包已就绪。
+     * 先校验已释放的版本，版本不一致或文件缺失则重新解压，
+     * 避免升级 Arthas 后仍然使用旧包导致的命令行为差异。
      */
-    public void ensureArthasReady() {
+    public synchronized void ensureArthasReady() {
         File arthasHome = new File(getArthasHome());
+        File versionFile = new File(arthasHome, VERSION_FILE);
         File coreJar = new File(arthasHome, "arthas-core.jar");
-        if (coreJar.exists()) {
-            log.debug("Arthas 完整包已存在: {}", arthasHome.getAbsolutePath());
+
+        String existingVersion = readVersionFile(versionFile);
+        if (coreJar.exists() && arthasVersion.equals(existingVersion)) {
+            log.debug("Arthas 完整包已就绪: version={}, path={}", existingVersion, arthasHome.getAbsolutePath());
             return;
+        }
+        if (existingVersion != null && !arthasVersion.equals(existingVersion)) {
+            log.info("Arthas 版本变更（{} -> {}），重新释放完整包", existingVersion, arthasVersion);
         }
         // 目录不存在则创建
         if (!arthasHome.exists()) {
@@ -55,7 +73,31 @@ public class ArthasBootstrap {
         }
         // 从 classpath 解压完整包
         extractZipFromClasspath("arthas/arthas-bin.zip", arthasHome);
-        log.info("Arthas 完整包已解压: {}", arthasHome.getAbsolutePath());
+        writeVersionFile(versionFile);
+        log.info("Arthas 完整包已解压: version={}, path={}", arthasVersion, arthasHome.getAbsolutePath());
+    }
+
+    private String readVersionFile(File versionFile) {
+        if (!versionFile.exists()) {
+            return null;
+        }
+        try {
+            String content = new String(java.nio.file.Files.readAllBytes(versionFile.toPath()),
+                    java.nio.charset.StandardCharsets.UTF_8).trim();
+            return content.isEmpty() ? null : content;
+        } catch (Exception e) {
+            log.warn("读取 Arthas 版本文件失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void writeVersionFile(File versionFile) {
+        try {
+            java.nio.file.Files.write(versionFile.toPath(),
+                    arthasVersion.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            log.warn("写入 Arthas 版本文件失败: {}", e.getMessage());
+        }
     }
 
     /**
@@ -67,28 +109,67 @@ public class ArthasBootstrap {
                 log.warn("classpath 中未找到 Arthas 完整包: {}", classpathResource);
                 return;
             }
+            // 目标目录的规范路径，用于防御 zip 条目穿越目录（Zip Slip）
+            String targetRoot = targetDir.getCanonicalPath();
             java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(is);
             java.util.zip.ZipEntry entry;
             byte[] buffer = new byte[8192];
+            int extracted = 0;
             while ((entry = zis.getNextEntry()) != null) {
                 File entryFile = new File(targetDir, entry.getName());
+                // 路径穿越防护：条目解压后必须仍在目标目录内
+                if (!isInsideDirectory(entryFile, targetRoot)) {
+                    log.warn("跳过可疑的 zip 条目（路径穿越）: {}", entry.getName());
+                    zis.closeEntry();
+                    continue;
+                }
                 if (entry.isDirectory()) {
                     entryFile.mkdirs();
                 } else {
-                    entryFile.getParentFile().mkdirs();
+                    File parent = entryFile.getParentFile();
+                    if (parent != null) {
+                        parent.mkdirs();
+                    }
                     try (java.io.FileOutputStream fos = new java.io.FileOutputStream(entryFile)) {
                         int len;
                         while ((len = zis.read(buffer)) > 0) {
                             fos.write(buffer, 0, len);
                         }
                     }
+                    // async-profiler 与 Arthas JNI 的原生库需要可执行权限
+                    if (isNativeLibrary(entryFile.getName())) {
+                        if (!entryFile.setExecutable(true, false)) {
+                            log.debug("设置可执行权限失败（可能为非 POSIX 文件系统）: {}", entryFile.getName());
+                        }
+                    }
+                    extracted++;
                 }
                 zis.closeEntry();
             }
             zis.close();
+            if (extracted == 0) {
+                log.error("Arthas 完整包解压后没有任何文件，请检查 arthas-bin.zip 是否完整");
+            }
         } catch (Exception e) {
             log.error("解压 Arthas 完整包失败: {}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * 判断文件解压后是否仍在指定的根目录内（防御 ../ 穿越）
+     */
+    private boolean isInsideDirectory(File file, String rootDirCanonicalPath) {
+        try {
+            return file.getCanonicalPath().startsWith(rootDirCanonicalPath + java.io.File.separator)
+                    || file.getCanonicalPath().equals(rootDirCanonicalPath);
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isNativeLibrary(String fileName) {
+        String lower = fileName.toLowerCase();
+        return lower.endsWith(".so") || lower.endsWith(".dylib") || lower.endsWith(".dll");
     }
 
     /**
