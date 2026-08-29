@@ -76,6 +76,14 @@ H2（36+ 表），核心：`node_info` `project_info` `version_package` `deploy_
 - H2 膨胀：定时重启 `./stop.sh && ./start.sh` | H2 URL：`jdbc:h2:file:.../ops` → 磁盘 `ops.mv.db`
 - YAML map 不能用 `@Value`，用 `@ConfigurationProperties` | bash 变量后跟全角字符用 `${var}`
 
+## Git 提交大小红线（2026-08-29）
+- 当前占用：`.git` ≈ 8MB | 仓库目标：**≤1GB**（GitHub 推荐上限，超了会警告）| 强上限：**5GB**（超了可能被 GitHub 限制访问）
+- 单文件红线：**≤50MB**（>50MB 推送告警，>100MB 直接拒绝 push，网页上传 ≤25MB）
+- 铁律：`*.jar` / `*.log` / `*.zip` / `local-repo` / `data` / IDE·AI工具配置 永不提交（`.gitignore` 已配，提交前先 `git status` 确认）
+- 提交前自查 >50MB 大文件：
+  `git rev-list --objects --all | git cat-file --batch-check='%(objecttype) %(objectname) %(objectsize) %(rest)' | awk '/^blob/ && $3>52428800 {print $3/1048576"MB", $4}'`
+- 膨胀自查：`du -sh .git` >50MB 即排查历史大文件 | 清理历史用 `git filter-repo`（务必先备份 bundle 再动手）
+
 ## Nginx 流量监控
 预聚合表 `nginx_minute_stat` 按 `(source_id, bucket_time, client_ip, uri, method)` 唯一
 新维度 = 改存储列 + Agent 聚合 key + SQL（三步成对）| 白名单 `nginx_source_whitelist` 查询侧过滤
