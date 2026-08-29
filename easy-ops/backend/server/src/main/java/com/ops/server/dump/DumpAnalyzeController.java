@@ -33,8 +33,8 @@ public class DumpAnalyzeController {
         }
 
         String fileName = file.getOriginalFilename();
-        if (fileName == null || !fileName.endsWith(".hprof")) {
-            return Result.paramError("只支持 .hprof 格式的 dump 文件");
+        if (fileName == null || (!fileName.endsWith(".hprof") && !fileName.endsWith(".core"))) {
+            return Result.paramError("只支持 .hprof 或 .core 格式的文件");
         }
 
         // 检查文件大小（限制 500MB）
@@ -50,7 +50,7 @@ public class DumpAnalyzeController {
 
             // 异步分析（这里简化为同步，实际生产环境应该异步）
             DumpAnalyzerService.DumpAnalysisResult result = dumpAnalyzerService.analyze(
-                    fileId, file.getInputStream());
+                    fileId, file.getInputStream(), fileName);
 
             // 构建返回结果
             Map<String, Object> data = new HashMap<>();
