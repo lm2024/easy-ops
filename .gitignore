@@ -28,3 +28,28 @@ easy-ops/frontend/vite.config.js.timestamp-*.mjs
 # Dump 测试文件（不应提交到仓库）
 *.hprof
 *.core
+
+# IDE 配置
+.idea/
+.vscode/
+
+# AI 工具目录
+.codebuddy/
+.workbuddy/
+.mimocode/
+.reasonix/
+.claude/
+.skills/
+
+# 临时文件
+*.tmp
+*.log
+*.bak
+
+# Dump 测试文件
+*.hprof
+*.core
+
+# Agent JAR 包（不应提交到仓库）
+easy-ops/backend/agent/docker/easy-ops-agent-*.jar
+easy-ops/backend/agent/target/easy-ops-agent-*.jar
