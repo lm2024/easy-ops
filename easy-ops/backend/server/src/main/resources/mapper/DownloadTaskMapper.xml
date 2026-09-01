@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ops.server.mapper.DownloadTaskMapper">
+    <insert id="insert" parameterType="map">
+        INSERT INTO download_task (task_id, node_id, node_name, user_id, tenant_id, name, paths, status, total_size, create_time, update_time)
+        VALUES (#{taskId}, #{nodeId}, #{nodeName}, #{userId}, #{tenantId}, #{name}, #{paths}, #{status}, #{totalSize}, #{createTime}, #{updateTime})
+    </insert>
+
+    <update id="updateStatus">
+        UPDATE download_task SET status = #{status}, update_time = #{updateTime} WHERE task_id = #{taskId}
+    </update>
+
+    <select id="findByTaskId" resultType="map">
+        SELECT * FROM download_task WHERE task_id = #{taskId}
+    </select>
+
+    <select id="listRecent" resultType="map">
+        SELECT * FROM download_task ORDER BY create_time DESC LIMIT #{limit}
+    </select>
+
+    <delete id="deleteBefore">
+        DELETE FROM download_task WHERE create_time &lt; #{cutoff}
+    </delete>
+
+    <delete id="deleteByTaskId">
+        DELETE FROM download_task WHERE task_id = #{taskId}
+    </delete>
+</mapper>

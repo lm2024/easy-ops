@@ -949,3 +949,20 @@ CREATE INDEX IF NOT EXISTS idx_arthas_result_record ON arthas_diagnose_result(re
 CREATE INDEX IF NOT EXISTS idx_arthas_result_type ON arthas_diagnose_result(command_type);
 CREATE INDEX IF NOT EXISTS idx_arthas_result_exec ON arthas_diagnose_result(exec_time);
 
+-- ===== 下载任务表（文件管理 / 压缩下载）2026-08-31 =====
+CREATE TABLE IF NOT EXISTS download_task (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    task_id VARCHAR(64) UNIQUE NOT NULL,
+    node_id BIGINT,
+    node_name VARCHAR(100),
+    user_id BIGINT,
+    tenant_id BIGINT,
+    name VARCHAR(500),
+    paths TEXT,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    total_size BIGINT DEFAULT 0,
+    create_time BIGINT,
+    update_time BIGINT
+);
+CREATE INDEX IF NOT EXISTS idx_download_task_time ON download_task(create_time);
+

@@ -46,6 +46,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'tenants', name: 'Tenants', component: () => import('../views/TenantListView.vue'), meta: { roles: ['ADMIN'] } },
       { path: 'operations', name: 'Operations', component: () => import('../views/OperationLogView.vue') },
       { path: 'batch-download', name: 'BatchDownload', component: () => import('../views/BatchDownloadView.vue') },
+      { path: 'file-manage', name: 'FileManage', component: () => import('../views/FileManagerView.vue') },
       { path: 'ai-config', name: 'AIConfig', component: () => import('../views/AIConfigView.vue') }
 ,{ path: 'db-manage', name: 'DbManage', component: () => import('../views/DbManageView.vue') }
 ,{ path: 'dump-analyze', name: 'DumpAnalyze', component: () => import('../views/DumpAnalyzeView.vue') }

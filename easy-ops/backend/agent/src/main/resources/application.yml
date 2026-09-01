@@ -33,6 +33,14 @@ agent:
   restart-script: ${AGENT_RESTART_SCRIPT:}
   java-bin: ${AGENT_JAVA_BIN:}
   check-interval: 60
+  # 文件管理 / 压缩下载任务
+  filemgr:
+    # 每分卷大小（MB）：大文件/文件夹打包成 ZIP 分卷（.zip.001/.002...），7-Zip 打开首卷自动合并解压
+    part-size-mb: ${AGENT_FILEMGR_PART_MB:300}
+    # 压缩产物保留时长（小时），到期自动删除，不占服务器空间
+    ttl-hours: ${AGENT_FILEMGR_TTL_HOURS:3}
+    # 可浏览/下载/上传的根目录（逗号分隔），防路径穿越
+    roots: ${AGENT_FILEMGR_ROOTS:/app/data}
   # 上报给 Server 的外部 IP（多网卡时填写，留空则自动检测；本地调试/Docker 环境填 127.0.0.1）
   host-ip: ${AGENT_HOST_IP:127.0.0.1}
   # 上报给 Server 的外部端口（留空或 0 则用 server.port）

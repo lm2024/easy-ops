@@ -52,7 +52,8 @@ service.interceptors.response.use(
           }
         }
       }
-      return response as any
+      // 返回真正的 Blob（response.data），供调用方 createObjectURL 使用
+      return response.data as any
     }
     const res = response.data
     const requestUrl = response.config?.url || ''

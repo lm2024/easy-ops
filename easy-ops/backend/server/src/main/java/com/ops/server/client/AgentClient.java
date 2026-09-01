@@ -1,5 +1,6 @@
 package com.ops.server.client;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ops.common.constant.ErrorCode;
 import com.ops.common.exception.BusinessException;
 import com.ops.common.model.NodeModel;
@@ -20,8 +21,14 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.File;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -33,6 +40,7 @@ import java.util.Map;
 public class AgentClient {
 
     private static final Logger log = LoggerFactory.getLogger(AgentClient.class);
+    private static final ObjectMapper JSON_OBJECT_MAPPER = new ObjectMapper();
 
     @Autowired
     private NodeMapper nodeMapper;
@@ -142,6 +150,102 @@ public class AgentClient {
             log.warn("Agent multipart POST failed: {} - {}", url, e.getMessage());
             throw new RuntimeException("Agent 文件上传失败: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * 流式代理 Agent 文件内容到目标输出流（大文件下载专用）。
+     * 使用 HttpURLConnection 且读超时为 0（无限），不受 RestTemplate 10s 读超时限制。
+     * 客户端中途断开会抛 IOException，由调用方吞掉。
+     */
+    public void streamTo(NodeModel node, String path, Map<String, String> params, OutputStream target)
+            throws IOException {
+        String url = buildUrlWithQuery(node, path, params);
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(0);
+        conn.setRequestMethod("GET");
+        conn.setRequestProperty("Accept", "*/*");
+        try {
+            int code = conn.getResponseCode();
+            if (code != 200) {
+                throw new IOException("Agent 返回 HTTP " + code);
+            }
+            try (InputStream in = conn.getInputStream()) {
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    target.write(buf, 0, n);
+                }
+            }
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    /**
+     * 流式 POST multipart 文件到 Agent（文件管理上传，不落 Server 磁盘）。
+     * 用 HttpURLConnection 手工拼 multipart，返回 Agent 的 Result data。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> postMultipartStream(NodeModel node, String path,
+                                                   String fieldName, String fileName,
+                                                   InputStream in, long contentLength,
+                                                   Map<String, String> params) throws IOException {
+        String url = buildUrl(node, path);
+        String boundary = "----EasyOpsBoundary" + Long.toHexString(System.nanoTime());
+        HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(60000);
+        conn.setDoOutput(true);
+        conn.setRequestMethod("POST");
+        conn.setRequestProperty("Content-Type", "multipart/form-data; boundary=" + boundary);
+        try {
+            try (OutputStream os = conn.getOutputStream()) {
+                if (params != null) {
+                    for (Map.Entry<String, String> e : params.entrySet()) {
+                        writeFormField(os, boundary, e.getKey(), e.getValue());
+                    }
+                }
+                // 文件 part
+                os.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+                os.write(("Content-Disposition: form-data; name=\"" + fieldName
+                        + "\"; filename=\"" + fileName + "\"\r\n").getBytes(StandardCharsets.UTF_8));
+                os.write(("Content-Type: application/octet-stream\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+                byte[] buf = new byte[65536];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    os.write(buf, 0, n);
+                }
+                os.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+                os.flush();
+            }
+            int code = conn.getResponseCode();
+            InputStream respIn = code < 400 ? conn.getInputStream() : conn.getErrorStream();
+            String body = respIn != null ? readAll(respIn) : "";
+            Map<String, Object> resp = JSON_OBJECT_MAPPER.readValue(body, Map.class);
+            if (code >= 400) {
+                throw new IOException("Agent 返回 HTTP " + code + ": " + body);
+            }
+            return resp;
+        } finally {
+            conn.disconnect();
+        }
+    }
+
+    private void writeFormField(OutputStream os, String boundary, String name, String value) throws IOException {
+        os.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));
+        os.write(("Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        os.write((value + "\r\n").getBytes(StandardCharsets.UTF_8));
+    }
+
+    private String readAll(InputStream in) throws IOException {
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        byte[] buf = new byte[8192];
+        int n;
+        while ((n = in.read(buf)) != -1) {
+            bos.write(buf, 0, n);
+        }
+        return bos.toString("UTF-8");
     }
 
     /**

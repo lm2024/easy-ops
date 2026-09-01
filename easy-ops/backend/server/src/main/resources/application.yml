@@ -202,6 +202,7 @@ easyops:
         # ---- 审计日志 ----
         operation_log:        { label: "操作日志",         category: audit,   type: FLOW }
         file_access_log:      { label: "文件访问日志",     category: audit,   type: FLOW }
+        download_task:        { label: "下载任务",         category: audit,   type: FLOW }
         # ---- 系统配置 ----
         sys_config:           { label: "系统配置",         category: sys,     type: BASE }
         scheduler_lock:       { label: "调度锁",           category: sys,     type: CONFIG }
@@ -273,3 +274,10 @@ easyops:
     auto-login-username: ${AUTO_LOGIN_USERNAME:admin}
     # 逗号分隔的 key 白名单；命中其一即放行。建议用随机长字符串。
     auto-login-whitelist: ${AUTO_LOGIN_WHITELIST:}
+
+# =============================================================================
+# 文件管理 / 压缩下载
+# =============================================================================
+filemgr:
+  # 下载任务审计记录保留时长（小时），到期自动删除，不占 Server 空间
+  record-ttl-hours: ${FILEMGR_RECORD_TTL_HOURS:3}
